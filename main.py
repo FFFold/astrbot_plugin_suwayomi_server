@@ -303,12 +303,20 @@ class SuwayomiPlugin(Star):
                 yield event.plain_result(f"「{manga.title}」暂无章节。")
                 return
 
+            # Detect duplicate chapter numbers
+            num_count: dict[float, int] = {}
+            for ch in chapters:
+                num_count[ch.chapter_number] = num_count.get(ch.chapter_number, 0) + 1
+
             display = chapters[:20]
             lines = [f"📖「{manga.title}」章节列表（共 {len(chapters)} 话）:"]
             for ch in display:
                 read_mark = "✅" if ch.is_read else "⬜"
                 dl_mark = " 📥" if ch.is_downloaded else ""
-                lines.append(f"  {read_mark} #{_fmt_chapter_num(ch.chapter_number)} {ch.name}{dl_mark}")
+                num_str = str(_fmt_chapter_num(ch.chapter_number))
+                # Show chapter ID if duplicate numbers exist
+                dup_tag = f" (ID:{ch.id})" if num_count.get(ch.chapter_number, 0) > 1 else ""
+                lines.append(f"  {read_mark} #{num_str} {ch.name}{dl_mark}{dup_tag}")
 
             if len(chapters) > 20:
                 lines.append(f"  ... 还有 {len(chapters) - 20} 话，请到 WebUI 查看")
@@ -321,32 +329,58 @@ class SuwayomiPlugin(Star):
             logger.error(f"[{PLUGIN_NAME}] list_chapters error: {e}")
             yield event.plain_result("获取章节列表失败。")
 
+    def _find_chapters_by_num(self, chapters: list, chapter_num_f: float):
+        """Find all chapters matching a chapter number. Returns list of matching chapters."""
+        return [ch for ch in chapters if abs(ch.chapter_number - chapter_num_f) < 0.01]
+
+    def _find_chapter_by_id(self, chapters: list, chapter_id: int):
+        """Find a chapter by its ID."""
+        for ch in chapters:
+            if ch.id == chapter_id:
+                return ch
+        return None
+
     # ── 章节阅读 ──────────────────────────────────────────────────
 
     @manga_group.command("阅读")
     async def read_chapter(self, event: AstrMessageEvent, manga_name_or_id: str, chapter_num: str):
-        '''阅读漫画章节。用法: 漫画阅读 <漫画名或ID> <章节号>'''
+        '''阅读漫画章节。用法: 漫画阅读 <漫画名或ID> <章节号或ID:数字>'''
         try:
-            chapter_num_f = float(chapter_num)
             manga, err = await self._resolve_manga(event, manga_name_or_id)
             if err or manga is None:
                 yield event.plain_result(err or "未找到该漫画。")
                 return
 
             chapters = await self.client.get_chapters(manga.id)
+
+            # Support "id:123" syntax to select chapter by ID
             target = None
-            for ch in chapters:
-                if abs(ch.chapter_number - chapter_num_f) < 0.01:
-                    target = ch
-                    break
+            if chapter_num.startswith("id:"):
+                try:
+                    cid = int(chapter_num[3:])
+                    target = self._find_chapter_by_id(chapters, cid)
+                except ValueError:
+                    pass
+            else:
+                chapter_num_f = float(chapter_num)
+                matches = self._find_chapters_by_num(chapters, chapter_num_f)
+                if len(matches) == 1:
+                    target = matches[0]
+                elif len(matches) > 1:
+                    lines = [f"找到多个第 {_fmt_chapter_num(chapter_num_f)} 话，请使用 ID 指定:"]
+                    for ch in matches:
+                        lines.append(f"  ID:{ch.id} - {ch.name}")
+                    lines.append(f"\n发送「漫画阅读 {manga_name_or_id} id:<ID>」选择")
+                    yield event.plain_result("\n".join(lines))
+                    return
 
             if target is None:
-                yield event.plain_result(f"未找到「{manga.title}」第 {_fmt_chapter_num(chapter_num_f)} 话。")
+                yield event.plain_result(f"未找到「{manga.title}」指定的章节。")
                 return
 
             pages = await self.client.fetch_chapter_pages(target.id)
             if not pages:
-                yield event.plain_result(f"第 {_fmt_chapter_num(chapter_num_f)} 话暂无可用页面。")
+                yield event.plain_result(f"第 {_fmt_chapter_num(target.chapter_number)} 话暂无可用页面。")
                 return
 
             max_pages = self.config.get("max_pages", 30)
@@ -358,7 +392,7 @@ class SuwayomiPlugin(Star):
                     url = self.client.build_image_url(page_path)
                     nodes.append(Comp.Node(
                         uin=event.get_sender_id(),
-                        name=f"第 {_fmt_chapter_num(chapter_num_f)} 话 - 第 {i + 1} 页",
+                        name=f"第 {_fmt_chapter_num(target.chapter_number)} 话 - 第 {i + 1} 页",
                         content=[Comp.Image.fromURL(url)],
                     ))
                 if len(pages) > max_pages:
@@ -387,27 +421,41 @@ class SuwayomiPlugin(Star):
 
     @manga_group.command("下载")
     async def download_chapter(self, event: AstrMessageEvent, manga_name_or_id: str, chapter_num: str):
-        '''下载漫画章节。用法: 漫画下载 <漫画名或ID> <章节号>'''
+        '''下载漫画章节。用法: 漫画下载 <漫画名或ID> <章节号或ID:数字>'''
         try:
-            chapter_num_f = float(chapter_num)
             manga, err = await self._resolve_manga(event, manga_name_or_id)
             if err or manga is None:
                 yield event.plain_result(err or "未找到该漫画。")
                 return
 
             chapters = await self.client.get_chapters(manga.id)
+
             target = None
-            for ch in chapters:
-                if abs(ch.chapter_number - chapter_num_f) < 0.01:
-                    target = ch
-                    break
+            if chapter_num.startswith("id:"):
+                try:
+                    cid = int(chapter_num[3:])
+                    target = self._find_chapter_by_id(chapters, cid)
+                except ValueError:
+                    pass
+            else:
+                chapter_num_f = float(chapter_num)
+                matches = self._find_chapters_by_num(chapters, chapter_num_f)
+                if len(matches) == 1:
+                    target = matches[0]
+                elif len(matches) > 1:
+                    lines = [f"找到多个第 {_fmt_chapter_num(chapter_num_f)} 话，请使用 ID 指定:"]
+                    for ch in matches:
+                        lines.append(f"  ID:{ch.id} - {ch.name}")
+                    lines.append(f"\n发送「漫画下载 {manga_name_or_id} id:<ID>」选择")
+                    yield event.plain_result("\n".join(lines))
+                    return
 
             if target is None:
-                yield event.plain_result(f"未找到「{manga.title}」第 {_fmt_chapter_num(chapter_num_f)} 话。")
+                yield event.plain_result(f"未找到「{manga.title}」指定的章节。")
                 return
 
             await self.client.enqueue_download([target.id])
-            yield event.plain_result(f"✅ 已将「{manga.title} #{_fmt_chapter_num(chapter_num_f)}」加入下载队列，可在 WebUI 查看进度。")
+            yield event.plain_result(f"✅ 已将「{manga.title} #{_fmt_chapter_num(target.chapter_number)}」加入下载队列，可在 WebUI 查看进度。")
 
         except SuwayomiError as e:
             yield event.plain_result(f"下载失败: {e}")

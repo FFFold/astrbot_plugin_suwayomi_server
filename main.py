@@ -101,6 +101,33 @@ class SuwayomiPlugin(Star):
     def manga_group(self):
         pass
 
+    @manga_group.command("帮助", alias={"help"})
+    async def help_cmd(self, event: AstrMessageEvent):
+        '''显示漫画助手使用帮助'''
+        text = """📖 Suwayomi 漫画助手
+
+🔍 搜索与订阅
+  /漫画 搜索 <关键词> [源名]  — 搜索漫画
+  /漫画 订阅 <编号>            — 订阅搜索结果
+  /漫画 取消订阅 <ID或名称>    — 取消订阅
+  /漫画 我的订阅               — 查看订阅列表
+
+📚 阅读与下载
+  /漫画 章节 <漫画名或ID>               — 查看章节列表
+  /漫画 阅读 <漫画名或ID> <章节号>      — 阅读章节
+  /漫画 下载 <漫画名或ID> <章节号>      — 下载章节
+
+  重复编号章节可用 id: 指定：
+  /漫画 阅读 <漫画名> id:123
+
+🔄 更新
+  /漫画 更新  — 手动检查更新（自动推送默认每小时一次）
+
+📋 其他
+  /漫画 源    — 查看已安装的漫画源
+  /漫画 帮助  — 显示本帮助"""
+        yield event.plain_result(text)
+
     # ── 漫画 源 ────────────────────────────────────────────────────
 
     @manga_group.command("源")
@@ -388,6 +415,7 @@ class SuwayomiPlugin(Star):
                 yield event.plain_result(f"未找到「{manga.title}」指定的章节。")
                 return
 
+            await event.send(event.plain_result(f"📖 正在加载「{manga.title}」第 {_fmt_chapter_num(target.chapter_number)} 话，请稍后..."))
             pages = await self.client.fetch_chapter_pages(target.id)
             if not pages:
                 yield event.plain_result(f"第 {_fmt_chapter_num(target.chapter_number)} 话暂无可用页面。")

@@ -40,6 +40,14 @@
     "options": ["image", "forward"],
     "labels": ["直接发图", "合并转发"]
   },
+  "image_fetch_mode": {
+    "description": "图片获取方式",
+    "type": "string",
+    "default": "url",
+    "options": ["url", "download"],
+    "labels": ["URL 直接引用", "先下载到本地"],
+    "hint": "URL 方式更快但网络不稳定时容易失败；下载方式更可靠但占用临时磁盘空间"
+  },
   "default_source_id": {
     "description": "默认搜索源 ID",
     "type": "int",

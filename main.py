@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import math
+import shutil
+import tempfile
 import time
+from pathlib import Path
+
+import aiohttp
 
 import astrbot.api.message_components as Comp
 from astrbot.api import AstrBotConfig, logger
@@ -93,6 +98,42 @@ class SuwayomiPlugin(Star):
                 except Exception as e:
                     logger.error(f"[{PLUGIN_NAME}] 后台更新检查失败: {e}")
         except asyncio.CancelledError:
+            pass
+
+    async def _download_images(self, urls: list[str]) -> list[str]:
+        """Download images to temp files. Returns list of local file paths."""
+        tmp_dir = Path(tempfile.mkdtemp(prefix="suwayomi_"))
+        paths = []
+        async with aiohttp.ClientSession() as session:
+            for i, url in enumerate(urls):
+                try:
+                    async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                        if resp.status == 200:
+                            data = await resp.read()
+                            ext = ".jpg"
+                            ct = resp.headers.get("Content-Type", "")
+                            if "png" in ct:
+                                ext = ".png"
+                            elif "webp" in ct:
+                                ext = ".webp"
+                            path = tmp_dir / f"{i:04d}{ext}"
+                            path.write_bytes(data)
+                            paths.append(str(path))
+                        else:
+                            logger.warning(f"[{PLUGIN_NAME}] 图片下载失败 HTTP {resp.status}: {url}")
+                except Exception as e:
+                    logger.warning(f"[{PLUGIN_NAME}] 图片下载异常: {e}")
+        return paths
+
+    @staticmethod
+    def _cleanup_tmp(paths: list[str]):
+        """Remove temp image files and their parent directory."""
+        if not paths:
+            return
+        try:
+            parent = Path(paths[0]).parent
+            shutil.rmtree(parent, ignore_errors=True)
+        except Exception:
             pass
 
     # ── Command Group ──────────────────────────────────────────────
@@ -426,31 +467,43 @@ class SuwayomiPlugin(Star):
 
             max_pages = self.config.get("max_pages", 30)
             send_mode = self.config.get("send_mode", "image")
+            fetch_mode = self.config.get("image_fetch_mode", "url")
 
-            if send_mode == "forward" and event.get_platform_name() == "aiocqhttp":
-                nodes = []
-                for i, page_path in enumerate(pages[:max_pages]):
-                    url = self.client.build_image_url(page_path)
-                    nodes.append(Comp.Node(
-                        uin=event.get_sender_id(),
-                        name=f"第 {_fmt_chapter_num(target.chapter_number)} 话 - 第 {i + 1} 页",
-                        content=[Comp.Image.fromURL(url)],
-                    ))
-                if len(pages) > max_pages:
-                    nodes.append(Comp.Node(
-                        uin=event.get_sender_id(),
-                        name="提示",
-                        content=[Comp.Plain(f"... 还有 {len(pages) - max_pages} 页，请到 WebUI 查看")],
-                    ))
-                yield event.chain_result([Comp.Nodes(nodes)])
-            else:
-                chain = []
-                for i, page_path in enumerate(pages[:max_pages]):
-                    url = self.client.build_image_url(page_path)
-                    chain.append(Comp.Image.fromURL(url))
-                if len(pages) > max_pages:
-                    chain.append(Comp.Plain(f"... 还有 {len(pages) - max_pages} 页，请到 WebUI 查看"))
-                yield event.chain_result(chain)
+            page_urls = [self.client.build_image_url(p) for p in pages[:max_pages]]
+            local_paths: list[str] = []
+
+            if fetch_mode == "download":
+                local_paths = await self._download_images(page_urls)
+
+            def _img(idx: int) -> Comp.Image:
+                if fetch_mode == "download" and idx < len(local_paths):
+                    return Comp.Image.fromFileSystem(local_paths[idx])
+                return Comp.Image.fromURL(page_urls[idx])
+
+            try:
+                if send_mode == "forward" and event.get_platform_name() == "aiocqhttp":
+                    nodes = []
+                    for i in range(len(page_urls)):
+                        nodes.append(Comp.Node(
+                            uin=event.get_sender_id(),
+                            name=f"第 {_fmt_chapter_num(target.chapter_number)} 话 - 第 {i + 1} 页",
+                            content=[_img(i)],
+                        ))
+                    if len(pages) > max_pages:
+                        nodes.append(Comp.Node(
+                            uin=event.get_sender_id(),
+                            name="提示",
+                            content=[Comp.Plain(f"... 还有 {len(pages) - max_pages} 页，请到 WebUI 查看")],
+                        ))
+                    yield event.chain_result([Comp.Nodes(nodes)])
+                else:
+                    chain = [_img(i) for i in range(len(page_urls))]
+                    if len(pages) > max_pages:
+                        chain.append(Comp.Plain(f"... 还有 {len(pages) - max_pages} 页，请到 WebUI 查看"))
+                    yield event.chain_result(chain)
+            finally:
+                if local_paths:
+                    self._cleanup_tmp(local_paths)
 
         except SuwayomiError as e:
             yield event.plain_result(f"阅读失败: {e}")

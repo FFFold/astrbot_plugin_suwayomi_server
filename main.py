@@ -149,8 +149,7 @@ class SuwayomiPlugin(Star):
                 if isinstance(result, Exception):
                     logger.warning(f"[{PLUGIN_NAME}] 图片 {i + 1} 下载异常: {result}")
                     paths.append("")
-                elif result is True:
-                    # Find the actual file (extension may have changed)
+                elif result:
                     matches = sorted(tmp_dir.glob(f"{i:04d}.*"))
                     paths.append(str(matches[-1]) if matches else "")
                 else:

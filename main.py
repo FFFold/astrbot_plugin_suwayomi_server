@@ -194,10 +194,10 @@ class SuwayomiPlugin(Star):
     # ── 订阅管理 ──────────────────────────────────────────────────
 
     @manga_group.command("订阅")
-    async def subscribe_manga(self, event: AstrMessageEvent, index: int):
+    async def subscribe_manga(self, event: AstrMessageEvent, index: str):
         '''订阅漫画。用法: 漫画订阅 <搜索结果编号>'''
         try:
-            manga = self._get_cached_manga(event.unified_msg_origin, str(index))
+            manga = self._get_cached_manga(event.unified_msg_origin, index)
 
             if manga is None:
                 yield event.plain_result("未找到该编号的漫画，请先使用「漫画搜索」。")
@@ -324,9 +324,10 @@ class SuwayomiPlugin(Star):
     # ── 章节阅读 ──────────────────────────────────────────────────
 
     @manga_group.command("阅读")
-    async def read_chapter(self, event: AstrMessageEvent, manga_name_or_id: str, chapter_num: float):
+    async def read_chapter(self, event: AstrMessageEvent, manga_name_or_id: str, chapter_num: str):
         '''阅读漫画章节。用法: 漫画阅读 <漫画名或ID> <章节号>'''
         try:
+            chapter_num_f = float(chapter_num)
             manga, err = await self._resolve_manga(event, manga_name_or_id)
             if err or manga is None:
                 yield event.plain_result(err or "未找到该漫画。")
@@ -335,17 +336,17 @@ class SuwayomiPlugin(Star):
             chapters = await self.client.get_chapters(manga.id)
             target = None
             for ch in chapters:
-                if abs(ch.chapter_number - chapter_num) < 0.01:
+                if abs(ch.chapter_number - chapter_num_f) < 0.01:
                     target = ch
                     break
 
             if target is None:
-                yield event.plain_result(f"未找到「{manga.title}」第 {_fmt_chapter_num(chapter_num)} 话。")
+                yield event.plain_result(f"未找到「{manga.title}」第 {_fmt_chapter_num(chapter_num_f)} 话。")
                 return
 
             pages = await self.client.fetch_chapter_pages(target.id)
             if not pages:
-                yield event.plain_result(f"第 {_fmt_chapter_num(chapter_num)} 话暂无可用页面。")
+                yield event.plain_result(f"第 {_fmt_chapter_num(chapter_num_f)} 话暂无可用页面。")
                 return
 
             max_pages = self.config.get("max_pages", 30)
@@ -357,7 +358,7 @@ class SuwayomiPlugin(Star):
                     url = self.client.build_image_url(page_path)
                     nodes.append(Comp.Node(
                         uin=event.get_sender_id(),
-                        name=f"第 {_fmt_chapter_num(chapter_num)} 话 - 第 {i + 1} 页",
+                        name=f"第 {_fmt_chapter_num(chapter_num_f)} 话 - 第 {i + 1} 页",
                         content=[Comp.Image.fromURL(url)],
                     ))
                 if len(pages) > max_pages:
@@ -385,9 +386,10 @@ class SuwayomiPlugin(Star):
     # ── 章节下载 ──────────────────────────────────────────────────
 
     @manga_group.command("下载")
-    async def download_chapter(self, event: AstrMessageEvent, manga_name_or_id: str, chapter_num: float):
+    async def download_chapter(self, event: AstrMessageEvent, manga_name_or_id: str, chapter_num: str):
         '''下载漫画章节。用法: 漫画下载 <漫画名或ID> <章节号>'''
         try:
+            chapter_num_f = float(chapter_num)
             manga, err = await self._resolve_manga(event, manga_name_or_id)
             if err or manga is None:
                 yield event.plain_result(err or "未找到该漫画。")
@@ -396,16 +398,16 @@ class SuwayomiPlugin(Star):
             chapters = await self.client.get_chapters(manga.id)
             target = None
             for ch in chapters:
-                if abs(ch.chapter_number - chapter_num) < 0.01:
+                if abs(ch.chapter_number - chapter_num_f) < 0.01:
                     target = ch
                     break
 
             if target is None:
-                yield event.plain_result(f"未找到「{manga.title}」第 {_fmt_chapter_num(chapter_num)} 话。")
+                yield event.plain_result(f"未找到「{manga.title}」第 {_fmt_chapter_num(chapter_num_f)} 话。")
                 return
 
             await self.client.enqueue_download([target.id])
-            yield event.plain_result(f"✅ 已将「{manga.title} #{_fmt_chapter_num(chapter_num)}」加入下载队列，可在 WebUI 查看进度。")
+            yield event.plain_result(f"✅ 已将「{manga.title} #{_fmt_chapter_num(chapter_num_f)}」加入下载队列，可在 WebUI 查看进度。")
 
         except SuwayomiError as e:
             yield event.plain_result(f"下载失败: {e}")

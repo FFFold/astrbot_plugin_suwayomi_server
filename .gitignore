@@ -216,3 +216,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# uv / dev tooling
+pyproject.toml
+uv.lock
+
+# AstrBot framework data (generated at runtime)
+data/

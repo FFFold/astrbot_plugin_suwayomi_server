@@ -116,6 +116,8 @@ Bot:  找到多个第 7 话，请使用 ID 指定:
 - Suwayomi-Server 已部署并可访问
 - Suwayomi 中已安装至少一个漫画源扩展
 
+> **首次配置？** 请参阅 [Suwayomi-Server 配置教程](docs/setup.md)，包含 Docker 部署、漫画源安装、插件配置的完整步骤。
+
 ## 许可证
 
 MIT

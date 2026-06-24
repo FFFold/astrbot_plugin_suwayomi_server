@@ -6,17 +6,17 @@ KV_KEY = "suwayomi_subscriptions"
 
 
 class SubscriptionManager:
-    def __init__(self, kv_store):
-        self._kv = kv_store
+    def __init__(self, plugin):
+        self._plugin = plugin
 
     async def _load(self) -> dict[str, Any]:
-        data = await self._kv.get(KV_KEY, {})
+        data = await self._plugin.get_kv_data(KV_KEY, {})
         if not isinstance(data, dict):
             return {}
         return data
 
     async def _save(self, data: dict[str, Any]):
-        await self._kv.put(KV_KEY, data)
+        await self._plugin.put_kv_data(KV_KEY, data)
 
     async def subscribe(self, manga_id: int, title: str, source_id: int, umo: str):
         data = await self._load()

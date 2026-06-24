@@ -2,23 +2,23 @@ import pytest
 from utils.subscription import SubscriptionManager
 
 
-class FakeKV:
+class FakePlugin:
     def __init__(self):
         self._store: dict = {}
 
-    async def get(self, key, default=None):
+    async def get_kv_data(self, key, default=None):
         return self._store.get(key, default)
 
-    async def put(self, key, value):
+    async def put_kv_data(self, key, value):
         self._store[key] = value
 
-    async def delete(self, key):
+    async def delete_kv_data(self, key):
         self._store.pop(key, None)
 
 
 @pytest.fixture
 def kv():
-    return FakeKV()
+    return FakePlugin()
 
 
 @pytest.fixture

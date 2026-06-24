@@ -50,7 +50,7 @@ class SuwayomiPlugin(Star):
             username=config.get("username", ""),
             password=config.get("password", ""),
         )
-        self.sub_mgr = SubscriptionManager(self.context.get_kv_storage())
+        self.sub_mgr = SubscriptionManager(self)
         self._search_cache: dict[str, tuple[float, dict[str, Manga]]] = {}
         self._update_lock = asyncio.Lock()
         self._bg_task: asyncio.Task | None = None

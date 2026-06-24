@@ -79,3 +79,33 @@ async def test_remove_subscription_entry(mgr):
     await mgr.unsubscribe(42, "user1")
     all_subs = await mgr.get_all_subscriptions()
     assert "42" not in all_subs
+
+
+@pytest.mark.asyncio
+async def test_unsubscribe_nonexistent_manga(mgr):
+    # Should not raise
+    await mgr.unsubscribe(999, "user1")
+
+
+@pytest.mark.asyncio
+async def test_unsubscribe_nonexistent_user(mgr):
+    await mgr.subscribe(42, "One Piece", 100, "user1")
+    await mgr.unsubscribe(42, "user2")  # user2 not subscribed
+    subs = await mgr.get_subscriptions("user1")
+    assert len(subs) == 1  # user1 still subscribed
+
+
+@pytest.mark.asyncio
+async def test_update_latest_chapter_nonexistent(mgr):
+    # Should not raise
+    await mgr.update_latest_chapter(999, 200)
+
+
+@pytest.mark.asyncio
+async def test_subscribe_preserves_other_mangas(mgr):
+    await mgr.subscribe(1, "A", 10, "user1")
+    await mgr.subscribe(2, "B", 20, "user1")
+    subs = await mgr.get_subscriptions("user1")
+    assert len(subs) == 2
+    titles = {s["title"] for s in subs}
+    assert titles == {"A", "B"}

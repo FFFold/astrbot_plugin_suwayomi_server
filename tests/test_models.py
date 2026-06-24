@@ -68,3 +68,44 @@ def test_search_result_from_dict():
     assert len(sr.mangas) == 2
     assert sr.has_next_page is True
     assert sr.mangas[0].title == "A"
+
+
+def test_search_result_empty():
+    sr = SearchResult.from_dict({})
+    assert sr.mangas == []
+    assert sr.has_next_page is False
+
+
+def test_manga_minimal_fields():
+    data = {"id": 1, "title": "Test"}
+    manga = Manga.from_dict(data)
+    assert manga.id == 1
+    assert manga.title == "Test"
+    assert manga.source_id == 0
+    assert manga.status == "UNKNOWN"
+    assert manga.genre == []
+    assert manga.in_library is False
+
+
+def test_manga_none_genre():
+    data = {"id": 1, "title": "Test", "genre": None}
+    manga = Manga.from_dict(data)
+    assert manga.genre == []
+
+
+def test_chapter_minimal_fields():
+    data = {"id": 1}
+    ch = Chapter.from_dict(data)
+    assert ch.id == 1
+    assert ch.name == ""
+    assert ch.chapter_number == 0.0
+    assert ch.is_read is False
+
+
+def test_source_minimal_fields():
+    data = {"id": 1, "name": "src"}
+    src = Source.from_dict(data)
+    assert src.id == 1
+    assert src.name == "src"
+    assert src.display_name == "src"  # falls back to name
+    assert src.lang == ""

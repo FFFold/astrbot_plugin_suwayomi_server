@@ -13,6 +13,11 @@ from .utils.subscription import SubscriptionManager
 
 PLUGIN_NAME = "astrbot_suwayomi_server"
 
+
+def _fmt_chapter_num(num: float) -> int | float:
+    """Format chapter number: return int if it's a whole number, else float."""
+    return int(num) if num == int(num) else num
+
 STATUS_EMOJI = {
     "ONGOING": "连载中",
     "COMPLETED": "已完结",
@@ -174,7 +179,9 @@ class SuwayomiPlugin(Star):
                 return
 
             from .suwayomi.models import Manga as MangaModel
-            assert isinstance(manga, MangaModel)
+            if not isinstance(manga, MangaModel):
+                yield event.plain_result("数据异常，请重新搜索。")
+                return
             await self.sub_mgr.subscribe(manga.id, manga.title, manga.source_id, umo)
             yield event.plain_result(f"✅ 已订阅「{manga.title}」，有新章节时会推送。")
 
@@ -229,8 +236,6 @@ class SuwayomiPlugin(Star):
 
     async def _resolve_manga(self, event: AstrMessageEvent, name_or_id: str):
         """Resolve manga by ID or name. Returns (Manga, error_message)."""
-        from .suwayomi.models import Manga as MangaModel
-
         try:
             manga_id = int(name_or_id)
             manga = await self.client.get_manga(manga_id)
@@ -248,18 +253,14 @@ class SuwayomiPlugin(Star):
                     continue
 
         try:
-            data = await self.client._raw_query(
-                'query($t:String!){mangas(condition:{title:{ilike:$t}},first:10){nodes{id title url sourceId status thumbnailUrl inLibrary author artist description genre}}}',
-                {"t": f"%{name_or_id}%"},
-            )
-            nodes = data.get("mangas", {}).get("nodes", [])
-            if len(nodes) == 0:
+            mangas = await self.client.search_manga_by_title(name_or_id)
+            if len(mangas) == 0:
                 return None, "未找到该漫画。"
-            if len(nodes) == 1:
-                return MangaModel.from_dict(nodes[0]), None
+            if len(mangas) == 1:
+                return mangas[0], None
             lines = ["找到多个结果，请使用 ID 指定:"]
-            for n in nodes:
-                lines.append(f"  ID {n['id']}: {n['title']}")
+            for m in mangas:
+                lines.append(f"  ID {m.id}: {m.title}")
             return None, "\n".join(lines)
         except Exception as e:
             logger.error(f"[{PLUGIN_NAME}] resolve_manga error: {e}")
@@ -286,8 +287,7 @@ class SuwayomiPlugin(Star):
             for ch in display:
                 read_mark = "✅" if ch.is_read else "⬜"
                 dl_mark = " 📥" if ch.is_downloaded else ""
-                num = int(ch.chapter_number) if ch.chapter_number == int(ch.chapter_number) else ch.chapter_number
-                lines.append(f"  {read_mark} #{num} {ch.name}{dl_mark}")
+                lines.append(f"  {read_mark} #{_fmt_chapter_num(ch.chapter_number)} {ch.name}{dl_mark}")
 
             if len(chapters) > 20:
                 lines.append(f"  ... 还有 {len(chapters) - 20} 话，请到 WebUI 查看")
@@ -319,12 +319,12 @@ class SuwayomiPlugin(Star):
                     break
 
             if target is None:
-                yield event.plain_result(f"未找到「{manga.title}」第 {chapter_num} 话。")
+                yield event.plain_result(f"未找到「{manga.title}」第 {_fmt_chapter_num(chapter_num)} 话。")
                 return
 
             pages = await self.client.fetch_chapter_pages(target.id)
             if not pages:
-                yield event.plain_result(f"第 {chapter_num} 话暂无可用页面。")
+                yield event.plain_result(f"第 {_fmt_chapter_num(chapter_num)} 话暂无可用页面。")
                 return
 
             max_pages = self.config.get("max_pages", 30)
@@ -336,7 +336,7 @@ class SuwayomiPlugin(Star):
                     url = self.client.build_image_url(page_path)
                     nodes.append(Comp.Node(
                         uin=event.get_sender_id(),
-                        name=f"第 {chapter_num} 话 - 第 {i + 1} 页",
+                        name=f"第 {_fmt_chapter_num(chapter_num)} 话 - 第 {i + 1} 页",
                         content=[Comp.Image.fromURL(url)],
                     ))
                 if len(pages) > max_pages:
@@ -380,12 +380,11 @@ class SuwayomiPlugin(Star):
                     break
 
             if target is None:
-                yield event.plain_result(f"未找到「{manga.title}」第 {chapter_num} 话。")
+                yield event.plain_result(f"未找到「{manga.title}」第 {_fmt_chapter_num(chapter_num)} 话。")
                 return
 
             await self.client.enqueue_download([target.id])
-            num = int(chapter_num) if chapter_num == int(chapter_num) else chapter_num
-            yield event.plain_result(f"✅ 已将「{manga.title} #{num}」加入下载队列，可在 WebUI 查看进度。")
+            yield event.plain_result(f"✅ 已将「{manga.title} #{_fmt_chapter_num(chapter_num)}」加入下载队列，可在 WebUI 查看进度。")
 
         except SuwayomiError as e:
             yield event.plain_result(f"下载失败: {e}")
@@ -403,6 +402,12 @@ class SuwayomiPlugin(Star):
                 if event:
                     await event.send(event.plain_result("📭 没有订阅的漫画，无需检查更新。"))
                 return
+
+            # Trigger library update to discover new chapters from sources
+            try:
+                await self.client.update_library()
+            except Exception as e:
+                logger.warning(f"[{PLUGIN_NAME}] 触发书库更新失败: {e}")
 
             updated_mangas: list[tuple[str, list[str], list[str]]] = []
 
@@ -432,8 +437,7 @@ class SuwayomiPlugin(Star):
                         await self.sub_mgr.update_latest_chapter(manga_id, max_id)
                         ch_names = []
                         for ch in new_chapters:
-                            num = int(ch.chapter_number) if ch.chapter_number == int(ch.chapter_number) else ch.chapter_number
-                            ch_names.append(f"#{num}")
+                            ch_names.append(f"#{_fmt_chapter_num(ch.chapter_number)}")
                         updated_mangas.append((title, ch_names, subscribers))
 
                 except Exception as e:

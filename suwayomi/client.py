@@ -146,3 +146,10 @@ class SuwayomiClient:
             'query{mangas(condition:{inLibrary:true}){nodes{id title url sourceId status thumbnailUrl inLibrary author artist description genre}}}'
         )
         return [Manga.from_dict(m) for m in data["mangas"]["nodes"]]
+
+    async def search_manga_by_title(self, title: str, limit: int = 10) -> list[Manga]:
+        data = await self._raw_query(
+            'query($t:String!,$n:Int!){mangas(condition:{title:{ilike:$t}},first:$n){nodes{id title url sourceId status thumbnailUrl inLibrary author artist description genre}}}',
+            {"t": f"%{title}%", "n": limit},
+        )
+        return [Manga.from_dict(m) for m in data["mangas"]["nodes"]]

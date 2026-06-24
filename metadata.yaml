@@ -1,5 +1,5 @@
 name: astrbot_suwayomi_server
-author: user
+author: Fold
 desc: AstrBot plugin for Suwayomi-Server manga service integration
 version: "1.0.0"
 repo: https://github.com/FFFold/astrbot_suwayomi_server

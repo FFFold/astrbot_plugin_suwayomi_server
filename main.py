@@ -19,14 +19,14 @@ PLUGIN_NAME = "astrbot_suwayomi_server"
 _CACHE_TTL = 600  # 10 minutes
 
 
-def _fmt_chapter_num(num: float) -> int | float:
-    """Format chapter number: return int if it's a whole number, else float."""
+def _fmt_chapter_num(num: float) -> int | float | str:
+    """Format chapter number: return int if it's a whole number, else float. Returns '?' for NaN/Inf."""
     try:
         if math.isnan(num) or math.isinf(num):
-            return num
+            return "?"
         return int(num) if num == int(num) else num
     except (ValueError, OverflowError):
-        return num
+        return "?"
 
 
 STATUS_EMOJI = {
@@ -415,7 +415,7 @@ class SuwayomiPlugin(Star):
 
     # ── 更新检查 ──────────────────────────────────────────────────
 
-    async def _check_updates(self, event: AstrMessageEvent | None = None) -> str:
+    async def _check_updates(self) -> str:
         """Check for manga updates. Returns a summary string. Pushes to subscribers if updates found."""
         async with self._update_lock:
             all_subs = await self.sub_mgr.get_all_subscriptions()
@@ -484,7 +484,7 @@ class SuwayomiPlugin(Star):
     async def manual_update(self, event: AstrMessageEvent):
         '''手动检查漫画更新'''
         try:
-            summary = await self._check_updates(event)
+            summary = await self._check_updates()
             yield event.plain_result(summary)
         except Exception as e:
             logger.error(f"[{PLUGIN_NAME}] manual_update error: {e}")

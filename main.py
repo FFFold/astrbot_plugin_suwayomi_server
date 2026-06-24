@@ -204,6 +204,16 @@ class SuwayomiPlugin(Star):
                 return
 
             await self.sub_mgr.subscribe(manga.id, manga.title, manga.source_id, event.unified_msg_origin)
+
+            # Fetch chapters from source so update checks can detect new ones
+            try:
+                chapters = await self.client.get_chapters(manga.id)
+                if not chapters:
+                    await self.client.fetch_chapters(manga.id)
+                    logger.info(f"[{PLUGIN_NAME}] 已拉取「{manga.title}」的章节列表")
+            except Exception as e:
+                logger.warning(f"[{PLUGIN_NAME}] 拉取「{manga.title}」章节失败: {e}")
+
             yield event.plain_result(f"✅ 已订阅「{manga.title}」，有新章节时会推送。")
 
         except Exception as e:

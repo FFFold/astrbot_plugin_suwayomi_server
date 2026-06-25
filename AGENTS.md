@@ -31,7 +31,7 @@ main.py (SuwayomiPlugin)
   └── utils/subscription.py (SubscriptionManager - AstrBot KV storage)
 ```
 
-- `main.py`: Plugin entry, all 9 commands under `@filter.command_group("漫画")`, background update loop
+- `main.py`: Plugin entry, all 10 commands under `@filter.command_group("漫画")`, background update loop
 - `suwayomi/client.py`: All Suwayomi interaction via `POST /api/graphql`; supports none/basic/jwt auth
 - `suwayomi/models.py`: Pure dataclasses with `from_dict()` factory methods
 - `utils/subscription.py`: Persists subscriptions via AstrBot's `get_kv_data()`/`put_kv_data()`
@@ -50,9 +50,31 @@ main.py (SuwayomiPlugin)
 
 6. **Background task startup**: Use `@filter.on_astrbot_loaded()` not `__init__` for `asyncio.create_task()` - event loop may not be running during plugin load.
 
-7. **All command args are strings**: AstrBot passes raw strings, not typed values. Explicit `float()`/`int()` conversion required in command handlers.
+7. **All command args are strings**: AstrBot passes raw strings, not typed values. Explicit `float()`/`int()` conversion required in command handlers. Use `str` type hints with manual conversion.
 
-8. **Duplicate chapter numbers**: Some manga have multiple chapters with same number (e.g., appendices). Plugin detects this and prompts users to use `id:xxx` syntax for disambiguation.
+8. **Duplicate chapter numbers**: Some manga have multiple chapters with same number (e.g., appendices). Plugin detects this and prompts users to use `ID:xxx` syntax (case-insensitive) for disambiguation.
+
+9. **QQ forward messages**: Use `Comp.Nodes([node1, node2, ...])` wrapper. Passing `[Node, Node, ...]` directly to `chain_result()` sends each as a separate forward.
+
+10. **Command format**: AstrBot command groups use space separation. User types `/漫画 搜索`, not `/漫画搜索`. All user-facing text must use `「漫画 搜索」` format (with space).
+
+11. **Chapter data is lazy-loaded**: `fetchSourceManga` (search) only returns metadata. Chapters must be fetched separately via `fetchChapters` mutation. Use `_get_or_fetch_chapters()` helper which tries DB first, then fetches from source.
+
+## Key Helper Methods
+
+- `_get_or_fetch_chapters(manga_id)` — Get chapters from DB, auto-fetch from source if empty. Used by all chapter-related commands.
+- `_fmt_chapter_label(ch, num_counts)` — Format chapter display: `#num name` or `#num name (ID:xxx)` for duplicates. Shared by chapter list and update notifications.
+- `_resolve_manga(event, name_or_id)` — Resolve manga by ID or fuzzy name. Returns `(Manga, None)` or `(None, error_msg)`.
+- `_download_images(urls)` — Parallel download with retry. Returns local file paths.
+- `_download_one(session, url, dest)` — Single image download with exponential backoff retry.
+
+## Config Options
+
+Key non-obvious config values (in `_conf_schema.json`):
+- `image_fetch_mode`: `url` (direct reference) or `download` (download to temp first, more reliable)
+- `download_concurrency`: Parallel download count (default 6)
+- `download_retries`: Retry count per image with exponential backoff (default 3)
+- `send_mode`: `image` (direct) or `forward` (QQ merged forward, uses `Comp.Nodes` wrapper)
 
 ## Adding New Commands
 
@@ -61,14 +83,16 @@ main.py (SuwayomiPlugin)
 3. First param: `event: AstrMessageEvent`
 4. Return text: `yield event.plain_result(...)`
 5. Return rich media: `yield event.chain_result([...])`
-6. Docstring = user-facing help text
-7. User prompts use `「漫画 命令名」` format (with space)
+6. For immediate feedback before heavy work: `await event.send(event.plain_result(...))`
+7. Docstring = user-facing help text
+8. User prompts use `「漫画 命令名」` format (with space)
 
 ## File Conventions
 
 - `metadata.yaml`: AstrBot plugin metadata (name, version, platforms)
 - `_conf_schema.json`: AstrBot WebUI config form schema
 - `requirements.txt`: Runtime deps (currently just `aiohttp>=3.9.0`)
-- `pyproject.toml`: Dev deps (pytest, pytest-asyncio)
+- `pyproject.toml`: Dev deps (pytest, pytest-asyncio), gitignored
 - Tests in `tests/` - unit tests are synchronous or use `@pytest.mark.asyncio`
 - `test_live_api.py`: Integration tests, skipped by default, need live server
+- Version is in `metadata.yaml`, not `pyproject.toml`

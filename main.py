@@ -642,10 +642,16 @@ class SuwayomiPlugin(Star):
 
                     if new_chapters:
                         await self.sub_mgr.update_latest_chapter(manga_id, max_id)
+                        # Detect duplicate chapter numbers (same logic as list_chapters)
+                        num_count: dict[float, int] = {}
+                        for ch in chapters:
+                            num_count[ch.chapter_number] = num_count.get(ch.chapter_number, 0) + 1
+
                         ch_info = []
                         for ch in new_chapters:
                             num = _fmt_chapter_num(ch.chapter_number)
-                            label = f"#{num} {ch.name}" if ch.name else f"#{num}"
+                            dup_tag = f" (ID:{ch.id})" if num_count.get(ch.chapter_number, 0) > 1 else ""
+                            label = f"#{num} {ch.name}{dup_tag}" if ch.name else f"#{num}{dup_tag}"
                             ch_info.append(label)
                         updated_mangas.append((title, ch_info, new_chapters[-1], subscribers))
 

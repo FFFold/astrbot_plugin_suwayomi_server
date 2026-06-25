@@ -15,7 +15,7 @@ from astrbot.api.event import filter, AstrMessageEvent, MessageChain
 from astrbot.api.star import Context, Star
 
 from .suwayomi.client import SuwayomiClient, SuwayomiError
-from .suwayomi.models import Manga, SearchResult
+from .suwayomi.models import Chapter, Manga, SearchResult
 from .utils.subscription import SubscriptionManager
 
 PLUGIN_NAME = "astrbot_suwayomi_server"
@@ -397,10 +397,10 @@ class SuwayomiPlugin(Star):
     # ── 章节格式化 ────────────────────────────────────────────────
 
     @staticmethod
-    def _fmt_chapter_label(ch: Chapter, dup_ids: dict[float, int]) -> str:
+    def _fmt_chapter_label(ch: Chapter, num_counts: dict[float, int]) -> str:
         """Format a chapter label: '#num name (ID:xxx)' if duplicate, '#num name' otherwise."""
         num = _fmt_chapter_num(ch.chapter_number)
-        dup_tag = f" (ID:{ch.id})" if dup_ids.get(ch.chapter_number, 0) > 1 else ""
+        dup_tag = f" (ID:{ch.id})" if num_counts.get(ch.chapter_number, 0) > 1 else ""
         if ch.name:
             return f"#{num} {ch.name}{dup_tag}"
         return f"#{num}{dup_tag}"
@@ -624,7 +624,7 @@ class SuwayomiPlugin(Star):
             except Exception as e:
                 logger.warning(f"[{PLUGIN_NAME}] 触发书库更新失败: {e}")
 
-            updated_mangas: list[tuple[str, list[str], list[str]]] = []
+            updated_mangas: list[tuple[str, list[str], Chapter, list[str]]] = []
 
             for manga_id_str, info in all_subs.items():
                 manga_id = int(manga_id_str)

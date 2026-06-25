@@ -84,6 +84,6 @@
     "description": "临时文件目录",
     "type": "string",
     "default": "",
-    "hint": "留空使用系统默认临时目录。Docker 环境请设置为 AstrBot 和聊天平台容器共享的目录路径"
+    "hint": "留空使用系统默认临时目录。Docker 环境请设置为 AstrBot 和聊天平台容器共享的目录，例如 /AstrBot/data/temp"
   }
 }

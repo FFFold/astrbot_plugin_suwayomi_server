@@ -28,3 +28,34 @@ def pack_pdf(image_paths: list[str], output: Path):
         raise ValueError("No valid images to pack")
     with open(output, "wb") as f:
         f.write(img2pdf.convert(valid))
+
+
+def parse_download_args(raw_message: str, default_fmt: str = "zip") -> tuple[str, str, str]:
+    """Parse download command arguments from raw message.
+
+    Args:
+        raw_message: The full message string, e.g. "/漫画 下载 151 ID:2531 zip".
+        default_fmt: Default format if not specified.
+
+    Returns:
+        (manga_name_or_id, chapter_num, fmt)
+    """
+    tokens = raw_message.strip().split()
+    try:
+        cmd_idx = tokens.index("下载")
+        args = tokens[cmd_idx + 1:]
+    except ValueError:
+        args = tokens[2:]
+
+    fmt = default_fmt
+    if len(args) >= 3 and args[-1].lower() in ("zip", "pdf", "cbz"):
+        fmt = args[-1].lower()
+        manga = args[0]
+        chapter = " ".join(args[1:-1])
+    elif len(args) >= 2:
+        manga = args[0]
+        chapter = " ".join(args[1:])
+    else:
+        manga = args[0] if args else ""
+        chapter = ""
+    return manga, chapter, fmt

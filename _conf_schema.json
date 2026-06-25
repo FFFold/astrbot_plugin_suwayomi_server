@@ -72,5 +72,12 @@
     "default": 6,
     "min": -1,
     "hint": "超过此时间后自动从源刷新章节数据，0 表示永不自动刷新，-1 表示每次都强制刷新"
+  },
+  "download_format": {
+    "description": "默认下载打包格式",
+    "type": "string",
+    "default": "zip",
+    "options": ["zip", "pdf", "cbz"],
+    "labels": ["ZIP 压缩包", "PDF 文档", "CBZ 漫画"]
   }
 }

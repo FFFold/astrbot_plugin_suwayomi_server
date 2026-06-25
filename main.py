@@ -16,6 +16,7 @@ from astrbot.api.star import Context, Star
 
 from .suwayomi.client import SuwayomiClient, SuwayomiError
 from .suwayomi.models import Chapter, Manga, SearchResult
+from .utils.pack import pack_cbz, pack_pdf, pack_zip
 from .utils.subscription import SubscriptionManager
 
 PLUGIN_NAME = "astrbot_suwayomi_server"
@@ -181,7 +182,7 @@ class SuwayomiPlugin(Star):
 📚 阅读与下载
   /漫画 章节 <漫画名或ID>               — 查看章节列表
   /漫画 阅读 <漫画名或ID> <章节号>      — 阅读章节
-  /漫画 下载 <漫画名或ID> <章节号>      — 下载章节
+  /漫画 下载 <漫画名或ID> <章节号> [格式]  — 下载并打包发送（格式: zip/pdf/cbz）
 
   添加 --刷新 强制从源更新章节数据：
   /漫画 章节 <漫画名> --刷新
@@ -536,6 +537,67 @@ class SuwayomiPlugin(Star):
                 return ch
         return None
 
+    def _resolve_chapter(
+        self, chapters: list[Chapter], chapter_num: str, manga_name_or_id: str, cmd: str
+    ) -> tuple[Chapter | None, str | None]:
+        """Resolve chapter by ID or number string.
+
+        Args:
+            chapters: List of chapters.
+            chapter_num: User input like "1", "38.5", or "id:123".
+            manga_name_or_id: Original manga arg (for disambiguation hint).
+            cmd: Command name for hint text ("阅读" or "下载").
+
+        Returns:
+            (Chapter, None) on success, (None, error_msg) on failure.
+        """
+        if chapter_num.lower().startswith("id:"):
+            try:
+                cid = int(chapter_num[3:])
+                target = self._find_chapter_by_id(chapters, cid)
+                if target:
+                    return target, None
+            except ValueError:
+                pass
+            return None, f"未找到 ID 为 {chapter_num[3:]} 的章节。"
+
+        try:
+            chapter_num_f = float(chapter_num)
+        except ValueError:
+            return None, "章节号格式不正确。"
+
+        matches = self._find_chapters_by_num(chapters, chapter_num_f)
+        if len(matches) == 1:
+            return matches[0], None
+        if len(matches) > 1:
+            lines = [f"找到多个第 {_fmt_chapter_num(chapter_num_f)} 话，请使用 ID 指定:"]
+            for ch in matches:
+                lines.append(f"  ID:{ch.id} - {ch.name}")
+            lines.append(f"\n发送「漫画 {cmd} {manga_name_or_id} ID:<ID>」选择")
+            return None, "\n".join(lines)
+        return None, None
+
+    async def _fetch_pages_local(
+        self, chapter_id: int, max_pages: int = 0
+    ) -> tuple[list[str], list[str]]:
+        """Fetch chapter pages and download images to local temp dir.
+
+        Args:
+            chapter_id: The chapter ID.
+            max_pages: Max pages to fetch (0 = all).
+
+        Returns:
+            (page_urls, local_paths) — local_paths has empty strings for failed downloads.
+        """
+        pages = await self.client.fetch_chapter_pages(chapter_id)
+        if not pages:
+            return [], []
+        if max_pages > 0:
+            pages = pages[:max_pages]
+        page_urls = [self.client.build_image_url(p) for p in pages]
+        local_paths = await self._download_images(page_urls)
+        return page_urls, local_paths
+
     # ── 章节阅读 ──────────────────────────────────────────────────
 
     @manga_group.command("阅读")
@@ -552,27 +614,10 @@ class SuwayomiPlugin(Star):
 
             chapters = await self._get_or_fetch_chapters(manga.id)
 
-            # Support "id:123" syntax to select chapter by ID
-            target = None
-            if chapter_num.lower().startswith("id:"):
-                try:
-                    cid = int(chapter_num[3:])
-                    target = self._find_chapter_by_id(chapters, cid)
-                except ValueError:
-                    pass
-            else:
-                chapter_num_f = float(chapter_num)
-                matches = self._find_chapters_by_num(chapters, chapter_num_f)
-                if len(matches) == 1:
-                    target = matches[0]
-                elif len(matches) > 1:
-                    lines = [f"找到多个第 {_fmt_chapter_num(chapter_num_f)} 话，请使用 ID 指定:"]
-                    for ch in matches:
-                        lines.append(f"  ID:{ch.id} - {ch.name}")
-                    lines.append(f"\n发送「漫画 阅读 {manga_name_or_id} ID:<ID>」选择")
-                    yield event.plain_result("\n".join(lines))
-                    return
-
+            target, err_msg = self._resolve_chapter(chapters, chapter_num, manga_name_or_id, "阅读")
+            if err_msg:
+                yield event.plain_result(err_msg)
+                return
             if target is None:
                 yield event.plain_result(f"未找到「{manga.title}」指定的章节。")
                 return
@@ -581,20 +626,26 @@ class SuwayomiPlugin(Star):
                 await event.send(event.plain_result(f"📖 正在加载「{manga.title}」第 {_fmt_chapter_num(target.chapter_number)} 话，请稍后..."))
             except Exception:
                 pass
-            pages = await self.client.fetch_chapter_pages(target.id)
-            if not pages:
-                yield event.plain_result(f"第 {_fmt_chapter_num(target.chapter_number)} 话暂无可用页面。")
-                return
 
             max_pages = self.config.get("max_pages", 30)
             send_mode = self.config.get("send_mode", "image")
             fetch_mode = self.config.get("image_fetch_mode", "url")
 
-            page_urls = [self.client.build_image_url(p) for p in pages[:max_pages]]
-            local_paths: list[str] = []
-
             if fetch_mode == "download":
-                local_paths = await self._download_images(page_urls)
+                page_urls, local_paths = await self._fetch_pages_local(target.id, max_pages)
+                total_pages = len(page_urls)
+            else:
+                pages = await self.client.fetch_chapter_pages(target.id)
+                if not pages:
+                    yield event.plain_result(f"第 {_fmt_chapter_num(target.chapter_number)} 话暂无可用页面。")
+                    return
+                total_pages = len(pages)
+                page_urls = [self.client.build_image_url(p) for p in pages[:max_pages]]
+                local_paths = []
+
+            if not page_urls:
+                yield event.plain_result(f"第 {_fmt_chapter_num(target.chapter_number)} 话暂无可用页面。")
+                return
 
             def _img(idx: int) -> Comp.Image:
                 if fetch_mode == "download" and idx < len(local_paths) and local_paths[idx]:
@@ -612,17 +663,17 @@ class SuwayomiPlugin(Star):
                             name=f"第 {_fmt_chapter_num(target.chapter_number)} 话 - 第 {i + 1} 页",
                             content=[_img(i)],
                         ))
-                    if len(pages) > max_pages:
+                    if total_pages > max_pages:
                         nodes.append(Comp.Node(
                             uin=event.get_sender_id(),
                             name="提示",
-                            content=[Comp.Plain(f"... 还有 {len(pages) - max_pages} 页，请到 WebUI 查看")],
+                            content=[Comp.Plain(f"... 还有 {total_pages - max_pages} 页，请到 WebUI 查看")],
                         ))
                     yield event.chain_result([Comp.Nodes(nodes)])
                 else:
                     chain = [_img(i) for i in range(len(page_urls))]
-                    if len(pages) > max_pages:
-                        chain.append(Comp.Plain(f"... 还有 {len(pages) - max_pages} 页，请到 WebUI 查看"))
+                    if total_pages > max_pages:
+                        chain.append(Comp.Plain(f"... 还有 {total_pages - max_pages} 页，请到 WebUI 查看"))
                     yield event.chain_result(chain)
             finally:
                 if local_paths:
@@ -643,10 +694,26 @@ class SuwayomiPlugin(Star):
 
     @manga_group.command("下载")
     async def download_chapter(self, event: AstrMessageEvent, manga_name_or_id: str, chapter_num: str = ""):
-        '''下载漫画章节。用法: /漫画 下载 <漫画名或ID> <章节号或ID:数字>'''
+        '''下载漫画章节并打包发送。用法: /漫画 下载 <漫画名或ID> <章节号或ID:数字> [zip/pdf/cbz]'''
         if not chapter_num:
-            yield event.plain_result("用法: /漫画 下载 <漫画名或ID> <章节号>\n示例: /漫画 下载 一拳超人 1\n指定章节 ID: /漫画 下载 一拳超人 ID:123")
+            yield event.plain_result(
+                "用法: /漫画 下载 <漫画名或ID> <章节号> [格式]\n"
+                "示例: /漫画 下载 一拳超人 1\n"
+                "指定格式: /漫画 下载 一拳超人 1 pdf\n"
+                "指定章节 ID: /漫画 下载 一拳超人 ID:123"
+            )
             return
+
+        # Parse optional format argument
+        fmt = self.config.get("download_format", "zip")
+        parts = chapter_num.strip().split()
+        if parts and parts[-1].lower() in ("zip", "pdf", "cbz"):
+            fmt = parts[-1].lower()
+            chapter_num = " ".join(parts[:-1]) if len(parts) > 1 else ""
+            if not chapter_num:
+                yield event.plain_result("请指定章节号。")
+                return
+
         try:
             manga, err = await self._resolve_manga(event, manga_name_or_id)
             if err or manga is None:
@@ -655,32 +722,70 @@ class SuwayomiPlugin(Star):
 
             chapters = await self._get_or_fetch_chapters(manga.id)
 
-            target = None
-            if chapter_num.lower().startswith("id:"):
-                try:
-                    cid = int(chapter_num[3:])
-                    target = self._find_chapter_by_id(chapters, cid)
-                except ValueError:
-                    pass
-            else:
-                chapter_num_f = float(chapter_num)
-                matches = self._find_chapters_by_num(chapters, chapter_num_f)
-                if len(matches) == 1:
-                    target = matches[0]
-                elif len(matches) > 1:
-                    lines = [f"找到多个第 {_fmt_chapter_num(chapter_num_f)} 话，请使用 ID 指定:"]
-                    for ch in matches:
-                        lines.append(f"  ID:{ch.id} - {ch.name}")
-                    lines.append(f"\n发送「漫画 下载 {manga_name_or_id} ID:<ID>」选择")
-                    yield event.plain_result("\n".join(lines))
-                    return
-
+            target, err_msg = self._resolve_chapter(chapters, chapter_num, manga_name_or_id, "下载")
+            if err_msg:
+                yield event.plain_result(err_msg)
+                return
             if target is None:
                 yield event.plain_result(f"未找到「{manga.title}」指定的章节。")
                 return
 
-            await self.client.enqueue_download([target.id])
-            yield event.plain_result(f"✅ 已将「{manga.title} #{_fmt_chapter_num(target.chapter_number)}」加入下载队列，可在 WebUI 查看进度。")
+            num_label = _fmt_chapter_num(target.chapter_number)
+            await event.send(event.plain_result(
+                f"⏳ 正在下载「{manga.title}」第 {num_label} 话，请稍候..."
+            ))
+
+            # Fetch page URLs and download images locally
+            page_urls, local_paths = await self._fetch_pages_local(target.id)
+
+            if not page_urls:
+                yield event.plain_result(f"第 {num_label} 话暂无可用页面。")
+                return
+
+            valid_paths = [p for p in local_paths if p]
+            if not valid_paths:
+                yield event.plain_result("所有页面下载失败，无法打包。")
+                return
+
+            if len(valid_paths) < len(page_urls):
+                logger.warning(f"[{PLUGIN_NAME}] {len(page_urls) - len(valid_paths)} 页下载失败，将用已有页面打包")
+
+            # Step 4: Pack
+            tmp_dir = Path(valid_paths[0]).parent
+            safe_title = "".join(c for c in manga.title if c not in r'<>:"/\|?*')[:50]
+            ext_map = {"zip": "zip", "pdf": "pdf", "cbz": "cbz"}
+            file_ext = ext_map.get(fmt, "zip")
+            output_path = tmp_dir / f"{safe_title}_第{num_label}话.{file_ext}"
+
+            try:
+                if fmt == "pdf":
+                    pack_pdf(valid_paths, output_path)
+                elif fmt == "cbz":
+                    pack_cbz(valid_paths, output_path)
+                else:
+                    pack_zip(valid_paths, output_path)
+            except Exception as e:
+                logger.error(f"[{PLUGIN_NAME}] 打包失败: {e}")
+                yield event.plain_result(f"打包失败: {e}")
+                return
+
+            # Step 5: Send file
+            filename = f"{safe_title}_第{num_label}话.{file_ext}"
+            try:
+                chain = [Comp.File(file=str(output_path), name=filename)]
+                yield event.chain_result(chain)
+            except Exception as e:
+                logger.warning(f"[{PLUGIN_NAME}] 发送文件失败，回退为图片预览: {e}")
+                preview_count = min(3, len(valid_paths))
+                chain = [Comp.Plain(f"📄 {filename}（{len(valid_paths)} 页，文件发送不支持，以下为预览）")]
+                for i in range(preview_count):
+                    chain.append(Comp.Image.fromFileSystem(valid_paths[i]))
+                yield event.chain_result(chain)
+
+            # Step 6: Cleanup after delay
+            asyncio.get_event_loop().call_later(
+                120, lambda d=str(tmp_dir): shutil.rmtree(d, ignore_errors=True)
+            )
 
         except SuwayomiError as e:
             yield event.plain_result(f"下载失败: {e}")

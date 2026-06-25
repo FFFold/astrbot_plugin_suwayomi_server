@@ -2,7 +2,7 @@
 
 ## Quick Reference
 
-**Project**: AstrBot plugin integrating Suwayomi-Server for manga search, reading, downloads, and subscription updates.
+**Project**: AstrBot plugin integrating Suwayomi-Server for manga search, reading, chapter packaging/download, and subscription updates.
 **Language**: Python 3.12+ | **Package manager**: uv | **Framework**: AstrBot plugin system
 
 ## Documentation
@@ -36,12 +36,14 @@ python -c "import ast; ast.parse(open('main.py', encoding='utf-8').read()); prin
 main.py (SuwayomiPlugin)
   ├── suwayomi/client.py (SuwayomiClient - async GraphQL HTTP)
   ├── suwayomi/models.py (Source, Manga, Chapter, SearchResult dataclasses)
+  ├── utils/pack.py (pack_zip, pack_cbz, pack_pdf — image packaging)
   └── utils/subscription.py (SubscriptionManager - AstrBot KV storage)
 ```
 
 - `main.py`: Plugin entry, all 10 commands under `@filter.command_group("漫画")`, background update loop
 - `suwayomi/client.py`: All Suwayomi interaction via `POST /api/graphql`; supports none/basic/jwt auth
 - `suwayomi/models.py`: Pure dataclasses with `from_dict()` factory methods
+- `utils/pack.py`: Pack images into ZIP, CBZ, or PDF files
 - `utils/subscription.py`: Persists subscriptions via AstrBot's `get_kv_data()`/`put_kv_data()`
 
 ## Critical Quirks
@@ -83,6 +85,7 @@ Key non-obvious config values (in `_conf_schema.json`):
 - `image_fetch_mode`: `url` (direct reference) or `download` (download to temp first, more reliable)
 - `download_concurrency`: Parallel download count (default 6)
 - `download_retries`: Retry count per image with exponential backoff (default 3)
+- `download_format`: `zip` (ZIP archive), `pdf` (PDF document), or `cbz` (comic book archive). Default `zip`.
 - `send_mode`: `image` (direct) or `forward` (QQ merged forward, uses `Comp.Nodes` wrapper)
 - `chapter_cache_hours`: Hours before auto-refreshing chapters from source (default 6). `0` = never auto-refresh, `-1` = always refresh
 
@@ -101,7 +104,7 @@ Key non-obvious config values (in `_conf_schema.json`):
 
 - `metadata.yaml`: AstrBot plugin metadata (name, version, platforms)
 - `_conf_schema.json`: AstrBot WebUI config form schema
-- `requirements.txt`: Runtime deps (currently just `aiohttp>=3.9.0`)
+- `requirements.txt`: Runtime deps (currently `aiohttp>=3.9.0` and `img2pdf>=0.5.0`)
 - `pyproject.toml`: Dev deps (pytest, pytest-asyncio), gitignored
 - Tests in `tests/` - unit tests are synchronous or use `@pytest.mark.asyncio`
 - `test_live_api.py`: Integration tests, skipped by default, need live server

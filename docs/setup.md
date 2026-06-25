@@ -186,6 +186,7 @@ git clone https://github.com/FFFold/astrbot_suwayomi_server.git
 | `send_mode` | `image`（直接发图）或 `forward`（合并转发，仅 QQ） |
 | `default_source_id` | 默认搜索源 ID，`0` 搜索全部源 |
 | `chapter_cache_hours` | 章节缓存时间（小时），默认 `6`。`0` 不自动刷新，`-1` 每次都刷新 |
+| `download_format` | 下载打包格式，`zip`（ZIP 压缩包）/ `pdf`（PDF 文档）/ `cbz`（CBZ 漫画），默认 `zip` |
 
 **网络连通性**：AstrBot 所在机器必须能访问 Suwayomi-Server 地址。如果 AstrBot 和 Suwayomi 都在同一台机器上，用 `http://localhost:9330`。如果 AstrBot 在 Docker 中，需要用宿主机 IP 或 Docker 网络地址。
 

@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [Unreleased]
+
+### Added
+
+- **下载打包发送** — `/漫画 下载` 现在将章节页面打包为 ZIP/PDF/CBZ 文件直接发送到聊天
+- **下载格式配置** — 新增 `download_format` 配置项，可选 `zip`（默认）/ `pdf` / `cbz`
+- **PDF 打包依赖** — 新增 `img2pdf>=0.5.0` 运行时依赖
+- **打包工具模块** — 新增 `utils/pack.py`，提供 ZIP/CBZ/PDF 打包函数
+- **共享章节解析** — 抽取 `_resolve_chapter` 和 `_fetch_pages_local` 公共方法供阅读和下载复用
+
+### Changed
+
+- **下载命令重构** — `/漫画 下载` 不再使用 Suwayomi 服务端下载队列，改为本地下载页面图片并打包发送
+
 ## [0.1.4] - 2026-06-25
 
 ### Added

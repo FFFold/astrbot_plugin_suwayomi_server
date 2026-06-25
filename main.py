@@ -394,6 +394,17 @@ class SuwayomiPlugin(Star):
             logger.error(f"[{PLUGIN_NAME}] resolve_manga error: {e}")
             return None, "查找漫画失败。"
 
+    # ── 章节格式化 ────────────────────────────────────────────────
+
+    @staticmethod
+    def _fmt_chapter_label(ch: Chapter, dup_ids: dict[float, int]) -> str:
+        """Format a chapter label: '#num name (ID:xxx)' if duplicate, '#num name' otherwise."""
+        num = _fmt_chapter_num(ch.chapter_number)
+        dup_tag = f" (ID:{ch.id})" if dup_ids.get(ch.chapter_number, 0) > 1 else ""
+        if ch.name:
+            return f"#{num} {ch.name}{dup_tag}"
+        return f"#{num}{dup_tag}"
+
     # ── 章节获取 ────────────────────────────────────────────────────
 
     async def _get_or_fetch_chapters(self, manga_id: int) -> list:
@@ -429,10 +440,7 @@ class SuwayomiPlugin(Star):
             for ch in display:
                 read_mark = "✅" if ch.is_read else "⬜"
                 dl_mark = " 📥" if ch.is_downloaded else ""
-                num_str = str(_fmt_chapter_num(ch.chapter_number))
-                # Show chapter ID if duplicate numbers exist
-                dup_tag = f" (ID:{ch.id})" if num_count.get(ch.chapter_number, 0) > 1 else ""
-                lines.append(f"  {read_mark} #{num_str} {ch.name}{dl_mark}{dup_tag}")
+                lines.append(f"  {read_mark} {self._fmt_chapter_label(ch, num_count)}{dl_mark}")
 
             if len(chapters) > 20:
                 lines.append(f"  ... 还有 {len(chapters) - 20} 话，请到 WebUI 查看")
@@ -647,12 +655,7 @@ class SuwayomiPlugin(Star):
                         for ch in chapters:
                             num_count[ch.chapter_number] = num_count.get(ch.chapter_number, 0) + 1
 
-                        ch_info = []
-                        for ch in new_chapters:
-                            num = _fmt_chapter_num(ch.chapter_number)
-                            dup_tag = f" (ID:{ch.id})" if num_count.get(ch.chapter_number, 0) > 1 else ""
-                            label = f"#{num} {ch.name}{dup_tag}" if ch.name else f"#{num}{dup_tag}"
-                            ch_info.append(label)
+                        ch_info = [self._fmt_chapter_label(ch, num_count) for ch in new_chapters]
                         updated_mangas.append((title, ch_info, new_chapters[-1], subscribers))
 
                 except Exception as e:

@@ -1,25 +1,68 @@
-# Suwayomi 漫画助手
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="logo.png">
+    <img src="logo.png" alt="Suwayomi 漫画助手" width="128" height="128">
+  </picture>
+  <br>
+  <h1 align="center"><b>📖 Suwayomi 漫画助手</b></h1>
+  <p align="center">
+    基于 <a href="https://github.com/Suwayomi/Suwayomi-Server">Suwayomi-Server</a> 的 AstrBot 漫画插件
+    <br>
+    搜索 · 阅读 · 下载 · 订阅更新 · 多平台
+  </p>
+  <p align="center">
+    <img src="https://img.shields.io/badge/AstrBot-%3E%3D4.16-blue?style=flat-square" alt="AstrBot >= 4.16">
+    <img src="https://img.shields.io/badge/Python-3.12%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.12+">
+    <img src="https://img.shields.io/badge/license-AGPL--3.0-orange?style=flat-square" alt="License AGPL-3.0">
+    <img src="https://img.shields.io/badge/version-0.1.4-8A2BE2?style=flat-square" alt="Version 0.1.4">
+    <img src="https://img.shields.io/badge/support-8%20platforms-green?style=flat-square" alt="8 platforms">
+  </p>
+</p>
 
-AstrBot 插件 — 将 [Suwayomi-Server](https://github.com/Suwayomi/Suwayomi-Server) 作为漫画后端，为聊天用户提供漫画搜索、阅读、下载和订阅更新推送服务。
+---
 
-> **首次配置？** 请参阅 [Suwayomi-Server 配置教程](docs/setup.md)，包含 Docker 部署、漫画源安装、插件配置的完整步骤。
+将 [Suwayomi-Server](https://github.com/Suwayomi/Suwayomi-Server) 作为漫画后端，为聊天平台（QQ / Telegram / Discord 等）提供漫画搜索、在线阅读、批量下载和订阅更新推送服务。
 
-## 命令一览
+> 🚀 **首次使用？** 查看 [Suwayomi-Server 部署教程](docs/setup.md) 快速上手。
+
+---
+
+## ✨ 特性
+
+| | 功能 | 说明 |
+|---|---|---|
+| 🔍 | **多源搜索** | 跨多个已安装漫画源全局搜索，智能合并结果 |
+| 📖 | **在线阅读** | 直接在聊天中阅读漫画章节，支持逐页发送或合并转发 |
+| ⬇️ | **章节下载** | 将章节加入下载队列，通过 WebUI 管理下载进度 |
+| 🔔 | **订阅更新** | 订阅漫画后自动推送新章节通知，支持自定义检查间隔 |
+| 🔄 | **章节缓存** | 章节数据自动缓存可配置时长（默认 6h），也支持强制刷新 |
+| 🏷️ | **重复章节处理** | 智能识别重复章节号，通过 ID 精确选择 |
+| 🔐 | **多种认证** | 支持无认证 / Basic / JWT 三种 Suwayomi 认证模式 |
+| 🖼️ | **灵活发图** | 直接引用 URL 或先下载到本地再发送，适配不同网络环境 |
+| 🌐 | **多平台** | 支持 aiocqhttp / Telegram / QQ官方 / 企业微信 / 飞书 / Discord / Slack / KOOK |
+
+---
+
+## 📋 命令
 
 | 命令 | 说明 |
-|------|------|
+|---|---|
 | `/漫画 源` | 列出所有已安装的漫画源 |
 | `/漫画 搜索 <关键词> [源名]` | 从多个源搜索漫画 |
 | `/漫画 订阅 <编号>` | 订阅搜索结果中的漫画 |
-| `/漫画 取消订阅 <ID或名称>` | 取消订阅 |
+| `/漫画 取消订阅 <ID或名称>` | 取消订阅指定漫画 |
 | `/漫画 我的订阅` | 查看当前会话的订阅列表 |
 | `/漫画 更新` | 手动触发更新检查 |
-| `/漫画 章节 <漫画名或ID>` | 查看章节列表（支持 `--刷新` 强制更新） |
-| `/漫画 阅读 <漫画名或ID> <章节号>` | 阅读章节（发送页面图片） |
+| `/漫画 章节 <漫画名或ID> [--刷新]` | 查看章节列表，`--刷新` 强制从源拉取最新数据 |
+| `/漫画 阅读 <漫画名或ID> <章节号>` | 阅读指定章节（发送页面图片） |
 | `/漫画 下载 <漫画名或ID> <章节号>` | 将章节加入下载队列 |
-| `/漫画 帮助` | 显示用法帮助 |
+| `/漫画 帮助` | 显示完整用法说明 |
 
-## 使用示例
+---
+
+## 💬 使用示例
+
+### 基本流程
 
 ```
 用户: /漫画 搜索 一拳超人
@@ -45,9 +88,9 @@ Bot:  📖 正在加载「一拳超人」第 200 话，请稍后...
 Bot:  ✅ 已将「一拳超人 #199」加入下载队列，可在 WebUI 查看进度。
 ```
 
-### 强制刷新章节
+### 强制刷新章节缓存
 
-默认情况下，章节数据会缓存 6 小时。如需获取最新章节：
+章节数据默认缓存 **6 小时**（可配置）。如需获取最新章节，添加 `--刷新` 参数：
 
 ```
 用户: /漫画 章节 一拳超人 --刷新
@@ -56,27 +99,11 @@ Bot:  📖「一拳超人」章节列表（共 205 话）:
         ...
 ```
 
-## 更新推送
+### 重复章节选择
 
-插件后台定时检查订阅漫画的新章节（默认每 60 分钟），发现更新后自动推送到订阅者的聊天会话：
-
-```
-📢「一拳超人」更新了！
-新增章节：#201 第201话, #202 第202话, #203 第203话
-发送「漫画 阅读 一拳超人 203」开始阅读
-```
-
-也支持 `/漫画 更新` 手动触发检查。
-
-## 重复章节处理
-
-部分漫画存在编号相同的章节（如附录、特别篇）。插件会在章节列表中标记重复项，并在阅读/下载时提示用户通过章节 ID 精确选择：
+部分漫画存在编号相同的章节（如附录、特别篇），可通过 **章节 ID** 精确选择：
 
 ```
-📖「安達與島村」章节列表（共 67 话）:
-  ✅ #7 07卷附录 (ID:456)
-  ✅ #7 第7话 (ID:789)
-
 用户: /漫画 阅读 安達與島村 7
 Bot:  找到多个第 7 话，请使用 ID 指定:
         ID:456 - 07卷附录
@@ -84,69 +111,115 @@ Bot:  找到多个第 7 话，请使用 ID 指定:
       发送「漫画 阅读 安達與島村 ID:456」选择
 ```
 
-## 安装
+---
 
-1. 将本仓库克隆到 AstrBot 插件目录：
-   ```bash
-   cd AstrBot/data/plugins
-   git clone https://github.com/FFFold/astrbot_suwayomi_server.git
-   ```
+## 🔔 更新推送
 
-2. 安装依赖（AstrBot 启动时会自动安装，或手动执行）：
-   ```bash
-   pip install -r astrbot_suwayomi_server/requirements.txt
-   ```
+插件后台定时检查已订阅漫画的新章节（默认每 **60 分钟**），发现更新后自动推送到对应聊天会话：
 
-3. 在 AstrBot WebUI 的插件管理中启用插件并配置。
+```
+📢「一拳超人」更新了！
+新增章节：#201 第201话, #202 第202话, #203 第203话
+发送「漫画 阅读 一拳超人 203」开始阅读
+```
 
-## 配置
+也可通过 `/漫画 更新` 命令手动触发检查。
 
-在 AstrBot WebUI 的插件设置页面中配置以下选项：
+---
+
+## 📦 安装
+
+### 前置要求
+
+- Python 3.12+
+- AstrBot >= 4.16
+- 已部署并运行的 [Suwayomi-Server](https://github.com/Suwayomi/Suwayomi-Server)
+- Suwayomi 中已安装至少一个漫画源扩展
+
+### 安装步骤
+
+**方式一：Git 克隆**
+
+```bash
+cd AstrBot/data/plugins
+git clone https://github.com/FFFold/astrbot_plugin_suwayomi_server.git astrbot_suwayomi_server
+uv pip install -r astrbot_suwayomi_server/requirements.txt
+```
+
+**方式二：AstrBot WebUI（推荐）**
+
+在 AstrBot 管理面板的插件市场中搜索并安装。
+
+> 安装完成后在 AstrBot WebUI 中启用插件并完成配置即可使用。
+
+---
+
+## ⚙️ 配置
+
+在 AstrBot WebUI 的插件设置页面中配置。
 
 ### 基本设置
 
 | 配置项 | 类型 | 默认值 | 说明 |
-|--------|------|--------|------|
+|---|---|---|---|
 | `server_url` | string | `http://localhost:9330` | Suwayomi-Server 地址 |
 | `auth_mode` | string | `none` | 认证模式：`none` / `basic` / `jwt` |
-| `username` | string | `""` | 认证用户名（basic/jwt 模式） |
-| `password` | string | `""` | 认证密码（basic/jwt 模式） |
+| `username` | string | `""` | 认证用户名（basic / jwt 模式） |
+| `password` | string | `""` | 认证密码（basic / jwt 模式） |
 | `check_interval` | int | `60` | 更新检查间隔（分钟） |
-| `default_source_id` | int | `0` | 默认搜索源 ID，`0` 表示搜索全部已安装源 |
+| `default_source_id` | int | `0` | 默认搜索源 ID，`0` 搜索全部已安装源 |
 
 ### 阅读设置
 
 | 配置项 | 类型 | 默认值 | 说明 |
-|--------|------|--------|------|
-| `send_mode` | string | `image` | 发图模式：`image`（直接发图）/ `forward`（合并转发，仅 QQ） |
-| `image_fetch_mode` | string | `url` | 图片获取方式：`url`（直接引用）/ `download`（先下载到本地，更可靠） |
+|---|---|---|---|
+| `send_mode` | string | `image` | 发图模式：`image`（逐张发送）/ `forward`（合并转发，仅 QQ） |
+| `image_fetch_mode` | string | `url` | 图源获取：`url`（直接引用）/ `download`（先下载到本地） |
 | `max_pages` | int | `30` | 单次阅读最大发送页数 |
-| `download_concurrency` | int | `6` | 同时下载的图片数量（仅 download 模式） |
-| `download_retries` | int | `3` | 单张图片失败后的重试次数（指数退避） |
-| `chapter_cache_hours` | int | `6` | 章节缓存时间（小时）。`0` 不自动刷新，`-1` 每次都从源刷新 |
+| `download_concurrency` | int | `6` | 并行下载图片数（仅 `download` 模式） |
+| `download_retries` | int | `3` | 图片下载失败重试次数（指数退避） |
+| `chapter_cache_hours` | int | `6` | 章节缓存时长（小时）。`0` = 不自动刷新，`-1` = 总是从源刷新 |
 
-### 认证模式
+### 认证模式说明
 
-- `none`：Suwayomi-Server 未开启认证（默认）
-- `basic`：HTTP Basic 认证
-- `jwt`：JWT 令牌认证（Suwayomi UI_LOGIN 模式）
+| 模式 | 说明 |
+|---|---|
+| `none` | Suwayomi-Server 未开启认证（默认） |
+| `basic` | HTTP Basic 认证 |
+| `jwt` | JWT 令牌认证（Suwayomi UI_LOGIN 模式） |
 
-### 发图模式
+### 发图模式说明
 
-- `image`：将章节页面作为独立图片逐张发送（通用，支持所有平台）
-- `forward`：使用合并转发消息发送（仅 aiocqhttp/QQ 平台支持，其他平台自动回退为 `image` 模式）
+| 模式 | 说明 |
+|---|---|
+| `image` | 将章节页面作为独立图片逐张发送，通用性强，支持所有平台 |
+| `forward` | 使用合并转发消息发送章节页面，仅 aiocqhttp / QQ 平台支持，其他平台自动回退为 `image` |
 
 ### 图片获取方式
 
-- `url`：直接引用 Suwayomi 的图片 URL，速度快但网络不稳时易失败
-- `download`：先下载到本地临时文件再发送，更可靠，发送后 60 秒自动清理
+| 方式 | 说明 |
+|---|---|
+| `url` | 直接引用 Suwayomi 图片 URL，速度快但网络不稳定时易失败 |
+| `download` | 先下载到本地临时文件再发送，更可靠，发送后 60 秒自动清理 |
 
-## 前置要求
+## 📚 文档
 
-- AstrBot >= 4.16
-- Suwayomi-Server 已部署并可访问
-- Suwayomi 中已安装至少一个漫画源扩展
+| 文档 | 说明 |
+|---|---|
+| [Suwayomi-Server 配置教程](docs/setup.md) | Docker 部署、漫画源安装、插件配置 |
+| [开发指南](docs/dev/development.md) | 架构详解、设计决策、数据流 |
+| [Suwayomi API 参考](docs/dev/suwayomi-api.md) | GraphQL API 文档 |
+| [贡献指南](CONTRIBUTING.md) | 开发环境搭建、提交规范 |
+| [变更日志](CHANGELOG.md) | 版本更新记录 |
 
-## 许可证
+---
 
-AGPL-3.0
+## 📄 许可证
+
+[AGPL-3.0](LICENSE) © Fold
+
+---
+
+<p align="center">
+  <sub>由 <a href="https://github.com/Suwayomi/Suwayomi-Server">Suwayomi-Server</a> 提供漫画数据支持 · 为 <a href="https://github.com/Soulter/AstrBot">AstrBot</a> 量身打造</sub>
+</p>

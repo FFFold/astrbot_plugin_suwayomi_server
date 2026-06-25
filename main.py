@@ -482,9 +482,19 @@ class SuwayomiPlugin(Star):
     async def list_chapters(self, event: AstrMessageEvent, manga_name_or_id: str):
         '''查看漫画章节列表。用法: /漫画 章节 <漫画名或ID> [--刷新]'''
         try:
-            force = "--刷新" in manga_name_or_id
-            if force:
-                manga_name_or_id = manga_name_or_id.replace("--刷新", "").strip()
+            # Parse from raw message (AstrBot may split args incorrectly)
+            tokens = event.message_str.strip().split()
+            try:
+                cmd_idx = tokens.index("章节")
+                args = tokens[cmd_idx + 1:]
+            except ValueError:
+                args = []
+
+            force = "--刷新" in args
+            manga_name_or_id = " ".join(a for a in args if a != "--刷新").strip()
+            if not manga_name_or_id:
+                yield event.plain_result("用法: /漫画 章节 <漫画名或ID> [--刷新]")
+                return
 
             manga, err = await self._resolve_manga(event, manga_name_or_id)
             if err or manga is None:

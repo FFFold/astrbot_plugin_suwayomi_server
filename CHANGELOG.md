@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.2.1] - 2026-06-25
+
+### Fixed
+
+- **多漫画更新推送丢失** — 修复当多部漫画同时更新时，用户只收到第一部漫画的更新通知，其余被跳过的问题。现在同一用户的所有更新合并为一条消息发送
+
 ## [0.2.0] - 2026-06-25
 
 ### Added

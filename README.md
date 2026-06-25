@@ -14,7 +14,7 @@
     <img src="https://img.shields.io/badge/AstrBot-%3E%3D4.16-blue?style=flat-square" alt="AstrBot >= 4.16">
     <img src="https://img.shields.io/badge/Python-3.12%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.12+">
     <img src="https://img.shields.io/badge/license-AGPL--3.0-orange?style=flat-square" alt="License AGPL-3.0">
-    <img src="https://img.shields.io/badge/version-0.2.0-8A2BE2?style=flat-square" alt="Version 0.2.0">
+    <img src="https://img.shields.io/badge/version-0.2.1-8A2BE2?style=flat-square" alt="Version 0.2.1">
     <img src="https://img.shields.io/badge/support-8%20platforms-green?style=flat-square" alt="8 platforms">
   </p>
 </p>

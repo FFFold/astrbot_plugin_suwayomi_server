@@ -139,6 +139,8 @@ mutation($ids: [Int!]!) {
 }
 ```
 
+> **注意**：插件的「下载」命令不再使用此 API，改为在本地下载页面图片并打包为 ZIP/PDF/CBZ 文件发送。此方法仍保留在客户端中供未来使用。
+
 ### updateLibrary — 触发书库更新
 
 ```graphql

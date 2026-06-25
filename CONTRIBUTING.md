@@ -70,6 +70,7 @@ astrbot_plugin_suwayomi_server/
 │   └── models.py              # 数据模型（Source, Manga, Chapter, SearchResult）
 ├── utils/
 │   ├── __init__.py
+│   ├── pack.py               # 图片打包工具（ZIP/CBZ/PDF）
 │   └── subscription.py        # 订阅管理器（AstrBot KV 存储封装）
 ├── tests/
 │   ├── __init__.py

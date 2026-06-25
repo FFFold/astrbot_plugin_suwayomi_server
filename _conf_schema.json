@@ -48,6 +48,18 @@
     "labels": ["URL 直接引用", "先下载到本地"],
     "hint": "URL 方式更快但网络不稳定时容易失败；下载方式更可靠但占用临时磁盘空间"
   },
+  "download_concurrency": {
+    "description": "并行下载数",
+    "type": "int",
+    "default": 6,
+    "hint": "同时下载的图片数量（仅下载模式生效）"
+  },
+  "download_retries": {
+    "description": "下载重试次数",
+    "type": "int",
+    "default": 3,
+    "hint": "单张图片下载失败后的重试次数（指数退避）"
+  },
   "default_source_id": {
     "description": "默认搜索源 ID",
     "type": "int",

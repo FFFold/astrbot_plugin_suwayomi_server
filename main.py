@@ -101,9 +101,10 @@ class SuwayomiPlugin(Star):
             pass
 
     async def _download_one(
-        self, session: aiohttp.ClientSession, url: str, dest: Path, retries: int = 3
+        self, session: aiohttp.ClientSession, url: str, dest: Path
     ) -> bool:
         """Download a single image with exponential backoff retry."""
+        retries = self.config.get("download_retries", 3)
         for attempt in range(retries):
             try:
                 async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
@@ -134,9 +135,10 @@ class SuwayomiPlugin(Star):
 
     async def _download_images(self, urls: list[str]) -> list[str]:
         """Download images in parallel with retry. Returns list of local file paths (empty string for failures)."""
+        concurrency = self.config.get("download_concurrency", 6)
         tmp_dir = Path(tempfile.mkdtemp(prefix="suwayomi_"))
         try:
-            connector = aiohttp.TCPConnector(limit=6)
+            connector = aiohttp.TCPConnector(limit=concurrency)
             async with aiohttp.ClientSession(connector=connector) as session:
                 tasks = []
                 for i, url in enumerate(urls):

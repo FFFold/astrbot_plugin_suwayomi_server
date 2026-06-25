@@ -388,6 +388,18 @@ class SuwayomiPlugin(Star):
             logger.error(f"[{PLUGIN_NAME}] resolve_manga error: {e}")
             return None, "查找漫画失败。"
 
+    # ── 章节获取 ────────────────────────────────────────────────────
+
+    async def _get_or_fetch_chapters(self, manga_id: int) -> list:
+        """Get chapters from DB. If empty, fetch from source."""
+        chapters = await self.client.get_chapters(manga_id)
+        if not chapters:
+            try:
+                chapters = await self.client.fetch_chapters(manga_id)
+            except Exception as e:
+                logger.warning(f"[{PLUGIN_NAME}] 拉取章节失败 (manga={manga_id}): {e}")
+        return chapters
+
     # ── 章节列表 ──────────────────────────────────────────────────
 
     @manga_group.command("章节")
@@ -399,7 +411,7 @@ class SuwayomiPlugin(Star):
                 yield event.plain_result(err or "未找到该漫画。")
                 return
 
-            chapters = await self.client.get_chapters(manga.id)
+            chapters = await self._get_or_fetch_chapters(manga.id)
             if not chapters:
                 yield event.plain_result(f"「{manga.title}」暂无章节。")
                 return
@@ -452,7 +464,7 @@ class SuwayomiPlugin(Star):
                 yield event.plain_result(err or "未找到该漫画。")
                 return
 
-            chapters = await self.client.get_chapters(manga.id)
+            chapters = await self._get_or_fetch_chapters(manga.id)
 
             # Support "id:123" syntax to select chapter by ID
             target = None
@@ -552,7 +564,7 @@ class SuwayomiPlugin(Star):
                 yield event.plain_result(err or "未找到该漫画。")
                 return
 
-            chapters = await self.client.get_chapters(manga.id)
+            chapters = await self._get_or_fetch_chapters(manga.id)
 
             target = None
             if chapter_num.startswith("id:"):
@@ -613,15 +625,9 @@ class SuwayomiPlugin(Star):
                     continue
 
                 try:
-                    chapters = await self.client.get_chapters(manga_id)
+                    chapters = await self._get_or_fetch_chapters(manga_id)
                     if not chapters:
-                        # Manga has no chapters in DB, try fetching from source
-                        try:
-                            chapters = await self.client.fetch_chapters(manga_id)
-                        except Exception as e:
-                            logger.warning(f"[{PLUGIN_NAME}] 拉取漫画 {title} (ID:{manga_id}) 章节失败: {e}")
-                        if not chapters:
-                            continue
+                        continue
 
                     new_chapters = []
                     max_id = latest_stored

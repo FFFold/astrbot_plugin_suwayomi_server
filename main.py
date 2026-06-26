@@ -202,6 +202,11 @@ class SuwayomiPlugin(Star):
 🔄 更新
   /漫画 更新  — 手动检查更新（自动推送默认每小时一次）
 
+📡 自动推送
+  /漫画 推送 开    — 开启自动推送（有更新时自动发送漫画内容）
+  /漫画 推送 关    — 关闭自动推送
+  /漫画 推送 状态  — 查看推送状态
+
 📋 其他
   /漫画 源    — 查看已安装的漫画源
   /漫画 帮助  — 显示本帮助"""
@@ -312,7 +317,10 @@ class SuwayomiPlugin(Star):
             await self.sub_mgr.subscribe(manga.id, manga.title, manga.source_id, event.unified_msg_origin)
             logger.info(f"[{PLUGIN_NAME}] 用户订阅「{manga.title}」(ID:{manga.id})")
             try:
-                await self._get_or_fetch_chapters(manga.id)
+                chapters = await self._get_or_fetch_chapters(manga.id)
+                if chapters:
+                    max_id = max(ch.id for ch in chapters)
+                    await self.sub_mgr.update_latest_chapter(manga.id, max_id)
             except Exception as e:
                 logger.warning(f"[{PLUGIN_NAME}] 拉取「{manga.title}」章节失败: {e}")
             yield event.plain_result(f"✅ 已订阅「{manga.title}」，有新章节时会推送。")
@@ -367,6 +375,62 @@ class SuwayomiPlugin(Star):
         except Exception as e:
             logger.error(f"[{PLUGIN_NAME}] my_subscriptions error: {e}")
             yield event.plain_result("获取订阅列表失败。")
+
+    # ── 自动推送 ──────────────────────────────────────────────────
+
+    @manga_group.group("推送")
+    def push_group(self):
+        pass
+
+    @push_group.command("开")
+    async def push_enable(self, event: AstrMessageEvent):
+        '''开启当前会话的漫画自动推送'''
+        try:
+            umo = event.unified_msg_origin
+            subs = await self.sub_mgr.get_subscriptions(umo)
+            if not subs:
+                yield event.plain_result("📭 你还没有订阅任何漫画，请先使用「漫画 搜索」订阅。")
+                return
+            await self.sub_mgr.set_auto_push_all(umo, True)
+            yield event.plain_result(f"✅ 已开启自动推送，共 {len(subs)} 部漫画。有更新时将自动推送内容。")
+        except Exception as e:
+            logger.error(f"[{PLUGIN_NAME}] push_enable error: {e}")
+            yield event.plain_result("开启自动推送失败。")
+
+    @push_group.command("关")
+    async def push_disable(self, event: AstrMessageEvent):
+        '''关闭当前会话的漫画自动推送'''
+        try:
+            umo = event.unified_msg_origin
+            subs = await self.sub_mgr.get_subscriptions(umo)
+            if not subs:
+                yield event.plain_result("📭 你还没有订阅任何漫画。")
+                return
+            await self.sub_mgr.set_auto_push_all(umo, False)
+            yield event.plain_result("✅ 已关闭自动推送。有更新时将只发送文本通知。")
+        except Exception as e:
+            logger.error(f"[{PLUGIN_NAME}] push_disable error: {e}")
+            yield event.plain_result("关闭自动推送失败。")
+
+    @push_group.command("状态")
+    async def push_status(self, event: AstrMessageEvent):
+        '''查看当前会话的自动推送状态'''
+        try:
+            umo = event.unified_msg_origin
+            subs = await self.sub_mgr.get_subscriptions(umo)
+            if not subs:
+                yield event.plain_result("📭 你还没有订阅任何漫画。")
+                return
+            lines = ["📡 自动推送状态:"]
+            all_subs = await self.sub_mgr.get_all_subscriptions()
+            for s in subs:
+                enabled = self.sub_mgr.is_auto_push_enabled(all_subs, s["manga_id"], umo)
+                status = "✅ 开启" if enabled else "❌ 关闭"
+                lines.append(f"  • {s['title']} — {status}")
+            yield event.plain_result("\n".join(lines))
+        except Exception as e:
+            logger.error(f"[{PLUGIN_NAME}] push_status error: {e}")
+            yield event.plain_result("获取推送状态失败。")
 
     # ── 漫画名解析 ────────────────────────────────────────────────
 
@@ -622,6 +686,111 @@ class SuwayomiPlugin(Star):
         local_paths = await self._download_images(page_urls)
         return total_pages, page_urls, local_paths
 
+    async def _push_chapter_images(self, umo: str, title: str, chapter: Chapter):
+        """Push a chapter as inline images to a conversation (reuses read logic)."""
+        num_label = _fmt_chapter_num(chapter.chapter_number)
+        max_pages = self.config.get("max_pages", 30)
+        fetch_mode = self.config.get("image_fetch_mode", "url")
+
+        local_paths: list[str] = []
+        try:
+            if fetch_mode == "download":
+                total_pages, page_urls, local_paths = await self._fetch_pages_local(chapter.id, max_pages)
+            else:
+                pages = await self.client.fetch_chapter_pages(chapter.id)
+                if not pages:
+                    return
+                total_pages = len(pages)
+                page_urls = [self.client.build_image_url(p) for p in pages[:max_pages]]
+
+            if not page_urls:
+                return
+
+            def _img(idx: int) -> Comp.Image:
+                if fetch_mode == "download" and idx < len(local_paths) and local_paths[idx]:
+                    return Comp.Image.fromFileSystem(local_paths[idx])
+                return Comp.Image.fromURL(page_urls[idx])
+
+            chain = [Comp.Plain(f"📖「{title}」第 {num_label} 话")]
+            chain.extend(_img(i) for i in range(len(page_urls)))
+            if total_pages > max_pages:
+                chain.append(Comp.Plain(f"... 还有 {total_pages - max_pages} 页，请使用「漫画 阅读」查看"))
+
+            try:
+                await self.context.send_message(umo, MessageChain().chain(chain))
+            except Exception as e:
+                logger.warning(f"[{PLUGIN_NAME}] 图片推送到{umo}失败: {e}")
+                await self.context.send_message(umo, MessageChain().message(
+                    f"📖「{title}」第 {num_label} 话已更新，但图片发送失败，请使用「漫画 阅读」查看"
+                ))
+        finally:
+            if local_paths:
+                valid_paths = [p for p in local_paths if p]
+                if valid_paths:
+                    parent = Path(valid_paths[0]).parent
+                    async def _img_cleanup():
+                        await asyncio.sleep(60)
+                        try:
+                            await asyncio.get_running_loop().run_in_executor(
+                                None, lambda: shutil.rmtree(parent, ignore_errors=True)
+                            )
+                        except Exception:
+                            pass
+                    asyncio.create_task(_img_cleanup())
+
+    async def _push_chapter_file(self, umo: str, title: str, chapter: Chapter):
+        """Push a chapter as a packaged file to a conversation (reuses download logic)."""
+        num_label = _fmt_chapter_num(chapter.chapter_number)
+        fmt = self.config.get("download_format", "zip")
+
+        _, page_urls, local_paths = await self._fetch_pages_local(chapter.id)
+        if not page_urls:
+            return
+
+        valid_paths = [p for p in local_paths if p]
+        if not valid_paths:
+            return
+
+        tmp_dir = Path(valid_paths[0]).parent
+        try:
+            safe_title = "".join(c for c in title if c not in r'<>:"/\|?*')[:50]
+            safe_label = "".join(c for c in str(num_label) if c not in r'<>:"/\|?*')
+            ext_map = {"zip": "zip", "pdf": "pdf", "cbz": "cbz"}
+            file_ext = ext_map.get(fmt, "zip")
+            output_path = tmp_dir / f"{safe_title}_第{safe_label}话.{file_ext}"
+
+            try:
+                loop = asyncio.get_running_loop()
+                if fmt == "pdf":
+                    await loop.run_in_executor(None, pack_pdf, valid_paths, output_path)
+                elif fmt == "cbz":
+                    await loop.run_in_executor(None, pack_cbz, valid_paths, output_path)
+                else:
+                    await loop.run_in_executor(None, pack_zip, valid_paths, output_path)
+            except Exception as e:
+                logger.error(f"[{PLUGIN_NAME}] 自动推送打包失败: {e}")
+                return
+
+            filename = f"{safe_title}_第{safe_label}话.{file_ext}"
+            chain = [Comp.File(file=str(output_path), name=filename)]
+            try:
+                await self.context.send_message(umo, MessageChain().chain(chain))
+            except Exception as e:
+                logger.warning(f"[{PLUGIN_NAME}] 文件推送到{umo}失败: {e}")
+                await self.context.send_message(umo, MessageChain().message(
+                    f"📖「{title}」第 {num_label} 话已更新，但文件发送失败，请使用「漫画 下载」获取"
+                ))
+        finally:
+            async def _file_cleanup():
+                await asyncio.sleep(120)
+                try:
+                    await asyncio.get_running_loop().run_in_executor(
+                        None, lambda: shutil.rmtree(tmp_dir, ignore_errors=True)
+                    )
+                except Exception:
+                    pass
+            asyncio.create_task(_file_cleanup())
+
     # ── 章节阅读 ──────────────────────────────────────────────────
 
     @manga_group.command("阅读")
@@ -840,7 +1009,7 @@ class SuwayomiPlugin(Star):
             except Exception as e:
                 logger.warning(f"[{PLUGIN_NAME}] 触发书库更新失败: {e}")
 
-            updated_mangas: list[tuple[str, list[str], Chapter, list[str]]] = []
+            updated_mangas: list[tuple[int, str, list[str], list[Chapter], list[str]]] = []
 
             for manga_id_str, info in all_subs.items():
                 manga_id = int(manga_id_str)
@@ -874,7 +1043,7 @@ class SuwayomiPlugin(Star):
 
                         new_chapters.sort(key=lambda ch: ch.source_order)
                         ch_info = [self._fmt_chapter_label(ch, num_count) for ch in new_chapters]
-                        updated_mangas.append((title, ch_info, new_chapters[-1], subscribers))
+                        updated_mangas.append((manga_id, title, ch_info, new_chapters, subscribers))
 
                 except Exception as e:
                     logger.warning(f"[{PLUGIN_NAME}] 检查漫画 {title} (ID:{manga_id}) 更新失败: {e}")
@@ -887,8 +1056,8 @@ class SuwayomiPlugin(Star):
             logger.info(f"[{PLUGIN_NAME}] 更新检查完成: 检查 {len(all_subs)} 部漫画，发现 {len(updated_mangas)} 部有更新")
 
             user_msgs: dict[str, list[str]] = {}
-            for title, ch_info, last_ch, subscribers in updated_mangas:
-                latest_num = _fmt_chapter_num(last_ch.chapter_number)
+            for manga_id, title, ch_info, new_chapters, subscribers in updated_mangas:
+                latest_num = _fmt_chapter_num(new_chapters[-1].chapter_number)
                 msg = f"📢「{title}」更新了！\n新增章节：{', '.join(ch_info)}\n发送「漫画 阅读 {title} {latest_num}」开始阅读"
                 for umo in subscribers:
                     user_msgs.setdefault(umo, []).append(msg)
@@ -902,8 +1071,24 @@ class SuwayomiPlugin(Star):
 
             logger.info(f"[{PLUGIN_NAME}] 更新推送到 {len(user_msgs)} 个会话")
 
+            # Auto-push content for enabled subscribers
+            auto_push_mode = self.config.get("auto_push_mode", "image")
+            for manga_id, title, ch_info, new_chapters, subscribers in updated_mangas:
+                for umo in subscribers:
+                    if not self.sub_mgr.is_auto_push_enabled(all_subs, manga_id, umo):
+                        continue
+                    for ch in new_chapters:
+                        try:
+                            if auto_push_mode == "file":
+                                await self._push_chapter_file(umo, title, ch)
+                            else:
+                                await self._push_chapter_images(umo, title, ch)
+                            await asyncio.sleep(2)
+                        except Exception as e:
+                            logger.warning(f"[{PLUGIN_NAME}] 自动推送「{title}」第{_fmt_chapter_num(ch.chapter_number)}话到{umo}失败: {e}")
+
             summary_lines = [f"✅ 发现 {len(updated_mangas)} 部漫画更新："]
-            for title, ch_info, _, _ in updated_mangas:
+            for _, title, ch_info, _, _ in updated_mangas:
                 summary_lines.append(f"  • {title}: {', '.join(ch_info)}")
             return "\n".join(summary_lines)
 

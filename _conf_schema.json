@@ -85,5 +85,13 @@
     "type": "string",
     "default": "",
     "hint": "留空使用系统默认临时目录。Docker 环境请设置为 AstrBot 和聊天平台容器共享的目录，例如 /AstrBot/data/temp"
+  },
+  "auto_push_mode": {
+    "description": "自动推送模式",
+    "type": "string",
+    "default": "image",
+    "options": ["image", "file"],
+    "labels": ["图片（复用阅读）", "文件（复用下载）"],
+    "hint": "发现更新时自动推送的模式：图片直接发到聊天，文件发送 ZIP/PDF/CBZ 包"
   }
 }

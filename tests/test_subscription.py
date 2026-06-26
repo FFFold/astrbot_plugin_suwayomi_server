@@ -109,3 +109,54 @@ async def test_subscribe_preserves_other_mangas(mgr):
     assert len(subs) == 2
     titles = {s["title"] for s in subs}
     assert titles == {"A", "B"}
+
+
+@pytest.mark.asyncio
+async def test_set_auto_push(mgr):
+    await mgr.subscribe(42, "One Piece", 100, "user1")
+    assert await mgr.get_auto_push(42, "user1") is False
+    await mgr.set_auto_push(42, "user1", True)
+    assert await mgr.get_auto_push(42, "user1") is True
+
+
+@pytest.mark.asyncio
+async def test_set_auto_push_disable(mgr):
+    await mgr.subscribe(42, "One Piece", 100, "user1")
+    await mgr.set_auto_push(42, "user1", True)
+    await mgr.set_auto_push(42, "user1", False)
+    assert await mgr.get_auto_push(42, "user1") is False
+
+
+@pytest.mark.asyncio
+async def test_get_auto_push_nonexistent(mgr):
+    assert await mgr.get_auto_push(999, "user1") is False
+
+
+@pytest.mark.asyncio
+async def test_is_auto_push_enabled_static(mgr):
+    await mgr.subscribe(42, "One Piece", 100, "user1")
+    await mgr.subscribe(42, "One Piece", 100, "user2")
+    await mgr.set_auto_push(42, "user1", True)
+    data = await mgr._load()
+    assert SubscriptionManager.is_auto_push_enabled(data, 42, "user1") is True
+    assert SubscriptionManager.is_auto_push_enabled(data, 42, "user2") is False
+
+
+@pytest.mark.asyncio
+async def test_set_auto_push_all(mgr):
+    await mgr.subscribe(1, "A", 10, "user1")
+    await mgr.subscribe(2, "B", 20, "user1")
+    await mgr.set_auto_push_all("user1", True)
+    assert await mgr.get_auto_push(1, "user1") is True
+    assert await mgr.get_auto_push(2, "user1") is True
+
+
+@pytest.mark.asyncio
+async def test_auto_push_backward_compat(mgr):
+    """Old data without auto_push field should default to disabled."""
+    await mgr.subscribe(42, "One Piece", 100, "user1")
+    data = await mgr._load()
+    if "auto_push" in data.get("42", {}):
+        del data["42"]["auto_push"]
+    await mgr._save(data)
+    assert await mgr.get_auto_push(42, "user1") is False

@@ -38,14 +38,18 @@ main.py (SuwayomiPlugin)
   ├── suwayomi/client.py (SuwayomiClient - async GraphQL HTTP)
   ├── suwayomi/models.py (Source, Manga, Chapter, SearchResult dataclasses)
   ├── utils/pack.py (pack_zip, pack_cbz, pack_pdf — image packaging)
-  └── utils/subscription.py (SubscriptionManager - AstrBot KV storage)
+  ├── utils/subscription.py (SubscriptionManager - AstrBot KV storage)
+  ├── web/api.py (WebUI API handlers — standalone functions, dependency-injected)
+  └── pages/dashboard/ (WebUI: 仪表盘 + 订阅管理 + 配置)
 ```
 
-- `main.py`: Plugin entry, all 13 commands under `@filter.command_group("漫画")`, background update loop
+- `main.py`: Plugin entry, all 13 commands under `@filter.command_group("漫画")`, background update loop, WebUI API registration
 - `suwayomi/client.py`: All Suwayomi interaction via `POST /api/graphql`; supports none/basic/jwt auth
 - `suwayomi/models.py`: Pure dataclasses with `from_dict()` factory methods
 - `utils/pack.py`: Pack images into ZIP, CBZ, or PDF files; `parse_download_args()` for command arg parsing
 - `utils/subscription.py`: Persists subscriptions via AstrBot's `get_kv_data()`/`put_kv_data()`
+- `web/api.py`: 7 API handlers for admin WebUI (status, subscriptions CRUD, config, sources, update); each receives `client`/`sub_mgr`/`config` as params for testability
+- `pages/dashboard/`: AstrBot Plugin Pages — single HTML file with 3 tabs (仪表盘/订阅管理/设置), vanilla JS + CSS, communicates via Bridge SDK
 
 ## Critical Quirks
 

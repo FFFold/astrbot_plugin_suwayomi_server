@@ -1170,36 +1170,49 @@ class SuwayomiPlugin(Star):
 
     # ── WebUI API delegates ────────────────────────────────────────
 
-    async def _api_status(self):
+    @staticmethod
+    def _json_response(result):
+        """Convert handler result to (jsonify, status) tuple.
+
+        Handler may return dict (200) or (dict, int) tuple (error with status code).
+        """
         from quart import jsonify
-        result = await api_status(self.client, self.sub_mgr, self.get_kv_data)
+        if isinstance(result, tuple):
+            return jsonify(result[0]), result[1]
         return jsonify(result)
+
+    async def _api_status(self):
+        result = await api_status(self.client, self.sub_mgr, self.get_kv_data)
+        return self._json_response(result)
 
     async def _api_subscriptions(self):
-        from quart import jsonify
         result = await api_subscriptions(self.client, self.sub_mgr)
-        return jsonify(result)
+        return self._json_response(result)
 
     async def _api_subscription_delete(self):
-        from quart import jsonify, request
+        from quart import request
         data = await request.get_json()
+        if data is None:
+            return self._json_response(({"success": False, "message": "Invalid JSON"}, 400))
         result = await api_subscription_delete(self.sub_mgr, data)
-        status = result.pop("status", 200)
-        return jsonify(result), status
+        return self._json_response(result)
 
     async def _api_subscription_push(self):
-        from quart import jsonify, request
+        from quart import request
         data = await request.get_json()
+        if data is None:
+            return self._json_response(({"success": False, "message": "Invalid JSON"}, 400))
         result = await api_subscription_push(self.sub_mgr, data)
-        status = result.pop("status", 200)
-        return jsonify(result), status
+        return self._json_response(result)
 
     async def _api_config(self):
-        from quart import jsonify, request
+        from quart import request
         if request.method == "GET":
-            return jsonify(api_config_get(self.config))
+            return self._json_response(api_config_get(self.config))
 
         data = await request.get_json()
+        if data is None:
+            return self._json_response(({"success": False, "message": "Invalid JSON"}, 400))
 
         async def rebuild_client(cfg):
             try:
@@ -1214,15 +1227,12 @@ class SuwayomiPlugin(Star):
             )
 
         result = await api_config_post(self.config, data, rebuild_client)
-        status_code = result.pop("status", 200)
-        return jsonify(result), status_code
+        return self._json_response(result)
 
     async def _api_sources(self):
-        from quart import jsonify
         result = await api_sources_handler(self.client)
-        return jsonify(result)
+        return self._json_response(result)
 
     async def _api_update(self):
-        from quart import jsonify
         result = await api_update_handler(self._check_updates, self.put_kv_data)
-        return jsonify(result)
+        return self._json_response(result)

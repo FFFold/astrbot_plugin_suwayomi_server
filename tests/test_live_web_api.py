@@ -241,8 +241,9 @@ async def test_delete_all_subscribers(sub_mgr):
 async def test_delete_missing_manga():
     """api_subscription_delete with missing manga_id returns error."""
     result = await api_subscription_delete(FakePlugin(), {})
-    assert result["success"] is False
-    assert result["status"] == 400
+    assert isinstance(result, tuple)
+    assert result[0]["success"] is False
+    assert result[1] == 400
 
 
 # ── api_subscription_push ───────────────────────────────────────
@@ -275,8 +276,9 @@ async def test_push_enable_disable(sub_mgr):
 async def test_push_missing_params():
     """api_subscription_push rejects incomplete requests."""
     result = await api_subscription_push(FakePlugin(), {"manga_id": 42})
-    assert result["success"] is False
-    assert result["status"] == 400
+    assert isinstance(result, tuple)
+    assert result[0]["success"] is False
+    assert result[1] == 400
 
 
 # ── api_config ──────────────────────────────────────────────────
@@ -318,8 +320,9 @@ async def test_config_post_validation():
     cfg = FakeConfig({"server_url": "http://old:9330"})
 
     result = await api_config_post(cfg, {"server_url": ""}, None)
-    assert result["success"] is False
-    assert result["status"] == 400
+    assert isinstance(result, tuple)
+    assert result[0]["success"] is False
+    assert result[1] == 400
 
 
 @pytest.mark.asyncio
@@ -328,8 +331,9 @@ async def test_config_post_empty_body():
     cfg = FakeConfig()
 
     result = await api_config_post(cfg, {}, None)
-    assert result["success"] is False
-    assert result["status"] == 400
+    assert isinstance(result, tuple)
+    assert result[0]["success"] is False
+    assert result[1] == 400
 
 
 # ── api_update ──────────────────────────────────────────────────
@@ -409,7 +413,6 @@ async def test_e2e_subscribe_push_check_unsubscribe(client, sub_mgr, kv):
 
     # 6. Verify gone
     subs = await sub_mgr.get_subscriptions(umo)
-    manga_ids = [s["maga_id"] for s in subs] if subs else []
     assert manga_id not in [s.get("manga_id") for s in subs]
 
     print(f"\n  E2E test passed: subscribe → push → status → delete")

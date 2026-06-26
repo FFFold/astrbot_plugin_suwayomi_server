@@ -7,9 +7,10 @@ let allSources = [];
 // ── Init ───────────────────────────────────────────────
 const context = await bridge.ready();
 initTabs();
+initHandlers();
 await loadDashboard();
 
-// ── Tab switching ──────────────────────────────────────
+// ── Tab switching (one-time) ───────────────────────────
 function initTabs() {
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -25,37 +26,11 @@ function initTabs() {
   });
 }
 
-// ── Dashboard ──────────────────────────────────────────
-async function loadDashboard() {
-  const statusEl = document.getElementById('val-connected');
-  statusEl.textContent = '加载中...';
-
-  try {
-    const [statusRes, subsRes] = await Promise.all([
-      bridge.apiGet('status'),
-      bridge.apiGet('subscriptions'),
-    ]);
-
-    // Status cards
-    const connected = statusRes.connected;
-    statusEl.textContent = connected ? '已连接' : '断开';
-    statusEl.className = 'card-value ' + (connected ? 'status-ok' : 'status-err');
-    document.getElementById('val-sources').textContent = statusRes.source_count;
-    document.getElementById('val-library').textContent = statusRes.library_count;
-    document.getElementById('val-subs').textContent =
-      statusRes.subscription_count + ' 部 / ' + statusRes.subscriber_total + ' 人';
-
-    // Overview table
-    allSubscriptions = subsRes.subscriptions || [];
-    renderOverviewTable(allSubscriptions);
-  } catch (e) {
-    statusEl.textContent = '错误';
-    statusEl.className = 'card-value status-err';
-  }
-
-  // Check update button
-  const btnUpdate = document.getElementById('btn-check-update');
-  btnUpdate.onclick = async () => {
+// ── One-time event handler registration ────────────────
+function initHandlers() {
+  // Update check button
+  document.getElementById('btn-check-update').addEventListener('click', async () => {
+    const btnUpdate = document.getElementById('btn-check-update');
     btnUpdate.disabled = true;
     btnUpdate.textContent = '检查中...';
     const resultEl = document.getElementById('update-result');
@@ -68,7 +43,86 @@ async function loadDashboard() {
     }
     btnUpdate.disabled = false;
     btnUpdate.textContent = '检查更新';
-  };
+  });
+
+  // Subscription filters
+  document.getElementById('filter-umo').addEventListener('input', applySubsFilter);
+  document.getElementById('filter-title').addEventListener('input', applySubsFilter);
+
+  // Subscription table delete buttons (event delegation)
+  document.getElementById('subs-tbody').addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-action="delete"]');
+    if (!btn) return;
+    const mangaId = Number(btn.dataset.mangaId);
+    const title = btn.dataset.title;
+    if (!confirm(`确认删除「${title}」的所有订阅？`)) return;
+    try {
+      await bridge.apiPost('subscription/delete', { manga_id: mangaId });
+      showToast('已删除', 'success');
+      await loadSubscriptions();
+    } catch (err) {
+      showToast('删除失败', 'error');
+    }
+  });
+
+  // Config form submit
+  document.getElementById('config-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    const msgEl = document.getElementById('config-msg');
+    const data = {};
+    form.querySelectorAll('input, select').forEach(el => {
+      if (!el.name) return;
+      if (el.type === 'number') {
+        data[el.name] = Number(el.value);
+      } else {
+        data[el.name] = el.value;
+      }
+    });
+
+    try {
+      const res = await bridge.apiPost('config', data);
+      if (res.success) {
+        msgEl.textContent = '保存成功';
+        msgEl.className = 'form-msg success';
+      } else {
+        msgEl.textContent = res.message || '保存失败';
+        msgEl.className = 'form-msg error';
+      }
+    } catch (err) {
+      msgEl.textContent = '保存失败: ' + err.message;
+      msgEl.className = 'form-msg error';
+    }
+
+    setTimeout(() => { msgEl.textContent = ''; }, 3000);
+  });
+}
+
+// ── Dashboard ──────────────────────────────────────────
+async function loadDashboard() {
+  const statusEl = document.getElementById('val-connected');
+  statusEl.textContent = '加载中...';
+
+  try {
+    const [statusRes, subsRes] = await Promise.all([
+      bridge.apiGet('status'),
+      bridge.apiGet('subscriptions'),
+    ]);
+
+    const connected = statusRes.connected;
+    statusEl.textContent = connected ? '已连接' : '断开';
+    statusEl.className = 'card-value ' + (connected ? 'status-ok' : 'status-err');
+    document.getElementById('val-sources').textContent = statusRes.source_count;
+    document.getElementById('val-library').textContent = statusRes.library_count;
+    document.getElementById('val-subs').textContent =
+      statusRes.subscription_count + ' 部 / ' + statusRes.subscriber_total + ' 人';
+
+    allSubscriptions = subsRes.subscriptions || [];
+    renderOverviewTable(allSubscriptions);
+  } catch (e) {
+    statusEl.textContent = '错误';
+    statusEl.className = 'card-value status-err';
+  }
 }
 
 function renderOverviewTable(subs) {
@@ -103,10 +157,6 @@ async function loadSubscriptions() {
   } catch (e) {
     showToast('加载订阅失败', 'error');
   }
-
-  // Filters
-  document.getElementById('filter-umo').oninput = applySubsFilter;
-  document.getElementById('filter-title').oninput = applySubsFilter;
 }
 
 function applySubsFilter() {
@@ -151,22 +201,11 @@ function renderSubsTable(subs) {
         <td>${subTags}</td>
         <td>${s.push_enabled_count}/${s.subscriber_count}</td>
         <td>
-          <button class="btn btn-danger btn-sm" onclick="deleteAllSubs(${s.manga_id}, '${esc(s.title)}')">删除全部</button>
+          <button class="btn btn-danger btn-sm" data-action="delete" data-manga-id="${s.manga_id}" data-title="${esc(s.title)}">删除全部</button>
         </td>
       </tr>
     `;
   }).join('');
-}
-
-async function deleteAllSubs(mangaId, title) {
-  if (!confirm(`确认删除「${title}」的所有订阅？`)) return;
-  try {
-    await bridge.apiPost('subscription/delete', { manga_id: mangaId });
-    showToast('已删除', 'success');
-    await loadSubscriptions();
-  } catch (e) {
-    showToast('删除失败', 'error');
-  }
 }
 
 // ── Settings ───────────────────────────────────────────
@@ -181,46 +220,17 @@ async function loadConfig() {
   } catch (e) {
     showToast('加载配置失败', 'error');
   }
-
-  const form = document.getElementById('config-form');
-  form.onsubmit = async (e) => {
-    e.preventDefault();
-    const msgEl = document.getElementById('config-msg');
-    const data = {};
-    const inputs = form.querySelectorAll('input, select');
-    inputs.forEach(el => {
-      if (!el.name) return;
-      if (el.type === 'number') {
-        data[el.name] = Number(el.value);
-      } else {
-        data[el.name] = el.value;
-      }
-    });
-
-    try {
-      const res = await bridge.apiPost('config', data);
-      if (res.success) {
-        msgEl.textContent = '保存成功';
-        msgEl.className = 'form-msg success';
-      } else {
-        msgEl.textContent = res.message || '保存失败';
-        msgEl.className = 'form-msg error';
-      }
-    } catch (err) {
-      msgEl.textContent = '保存失败: ' + err.message;
-      msgEl.className = 'form-msg error';
-    }
-
-    setTimeout(() => { msgEl.textContent = ''; }, 3000);
-  };
 }
 
 // ── Helpers ────────────────────────────────────────────
 function esc(str) {
   if (!str) return '';
-  const d = document.createElement('div');
-  d.textContent = str;
-  return d.innerHTML;
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function formatUmo(umo) {

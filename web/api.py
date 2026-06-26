@@ -2,6 +2,10 @@
 
 All handlers are standalone async functions that receive dependencies as parameters.
 This keeps main.py clean and makes handlers independently testable.
+
+Handlers return:
+  - dict on success (HTTP 200)
+  - (dict, int) tuple on error, where int is the HTTP status code
 """
 from __future__ import annotations
 
@@ -98,66 +102,65 @@ async def api_subscriptions(
 async def api_subscription_delete(
     sub_mgr: Any,
     data: dict,
-) -> dict:
+) -> dict | tuple[dict, int]:
     """POST /subscription/delete — 删除订阅者"""
     manga_id = data.get("manga_id")
     umo = data.get("umo")
 
     if manga_id is None:
-        return {"success": False, "message": "缺少 manga_id", "status": 400}
+        return {"success": False, "message": "缺少 manga_id"}, 400
 
     try:
         if umo:
             await sub_mgr.unsubscribe(int(manga_id), umo)
         else:
-            all_data = await sub_mgr._load()
-            key = str(manga_id)
-            if key in all_data:
-                del all_data[key]
-                await sub_mgr._save(all_data)
+            await sub_mgr.delete_manga(int(manga_id))
         return {"success": True}
     except Exception as e:
         logger.error(f"[{PLUGIN_NAME}] api_subscription_delete error: {e}")
-        return {"success": False, "message": str(e), "status": 500}
+        return {"success": False, "message": str(e)}, 500
 
 
 async def api_subscription_push(
     sub_mgr: Any,
     data: dict,
-) -> dict:
+) -> dict | tuple[dict, int]:
     """POST /subscription/push — 切换自动推送开关"""
     manga_id = data.get("manga_id")
     umo = data.get("umo")
     enabled = data.get("enabled")
 
     if manga_id is None or umo is None or enabled is None:
-        return {"success": False, "message": "缺少参数", "status": 400}
+        return {"success": False, "message": "缺少参数"}, 400
 
     try:
         await sub_mgr.set_auto_push(int(manga_id), umo, bool(enabled))
         return {"success": True}
     except Exception as e:
         logger.error(f"[{PLUGIN_NAME}] api_subscription_push error: {e}")
-        return {"success": False, "message": str(e), "status": 500}
+        return {"success": False, "message": str(e)}, 500
 
 
 def api_config_get(config: Any) -> dict:
-    """GET /config — 读取当前插件配置"""
-    return dict(config)
+    """GET /config — 读取当前插件配置，掩码敏感字段"""
+    cfg = dict(config)
+    if cfg.get("password"):
+        cfg["password"] = "***"
+    return cfg
 
 
 async def api_config_post(
     config: Any,
     data: dict,
     rebuild_client: Callable[[Any], Awaitable[None]],
-) -> dict:
+) -> dict | tuple[dict, int]:
     """POST /config — 保存插件配置"""
     if not data:
-        return {"success": False, "message": "请求体为空", "status": 400}
+        return {"success": False, "message": "请求体为空"}, 400
 
     server_url = data.get("server_url", "").strip()
     if not server_url:
-        return {"success": False, "message": "服务器地址不能为空", "status": 400}
+        return {"success": False, "message": "服务器地址不能为空"}, 400
 
     for key, value in data.items():
         config[key] = value
@@ -166,7 +169,7 @@ async def api_config_post(
         config.save_config()
     except Exception as e:
         logger.error(f"[{PLUGIN_NAME}] config save error: {e}")
-        return {"success": False, "message": f"保存失败: {e}", "status": 500}
+        return {"success": False, "message": f"保存失败: {e}"}, 500
 
     await rebuild_client(config)
 

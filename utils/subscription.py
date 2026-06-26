@@ -59,6 +59,14 @@ class SubscriptionManager:
     async def get_all_subscriptions(self) -> dict[str, Any]:
         return await self._load()
 
+    async def delete_manga(self, manga_id: int):
+        """Delete all subscribers for a manga (entire entry)."""
+        data = await self._load()
+        key = str(manga_id)
+        if key in data:
+            del data[key]
+            await self._save(data)
+
     async def update_latest_chapter(self, manga_id: int, chapter_id: int):
         data = await self._load()
         key = str(manga_id)

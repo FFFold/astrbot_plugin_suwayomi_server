@@ -154,8 +154,9 @@ async def test_delete_all_subscriptions(sub_mgr):
 @pytest.mark.asyncio
 async def test_delete_missing_manga_id():
     result = await api_subscription_delete(MagicMock(), {})
-    assert result["success"] is False
-    assert result["status"] == 400
+    assert isinstance(result, tuple)
+    assert result[0]["success"] is False
+    assert result[1] == 400
 
 
 @pytest.mark.asyncio
@@ -192,8 +193,9 @@ async def test_push_disable(sub_mgr):
 @pytest.mark.asyncio
 async def test_push_missing_params():
     result = await api_subscription_push(MagicMock(), {"manga_id": 42})
-    assert result["success"] is False
-    assert result["status"] == 400
+    assert isinstance(result, tuple)
+    assert result[0]["success"] is False
+    assert result[1] == 400
 
 
 # ── api_config ──────────────────────────────────────────
@@ -202,9 +204,15 @@ async def test_push_missing_params():
 def test_config_get():
     cfg = {"server_url": "http://localhost:9330", "auth_mode": "none"}
     result = api_config_get(cfg)
-    assert result == cfg
-    # Ensure it's a copy, not the same object
+    assert result["server_url"] == "http://localhost:9330"
     assert result is not cfg
+
+
+def test_config_get_masks_password():
+    cfg = {"server_url": "http://localhost:9330", "password": "s3cret"}
+    result = api_config_get(cfg)
+    assert result["password"] == "***"
+    assert cfg["password"] == "s3cret"  # original unchanged
 
 
 class FakeConfig(dict):
@@ -232,8 +240,9 @@ async def test_config_post_empty_url():
     cfg = FakeConfig({"server_url": "http://old:9330"})
 
     result = await api_config_post(cfg, {"server_url": ""}, AsyncMock())
-    assert result["success"] is False
-    assert result["status"] == 400
+    assert isinstance(result, tuple)
+    assert result[0]["success"] is False
+    assert result[1] == 400
 
 
 @pytest.mark.asyncio
@@ -241,8 +250,9 @@ async def test_config_post_empty_body():
     cfg = FakeConfig()
 
     result = await api_config_post(cfg, {}, AsyncMock())
-    assert result["success"] is False
-    assert result["status"] == 400
+    assert isinstance(result, tuple)
+    assert result[0]["success"] is False
+    assert result[1] == 400
 
 
 # ── api_sources ─────────────────────────────────────────

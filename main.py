@@ -200,7 +200,7 @@ class SuwayomiPlugin(Star):
   /漫画 阅读 <漫画名> ID:123
 
 🔄 更新
-  /漫画 更新  — 手动检查更新（自动推送默认每小时一次）
+  /漫画 更新  — 手动检查更新并推送（全局，所有订阅者都会收到通知）
 
 📡 自动推送
   /漫画 推送 开    — 开启自动推送（有更新时自动发送漫画内容）
@@ -1010,8 +1010,12 @@ class SuwayomiPlugin(Star):
 
     # ── 更新检查 ──────────────────────────────────────────────────
 
-    async def _check_updates(self) -> str:
-        """Check for manga updates. Returns a summary string. Pushes to subscribers if updates found."""
+    async def _check_updates(self, force: bool = False) -> str:
+        """Check for manga updates. Returns a summary string. Pushes to subscribers if updates found.
+
+        Args:
+            force: If True, bypass chapter cache and always sync title from source.
+        """
         async with self._update_lock:
             all_subs = await self.sub_mgr.get_all_subscriptions()
             if not all_subs:
@@ -1038,10 +1042,10 @@ class SuwayomiPlugin(Star):
                     continue
 
                 try:
-                    # Sync title when chapter cache is stale (reuses existing cache mechanism)
-                    if cache_hours != 0:
+                    # Sync title when forced or chapter cache is stale
+                    if force or cache_hours != 0:
                         last_ts = await self._get_chapter_timestamp(manga_id)
-                        if last_ts == 0 or cache_hours == -1 or (time.time() - last_ts) > cache_hours * 3600:
+                        if force or last_ts == 0 or cache_hours == -1 or (time.time() - last_ts) > cache_hours * 3600:
                             try:
                                 manga = await self.client.get_manga(manga_id)
                                 if await self.sub_mgr.update_title(manga_id, manga.title):
@@ -1050,7 +1054,7 @@ class SuwayomiPlugin(Star):
                             except Exception:
                                 pass
 
-                    chapters = await self._get_or_fetch_chapters(manga_id)
+                    chapters = await self._get_or_fetch_chapters(manga_id, force=force)
                     if not chapters:
                         continue
 
@@ -1125,7 +1129,7 @@ class SuwayomiPlugin(Star):
     async def manual_update(self, event: AstrMessageEvent):
         '''手动检查漫画更新'''
         try:
-            summary = await self._check_updates()
+            summary = await self._check_updates(force=True)
             yield event.plain_result(summary)
         except Exception as e:
             logger.error(f"[{PLUGIN_NAME}] manual_update error: {e}")

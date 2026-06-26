@@ -74,6 +74,8 @@ astrbot_plugin_suwayomi_server/
 │   └── subscription.py        # 订阅管理器（AstrBot KV 存储封装）
 ├── tests/
 │   ├── __init__.py
+│   ├── conftest.py             # Mock astrbot 模块（独立运行集成测试）
+│   ├── test_pack.py           # 打包功能单元测试
 │   ├── test_models.py         # 数据模型单元测试
 │   ├── test_client.py         # 客户端单元测试（mocked HTTP）
 │   ├── test_subscription.py   # 订阅管理单元测试
@@ -271,10 +273,11 @@ SUWAYOMI_URL=http://localhost:9330 uv run pytest tests/test_live_api.py -v -s
 
 ### Q: 版本号在哪里更新？
 
-版本号在 `metadata.yaml` 中，不在 `pyproject.toml`。发布时：
+版本号在 `metadata.yaml` 和 `pyproject.toml` 中，发布时需要同步更新：
 1. 更新 `metadata.yaml` 中的 `version`
-2. 更新 `CHANGELOG.md`
-3. 提交并打 tag：`git tag v0.1.x`
+2. 更新 `README.md` 中的版本 badge
+3. 更新 `CHANGELOG.md`
+4. 提交并打 tag：`git tag v0.x.x`
 
 ## 相关文档
 

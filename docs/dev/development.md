@@ -20,6 +20,7 @@ astrbot_suwayomi_server/
 │   └── subscription.py        # 订阅管理器（AstrBot KV 存储封装）
 ├── tests/
 │   ├── __init__.py
+│   ├── conftest.py             # Mock astrbot 模块（独立运行集成测试）
 │   ├── test_pack.py           # 打包功能单元测试（19 个）
 │   ├── test_models.py         # 数据模型单元测试（9 个）
 │   ├── test_client.py         # 客户端单元测试（6 个）
@@ -99,7 +100,7 @@ astrbot_suwayomi_server/
 #### `utils/subscription.py` — 订阅管理
 
 - 通过 AstrBot 的 `get_kv_data()` / `put_kv_data()` 持久化
-- 数据结构：`{manga_id: {title, source_id, latest_chapter_id, subscribers: [umo, ...]}}`
+- 数据结构：`{manga_id: {title, source_id, latest_chapter_id, subscribers: [umo, ...], auto_push: {umo: {enabled: bool}}}}`
 - `umo`（`unified_msg_origin`）是 AstrBot 的会话唯一标识
 
 ### 数据流
@@ -112,16 +113,50 @@ astrbot_suwayomi_server/
 
 **订阅更新流程：**
 ```
-_update_loop (定时) → _check_updates() → client.update_library() (触发书库更新)
-                   → 遍历订阅 → _get_or_fetch_chapters() → 对比 latest_chapter_id
+_update_loop (定时) → _check_updates(force=True) → client.update_library() (触发书库更新)
+                   → 遍历订阅 → 同步标题 + 拉取章节 + 对比 latest_chapter_id
                    → 发现新章节 → context.send_message() 推送到各订阅者
 ```
+
+**更新机制核心方法：**
+
+| 方法 | 职责 | 调用者 |
+|------|------|--------|
+| `_check_updates(force)` | 主更新逻辑：同步标题、拉取章节、检测新章节、推送通知 | `/漫画 更新`（force=True）、后台定时更新（force=True） |
+| `_get_or_fetch_chapters(manga_id, force)` | 章节获取：读缓存或从源拉取 | `_check_updates`、`/漫画 章节`、`/漫画 阅读`、`/漫画 下载` |
+| `_get_chapter_timestamp(manga_id)` / `_set_chapter_timestamp(manga_id)` | 管理每个漫画的章节缓存时间戳 | `_get_or_fetch_chapters`、`_check_updates` |
+| `SubscriptionManager.update_latest_chapter(manga_id, chapter_id)` | 更新水位线（已通知到的最大章节 ID） | `_check_updates` |
+| `SubscriptionManager.update_title(manga_id, new_title)` | 同步漫画标题（仅在变化时写入） | `_check_updates` |
+
+**更新判断逻辑：**
+
+```
+latest_chapter_id = 当前水位线（按 manga_id 存储，不是章节编号）
+for ch in chapters:
+    if ch.id > latest_chapter_id:   ← 比较数据库自增 ID，不是章节编号
+        标记为新章节
+        更新水位线为 max(ch.id)
+```
+
+- 水位线是全局共享的（按 manga_id），不是按 UMO 隔离
+- A 手动触发更新后，B 的下次更新不会重复推送已通知的章节
+- 章节编号可能重复或不连续（如番外、附录），但数据库 ID 唯一递增
+
+**各入口的缓存行为：**
+
+| 入口 | force | 标题同步 | 章节来源 | 水位线更新 |
+|------|-------|---------|---------|-----------|
+| `/漫画 章节` | False | 否 | 缓存（过期才拉取） | 否 |
+| `/漫画 章节 --刷新` | True | 否 | 源站 | 否 |
+| `/漫画 更新` | True | 是 | 源站 | 是 |
+| 后台定时更新 | True | 是 | 源站 | 是 |
+| `/漫画 阅读` / `/漫画 下载` | False | 否 | 缓存 | 否 |
 
 **章节缓存机制：**
 - `_get_or_fetch_chapters(manga_id, force=False)` 管理章节数据的缓存
 - 缓存时间由 `chapter_cache_hours` 配置控制（默认 6 小时）
 - `0` = 仅在 DB 为空时拉取，`-1` = 每次都从源刷新
-- `force=True` 可绕过缓存（通过 `--刷新` 参数触发）
+- `force=True` 可绕过缓存（通过 `--刷新` 参数或更新检查触发）
 - 每个漫画的最后拉取时间戳存储在 KV key `suwayomi_chapter_timestamps`
 
 **阅读流程：**
@@ -168,7 +203,7 @@ uv add --dev pytest pytest-asyncio
 
 ```bash
 # 全部单元测试（51 个，无需网络）
-uv run pytest tests/test_pack.py tests/test_models.py tests/test_subscription.py -v
+uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_subscription.py -v
 
 # 实时 API 集成测试（需要 Suwayomi-Server 可访问）
 uv run pytest tests/test_live_api.py -v -s

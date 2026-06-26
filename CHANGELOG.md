@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.3.1] - 2026-06-26
+
+### Fixed
+
+- **漫画标题同步** — 订阅的漫画在源站改名后，更新检查时自动同步最新标题到本地存储
+- **空搜索防护** — `/漫画 搜索` 不带关键词时返回用法提示，不再触发空搜索请求
+
+### Added
+
+- **章节列表显示源名** — `/漫画 章节` 回复标题中显示漫画所属源名称（如 `[MangaDex]`）
+
 ## [0.3.0] - 2026-06-26
 
 ### Added

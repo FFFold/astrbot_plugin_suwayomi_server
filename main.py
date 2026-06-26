@@ -419,8 +419,9 @@ class SuwayomiPlugin(Star):
                 yield event.plain_result("📭 你还没有订阅任何漫画。")
                 return
             lines = ["📡 自动推送状态:"]
+            all_subs = await self.sub_mgr.get_all_subscriptions()
             for s in subs:
-                enabled = await self.sub_mgr.get_auto_push(s["manga_id"], umo)
+                enabled = self.sub_mgr.is_auto_push_enabled(all_subs, s["manga_id"], umo)
                 status = "✅ 开启" if enabled else "❌ 关闭"
                 lines.append(f"  • {s['title']} — {status}")
             yield event.plain_result("\n".join(lines))
@@ -688,49 +689,51 @@ class SuwayomiPlugin(Star):
         max_pages = self.config.get("max_pages", 30)
         fetch_mode = self.config.get("image_fetch_mode", "url")
 
-        if fetch_mode == "download":
-            total_pages, page_urls, local_paths = await self._fetch_pages_local(chapter.id, max_pages)
-        else:
-            pages = await self.client.fetch_chapter_pages(chapter.id)
-            if not pages:
-                return
-            total_pages = len(pages)
-            page_urls = [self.client.build_image_url(p) for p in pages[:max_pages]]
-            local_paths = []
-
-        if not page_urls:
-            return
-
-        def _img(idx: int) -> Comp.Image:
-            if fetch_mode == "download" and idx < len(local_paths) and local_paths[idx]:
-                return Comp.Image.fromFileSystem(local_paths[idx])
-            return Comp.Image.fromURL(page_urls[idx])
-
-        chain = [Comp.Plain(f"📖「{title}」第 {num_label} 话")]
-        chain.extend(_img(i) for i in range(len(page_urls)))
-        if total_pages > max_pages:
-            chain.append(Comp.Plain(f"... 还有 {total_pages - max_pages} 页，请使用「漫画 阅读」查看"))
-
+        local_paths: list[str] = []
         try:
-            await self.context.send_message(umo, MessageChain().chain(chain))
-        except Exception:
-            await self.context.send_message(umo, MessageChain().message(
-                f"📖「{title}」第 {num_label} 话已更新，但图片发送失败，请使用「漫画 阅读」查看"
-            ))
+            if fetch_mode == "download":
+                total_pages, page_urls, local_paths = await self._fetch_pages_local(chapter.id, max_pages)
+            else:
+                pages = await self.client.fetch_chapter_pages(chapter.id)
+                if not pages:
+                    return
+                total_pages = len(pages)
+                page_urls = [self.client.build_image_url(p) for p in pages[:max_pages]]
 
-        if local_paths:
-            valid_paths = [p for p in local_paths if p]
-            if valid_paths:
-                parent = Path(valid_paths[0]).parent
-                async def _img_cleanup():
-                    await asyncio.sleep(60)
-                    try:
-                        await asyncio.get_running_loop().run_in_executor(
-                            None, lambda: shutil.rmtree(parent, ignore_errors=True)
-                        )
-                    except Exception:
-                        pass
-                asyncio.create_task(_img_cleanup())
+            if not page_urls:
+                return
+
+            def _img(idx: int) -> Comp.Image:
+                if fetch_mode == "download" and idx < len(local_paths) and local_paths[idx]:
+                    return Comp.Image.fromFileSystem(local_paths[idx])
+                return Comp.Image.fromURL(page_urls[idx])
+
+            chain = [Comp.Plain(f"📖「{title}」第 {num_label} 话")]
+            chain.extend(_img(i) for i in range(len(page_urls)))
+            if total_pages > max_pages:
+                chain.append(Comp.Plain(f"... 还有 {total_pages - max_pages} 页，请使用「漫画 阅读」查看"))
+
+            try:
+                await self.context.send_message(umo, MessageChain().chain(chain))
+            except Exception as e:
+                logger.warning(f"[{PLUGIN_NAME}] 图片推送到{umo}失败: {e}")
+                await self.context.send_message(umo, MessageChain().message(
+                    f"📖「{title}」第 {num_label} 话已更新，但图片发送失败，请使用「漫画 阅读」查看"
+                ))
+        finally:
+            if local_paths:
+                valid_paths = [p for p in local_paths if p]
+                if valid_paths:
+                    parent = Path(valid_paths[0]).parent
+                    async def _img_cleanup():
+                        await asyncio.sleep(60)
+                        try:
+                            await asyncio.get_running_loop().run_in_executor(
+                                None, lambda: shutil.rmtree(parent, ignore_errors=True)
+                            )
+                        except Exception:
+                            pass
+                    asyncio.create_task(_img_cleanup())
 
     async def _push_chapter_file(self, umo: str, title: str, chapter: Chapter):
         """Push a chapter as a packaged file to a conversation (reuses download logic)."""
@@ -746,42 +749,44 @@ class SuwayomiPlugin(Star):
             return
 
         tmp_dir = Path(valid_paths[0]).parent
-        safe_title = "".join(c for c in title if c not in r'<>:"/\|?*')[:50]
-        safe_label = "".join(c for c in str(num_label) if c not in r'<>:"/\|?*')
-        ext_map = {"zip": "zip", "pdf": "pdf", "cbz": "cbz"}
-        file_ext = ext_map.get(fmt, "zip")
-        output_path = tmp_dir / f"{safe_title}_第{safe_label}话.{file_ext}"
-
         try:
-            loop = asyncio.get_running_loop()
-            if fmt == "pdf":
-                await loop.run_in_executor(None, pack_pdf, valid_paths, output_path)
-            elif fmt == "cbz":
-                await loop.run_in_executor(None, pack_cbz, valid_paths, output_path)
-            else:
-                await loop.run_in_executor(None, pack_zip, valid_paths, output_path)
-        except Exception as e:
-            logger.error(f"[{PLUGIN_NAME}] 自动推送打包失败: {e}")
-            return
+            safe_title = "".join(c for c in title if c not in r'<>:"/\|?*')[:50]
+            safe_label = "".join(c for c in str(num_label) if c not in r'<>:"/\|?*')
+            ext_map = {"zip": "zip", "pdf": "pdf", "cbz": "cbz"}
+            file_ext = ext_map.get(fmt, "zip")
+            output_path = tmp_dir / f"{safe_title}_第{safe_label}话.{file_ext}"
 
-        filename = f"{safe_title}_第{safe_label}话.{file_ext}"
-        chain = [Comp.File(file=str(output_path), name=filename)]
-        try:
-            await self.context.send_message(umo, MessageChain().chain(chain))
-        except Exception:
-            await self.context.send_message(umo, MessageChain().message(
-                f"📖「{title}」第 {num_label} 话已更新，但文件发送失败，请使用「漫画 下载」获取"
-            ))
-
-        async def _file_cleanup():
-            await asyncio.sleep(120)
             try:
-                await asyncio.get_running_loop().run_in_executor(
-                    None, lambda: shutil.rmtree(tmp_dir, ignore_errors=True)
-                )
-            except Exception:
-                pass
-        asyncio.create_task(_file_cleanup())
+                loop = asyncio.get_running_loop()
+                if fmt == "pdf":
+                    await loop.run_in_executor(None, pack_pdf, valid_paths, output_path)
+                elif fmt == "cbz":
+                    await loop.run_in_executor(None, pack_cbz, valid_paths, output_path)
+                else:
+                    await loop.run_in_executor(None, pack_zip, valid_paths, output_path)
+            except Exception as e:
+                logger.error(f"[{PLUGIN_NAME}] 自动推送打包失败: {e}")
+                return
+
+            filename = f"{safe_title}_第{safe_label}话.{file_ext}"
+            chain = [Comp.File(file=str(output_path), name=filename)]
+            try:
+                await self.context.send_message(umo, MessageChain().chain(chain))
+            except Exception as e:
+                logger.warning(f"[{PLUGIN_NAME}] 文件推送到{umo}失败: {e}")
+                await self.context.send_message(umo, MessageChain().message(
+                    f"📖「{title}」第 {num_label} 话已更新，但文件发送失败，请使用「漫画 下载」获取"
+                ))
+        finally:
+            async def _file_cleanup():
+                await asyncio.sleep(120)
+                try:
+                    await asyncio.get_running_loop().run_in_executor(
+                        None, lambda: shutil.rmtree(tmp_dir, ignore_errors=True)
+                    )
+                except Exception:
+                    pass
+            asyncio.create_task(_file_cleanup())
 
     # ── 章节阅读 ──────────────────────────────────────────────────
 

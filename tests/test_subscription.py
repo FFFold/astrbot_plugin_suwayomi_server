@@ -133,12 +133,13 @@ async def test_get_auto_push_nonexistent(mgr):
 
 
 @pytest.mark.asyncio
-async def test_get_auto_push_subscribers(mgr):
+async def test_is_auto_push_enabled_static(mgr):
     await mgr.subscribe(42, "One Piece", 100, "user1")
     await mgr.subscribe(42, "One Piece", 100, "user2")
     await mgr.set_auto_push(42, "user1", True)
-    subs = await mgr.get_auto_push_subscribers(42)
-    assert subs == ["user1"]
+    data = await mgr._load()
+    assert SubscriptionManager.is_auto_push_enabled(data, 42, "user1") is True
+    assert SubscriptionManager.is_auto_push_enabled(data, 42, "user2") is False
 
 
 @pytest.mark.asyncio

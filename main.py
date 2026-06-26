@@ -711,7 +711,12 @@ class SuwayomiPlugin(Star):
         if total_pages > max_pages:
             chain.append(Comp.Plain(f"... 还有 {total_pages - max_pages} 页，请使用「漫画 阅读」查看"))
 
-        await self.context.send_message(umo, MessageChain().chain(chain))
+        try:
+            await self.context.send_message(umo, MessageChain().chain(chain))
+        except Exception:
+            await self.context.send_message(umo, MessageChain().message(
+                f"📖「{title}」第 {num_label} 话已更新，但图片发送失败，请使用「漫画 阅读」查看"
+            ))
 
         if local_paths:
             valid_paths = [p for p in local_paths if p]
@@ -1062,7 +1067,7 @@ class SuwayomiPlugin(Star):
             auto_push_mode = self.config.get("auto_push_mode", "image")
             for manga_id, title, ch_info, new_chapters, subscribers in updated_mangas:
                 for umo in subscribers:
-                    if not await self.sub_mgr.get_auto_push(manga_id, umo):
+                    if not self.sub_mgr.is_auto_push_enabled(all_subs, manga_id, umo):
                         continue
                     for ch in new_chapters:
                         try:
@@ -1070,6 +1075,7 @@ class SuwayomiPlugin(Star):
                                 await self._push_chapter_file(umo, title, ch)
                             else:
                                 await self._push_chapter_images(umo, title, ch)
+                            await asyncio.sleep(2)
                         except Exception as e:
                             logger.warning(f"[{PLUGIN_NAME}] 自动推送「{title}」第{_fmt_chapter_num(ch.chapter_number)}话到{umo}失败: {e}")
 

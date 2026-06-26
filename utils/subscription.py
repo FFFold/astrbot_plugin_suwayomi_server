@@ -80,19 +80,16 @@ class SubscriptionManager:
     async def get_auto_push(self, manga_id: int, umo: str) -> bool:
         """Check if auto-push is enabled for a umo on a manga."""
         data = await self._load()
+        return self.is_auto_push_enabled(data, manga_id, umo)
+
+    @staticmethod
+    def is_auto_push_enabled(data: dict[str, Any], manga_id: int, umo: str) -> bool:
+        """Check auto-push state from pre-loaded data (no KV read)."""
         key = str(manga_id)
         info = data.get(key, {})
         ap = info.get("auto_push", {})
         entry = ap.get(umo, {})
         return entry.get("enabled", False)
-
-    async def get_auto_push_subscribers(self, manga_id: int) -> list[str]:
-        """Get list of umo strings that have auto-push enabled for a manga."""
-        data = await self._load()
-        key = str(manga_id)
-        info = data.get(key, {})
-        ap = info.get("auto_push", {})
-        return [umo for umo, cfg in ap.items() if cfg.get("enabled", False)]
 
     async def set_auto_push_all(self, umo: str, enabled: bool):
         """Enable or disable auto-push for a umo on ALL subscribed manga."""

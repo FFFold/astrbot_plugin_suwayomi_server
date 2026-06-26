@@ -370,7 +370,7 @@ class SuwayomiPlugin(Star):
 
     # ── 漫画名解析 ────────────────────────────────────────────────
 
-    async def _resolve_manga(self, event: AstrMessageEvent, name_or_id: str, cmd: str = "章节") -> tuple[Manga | None, str | None]:
+    async def _resolve_manga(self, event: AstrMessageEvent, name_or_id: str, cmd: str) -> tuple[Manga | None, str | None]:
         """Resolve manga by ID or name. Returns (Manga, None) on success or (None, error_msg) on failure."""
         try:
             manga_id = int(name_or_id)

@@ -179,7 +179,7 @@ test: 添加订阅管理单元测试
 async def favorite_manga(self, event: AstrMessageEvent, manga_name_or_id: str):
     '''收藏漫画。用法: /漫画 收藏 <漫画名或ID>'''
     try:
-        manga, err = await self._resolve_manga(event, manga_name_or_id)
+        manga, err = await self._resolve_manga(event, manga_name_or_id, "收藏")
         if err or manga is None:
             yield event.plain_result(err or "未找到该漫画。")
             return

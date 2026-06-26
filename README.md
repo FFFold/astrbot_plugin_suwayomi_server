@@ -14,7 +14,7 @@
     <img src="https://img.shields.io/badge/AstrBot-%3E%3D4.16-blue?style=flat-square" alt="AstrBot >= 4.16">
     <img src="https://img.shields.io/badge/Python-3.12%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.12+">
     <img src="https://img.shields.io/badge/license-AGPL--3.0-orange?style=flat-square" alt="License AGPL-3.0">
-    <img src="https://img.shields.io/badge/version-0.2.2-8A2BE2?style=flat-square" alt="Version 0.2.2">
+    <img src="https://img.shields.io/badge/version-0.3.0-8A2BE2?style=flat-square" alt="Version 0.3.0">
     <img src="https://img.shields.io/badge/support-8%20platforms-green?style=flat-square" alt="8 platforms">
   </p>
 </p>
@@ -56,6 +56,7 @@
 | `/漫画 章节 <漫画名或ID> [--刷新]` | 查看章节列表，`--刷新` 强制从源拉取最新数据 |
 | `/漫画 阅读 <漫画名或ID> <章节号>` | 阅读指定章节（发送页面图片） |
 | `/漫画 下载 <漫画名或ID> <章节号> [格式]` | 下载章节并打包发送（格式: zip/pdf/cbz） |
+| `/漫画 推送 开/关/状态` | 控制自动推送（有更新时自动发送漫画内容） |
 | `/漫画 帮助` | 显示完整用法说明 |
 
 ---
@@ -126,6 +127,22 @@ Bot:  找到多个第 7 话，请使用 ID 指定:
 
 也可通过 `/漫画 更新` 命令手动触发检查。
 
+### 自动推送
+
+默认只发送文本通知。开启自动推送后，发现更新时会自动发送漫画内容：
+
+```
+用户: /漫画 推送 开
+Bot:  ✅ 已开启自动推送，共 3 部漫画。有更新时将自动推送内容。
+
+用户: /漫画 推送 状态
+Bot:  📡 自动推送状态:
+        • 一拳超人 — ✅ 开启
+        • 海贼王 — ✅ 开启
+```
+
+推送模式通过 `auto_push_mode` 配置：`image` 直接发送图片，`file` 发送 ZIP/PDF/CBZ 文件包。
+
 ---
 
 ## 📦 安装
@@ -182,6 +199,7 @@ uv pip install -r astrbot_suwayomi_server/requirements.txt
 | `chapter_cache_hours` | int | `6` | 章节缓存时长（小时）。`0` = 不自动刷新，`-1` = 总是从源刷新 |
 | `download_format` | string | `zip` | 下载打包格式：`zip` / `pdf` / `cbz` |
 | `temp_dir` | string | `""` | 临时文件目录。留空用系统默认，Docker 环境设置共享目录如 `/AstrBot/data/temp` |
+| `auto_push_mode` | string | `image` | 自动推送模式：`image`（图片）/ `file`（文件） |
 
 ### 认证模式说明
 

@@ -17,7 +17,7 @@
 ## Commands
 
 ```bash
-# Unit tests (39 tests, no network needed)
+# Unit tests (51 tests, no network needed)
 uv run pytest tests/test_pack.py tests/test_models.py tests/test_subscription.py -v
 
 # Integration tests (requires live Suwayomi-Server)
@@ -41,7 +41,7 @@ main.py (SuwayomiPlugin)
   └── utils/subscription.py (SubscriptionManager - AstrBot KV storage)
 ```
 
-- `main.py`: Plugin entry, all 10 commands under `@filter.command_group("漫画")`, background update loop
+- `main.py`: Plugin entry, all 13 commands under `@filter.command_group("漫画")`, background update loop
 - `suwayomi/client.py`: All Suwayomi interaction via `POST /api/graphql`; supports none/basic/jwt auth
 - `suwayomi/models.py`: Pure dataclasses with `from_dict()` factory methods
 - `utils/pack.py`: Pack images into ZIP, CBZ, or PDF files; `parse_download_args()` for command arg parsing
@@ -83,6 +83,8 @@ main.py (SuwayomiPlugin)
 - `_fetch_pages_local(chapter_id, max_pages)` — Fetch page URLs and download images to temp dir. Returns `(total_pages, page_urls, local_paths)`. Shared by read and download.
 - `_download_images(urls)` — Parallel download with retry. Returns local file paths.
 - `_download_one(session, url, dest)` — Single image download with exponential backoff retry.
+- `_push_chapter_images(umo, title, chapter)` — Push chapter as inline images (reuses read logic). Used by auto-push.
+- `_push_chapter_file(umo, title, chapter)` — Push chapter as packaged file (reuses download logic). Used by auto-push.
 
 ## Config Options
 
@@ -93,6 +95,7 @@ Key non-obvious config values (in `_conf_schema.json`):
 - `download_format`: `zip` (ZIP archive), `pdf` (PDF document), or `cbz` (comic book archive). Default `zip`.
 - `send_mode`: `image` (direct) or `forward` (QQ merged forward, uses `Comp.Nodes` wrapper)
 - `chapter_cache_hours`: Hours before auto-refreshing chapters from source (default 6). `0` = never auto-refresh, `-1` = always refresh
+- `auto_push_mode`: `image` (inline images, reuses read logic) or `file` (packaged file, reuses download logic). Default `image`.
 - `temp_dir`: Custom temp directory for image downloads. Leave empty for system default. Set to shared directory for Docker environments.
 
 ## Adding New Commands

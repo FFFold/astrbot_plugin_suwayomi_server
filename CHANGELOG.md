@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.3.0] - 2026-06-26
+
+### Added
+
+- **自动推送漫画内容** — 发现更新时自动推送章节图片或打包文件到聊天（默认关闭）
+- **推送命令组** — `/漫画 推送 开` 开启自动推送、`/漫画 推送 关` 关闭、`/漫画 推送 状态` 查看当前状态
+- **推送模式配置** — 新增 `auto_push_mode` 配置项：`image`（图片模式，复用阅读逻辑）/ `file`（文件模式，复用下载逻辑）
+- **per-会话控制** — 每个聊天会话独立控制自动推送开关，默认关闭
+- **订阅时快照章节** — 订阅时立即记录当前最大章节 ID，避免首次更新推送全部已有章节
+
+### Changed
+
+- `SubscriptionManager` 新增 `set_auto_push`、`get_auto_push`、`is_auto_push_enabled`、`set_auto_push_all` 方法
+- 推送失败自动降级为文本提示，章节间 2 秒间隔防刷屏
+- 临时文件清理使用 `try/finally` 确保异常时也能正确清理
+
 ## [0.2.2] - 2026-06-26
 
 ### Fixed

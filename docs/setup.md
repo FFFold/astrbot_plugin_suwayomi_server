@@ -188,6 +188,7 @@ git clone https://github.com/FFFold/astrbot_suwayomi_server.git
 | `chapter_cache_hours` | 章节缓存时间（小时），默认 `6`。`0` 不自动刷新，`-1` 每次都刷新 |
 | `download_format` | 下载打包格式，`zip`（ZIP 压缩包）/ `pdf`（PDF 文档）/ `cbz`（CBZ 漫画），默认 `zip` |
 | `temp_dir` | 临时文件目录，留空使用系统默认。Docker 环境请设置为 AstrBot 和聊天平台容器共享的目录，例如 `/AstrBot/data/temp` |
+| `auto_push_mode` | 自动推送模式，`image`（图片，复用阅读逻辑）/ `file`（文件，复用下载逻辑），默认 `image` |
 
 **网络连通性**：AstrBot 所在机器必须能访问 Suwayomi-Server 地址。如果 AstrBot 和 Suwayomi 都在同一台机器上，用 `http://localhost:9330`。如果 AstrBot 在 Docker 中，需要用宿主机 IP 或 Docker 网络地址。
 

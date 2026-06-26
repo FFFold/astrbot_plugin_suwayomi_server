@@ -23,7 +23,7 @@ astrbot_suwayomi_server/
 │   ├── test_pack.py           # 打包功能单元测试（19 个）
 │   ├── test_models.py         # 数据模型单元测试（9 个）
 │   ├── test_client.py         # 客户端单元测试（6 个）
-│   ├── test_subscription.py   # 订阅管理单元测试（11 个）
+│   ├── test_subscription.py   # 订阅管理单元测试（17 个）
 │   └── test_live_api.py       # 实时 API 集成测试（13 个）
 ├── docs/
 │   ├── dev/                   # 开发者文档（本目录）
@@ -167,7 +167,7 @@ uv add --dev pytest pytest-asyncio
 ### 运行测试
 
 ```bash
-# 全部单元测试（39 个，无需网络）
+# 全部单元测试（51 个，无需网络）
 uv run pytest tests/test_pack.py tests/test_models.py tests/test_subscription.py -v
 
 # 实时 API 集成测试（需要 Suwayomi-Server 可访问）

@@ -238,6 +238,11 @@ class SuwayomiPlugin(Star):
     async def search_manga(self, event: AstrMessageEvent, keyword: str):
         '''搜索漫画。用法: /漫画 搜索 <关键词> [源名]'''
         try:
+            keyword = keyword.strip()
+            if not keyword:
+                yield event.plain_result("用法: /漫画 搜索 <关键词> [源名]")
+                return
+
             sources = await self.client.get_sources()
             if not sources:
                 yield event.plain_result("未找到已安装的漫画 源。")

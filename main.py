@@ -317,7 +317,10 @@ class SuwayomiPlugin(Star):
             await self.sub_mgr.subscribe(manga.id, manga.title, manga.source_id, event.unified_msg_origin)
             logger.info(f"[{PLUGIN_NAME}] 用户订阅「{manga.title}」(ID:{manga.id})")
             try:
-                await self._get_or_fetch_chapters(manga.id)
+                chapters = await self._get_or_fetch_chapters(manga.id)
+                if chapters:
+                    max_id = max(ch.id for ch in chapters)
+                    await self.sub_mgr.update_latest_chapter(manga.id, max_id)
             except Exception as e:
                 logger.warning(f"[{PLUGIN_NAME}] 拉取「{manga.title}」章节失败: {e}")
             yield event.plain_result(f"✅ 已订阅「{manga.title}」，有新章节时会推送。")

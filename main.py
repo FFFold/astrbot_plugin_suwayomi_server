@@ -370,7 +370,7 @@ class SuwayomiPlugin(Star):
 
     # ── 漫画名解析 ────────────────────────────────────────────────
 
-    async def _resolve_manga(self, event: AstrMessageEvent, name_or_id: str) -> tuple[Manga | None, str | None]:
+    async def _resolve_manga(self, event: AstrMessageEvent, name_or_id: str, cmd: str = "章节") -> tuple[Manga | None, str | None]:
         """Resolve manga by ID or name. Returns (Manga, None) on success or (None, error_msg) on failure."""
         try:
             manga_id = int(name_or_id)
@@ -403,7 +403,7 @@ class SuwayomiPlugin(Star):
             except Exception:
                 src_map = {}
 
-            lines = ["找到多个结果，请使用 ID 指定:"]
+            lines = [f"找到多个结果，请使用 ID 指定。例如: /漫画 {cmd} {mangas[0].id}"]
             for m in mangas:
                 status = STATUS_EMOJI.get(m.status, "未知")
                 src_name = src_map.get(str(m.source_id), f"源{m.source_id}")
@@ -506,7 +506,7 @@ class SuwayomiPlugin(Star):
                 yield event.plain_result("用法: /漫画 章节 <漫画名或ID> [--刷新]")
                 return
 
-            manga, err = await self._resolve_manga(event, manga_name_or_id)
+            manga, err = await self._resolve_manga(event, manga_name_or_id, "章节")
             if err or manga is None:
                 yield event.plain_result(err or "未找到该漫画。")
                 return
@@ -631,7 +631,7 @@ class SuwayomiPlugin(Star):
             yield event.plain_result("用法: /漫画 阅读 <漫画名或ID> <章节号>\n示例: /漫画 阅读 一拳超人 1\n指定章节 ID: /漫画 阅读 一拳超人 ID:123")
             return
         try:
-            manga, err = await self._resolve_manga(event, manga_name_or_id)
+            manga, err = await self._resolve_manga(event, manga_name_or_id, "阅读")
             if err or manga is None:
                 yield event.plain_result(err or "未找到该漫画。")
                 return
@@ -740,7 +740,7 @@ class SuwayomiPlugin(Star):
             return
 
         try:
-            manga, err = await self._resolve_manga(event, manga_name_or_id)
+            manga, err = await self._resolve_manga(event, manga_name_or_id, "下载")
             if err or manga is None:
                 yield event.plain_result(err or "未找到该漫画。")
                 return

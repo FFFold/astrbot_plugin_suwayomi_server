@@ -506,6 +506,8 @@ class SuwayomiPlugin(Star):
                 yield event.plain_result(f"「{manga.title}」暂无章节。")
                 return
 
+            chapters.sort(key=lambda ch: ch.source_order)
+
             # Detect duplicate chapter numbers
             num_count: dict[float, int] = {}
             for ch in chapters:
@@ -860,6 +862,7 @@ class SuwayomiPlugin(Star):
                         for ch in chapters:
                             num_count[ch.chapter_number] = num_count.get(ch.chapter_number, 0) + 1
 
+                        new_chapters.sort(key=lambda ch: ch.source_order)
                         ch_info = [self._fmt_chapter_label(ch, num_count) for ch in new_chapters]
                         updated_mangas.append((title, ch_info, new_chapters[-1], subscribers))
 

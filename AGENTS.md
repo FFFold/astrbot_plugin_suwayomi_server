@@ -17,12 +17,12 @@
 ## Commands
 
 ```bash
-# Unit tests (51 tests, no network needed)
-uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_subscription.py -v
+# Unit tests (77 tests, no network needed)
+uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_subscription.py tests/test_web_api.py -v
 
 # Integration tests (requires live Suwayomi-Server)
-uv run pytest tests/test_live_api.py -v -s
-# Custom server: SUWAYOMI_URL=http://host:9330 uv run pytest tests/test_live_api.py -v -s
+uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
+# Custom server: SUWAYOMI_URL=http://host:9330 uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
 
 # All tests
 uv run pytest -v
@@ -121,7 +121,8 @@ Key non-obvious config values (in `_conf_schema.json`):
 - `requirements.txt`: Runtime deps (currently `aiohttp>=3.9.0`, `img2pdf>=0.5.0`, and `opencc-python-reimplemented>=0.1.7`)
 - `pyproject.toml`: Dev deps (pytest, pytest-asyncio), gitignored
 - Tests in `tests/` - unit tests are synchronous or use `@pytest.mark.asyncio`
-- `test_live_api.py`: Integration tests, skipped by default, need live server
+- `test_live_api.py`: Integration tests for Suwayomi client, skipped by default, need live server
+- `test_live_web_api.py`: Integration tests for WebUI API handlers, skipped by default, need live server
 - Version is in `metadata.yaml`, not `pyproject.toml`
 
 ## Documentation Update Checklist

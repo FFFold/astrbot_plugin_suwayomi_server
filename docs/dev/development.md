@@ -6,7 +6,7 @@
 
 ```
 astrbot_suwayomi_server/
-├── main.py                    # 插件入口，所有命令定义和后台更新逻辑
+├── main.py                    # 插件入口，命令定义、后台更新逻辑、WebUI API 注册
 ├── metadata.yaml              # AstrBot 插件元数据
 ├── _conf_schema.json          # AstrBot 配置 schema（WebUI 自动生成配置表单）
 ├── requirements.txt           # Python 运行时依赖
@@ -18,14 +18,24 @@ astrbot_suwayomi_server/
 │   ├── __init__.py
 │   ├── pack.py               # 图片打包工具（ZIP/CBZ/PDF）
 │   └── subscription.py        # 订阅管理器（AstrBot KV 存储封装）
+├── web/
+│   ├── __init__.py
+│   └── api.py                # WebUI API handler 函数（依赖注入，独立可测试）
+├── pages/
+│   └── dashboard/
+│       ├── index.html         # 管理面板页面（3 Tab: 仪表盘/订阅管理/设置）
+│       ├── app.js             # 前端逻辑（Tab 切换、API 调用、DOM 渲染）
+│       └── style.css          # 样式（支持 light/dark 主题）
 ├── tests/
 │   ├── __init__.py
 │   ├── conftest.py             # Mock astrbot 模块（独立运行集成测试）
 │   ├── test_pack.py           # 打包功能单元测试（19 个）
 │   ├── test_models.py         # 数据模型单元测试（9 个）
 │   ├── test_client.py         # 客户端单元测试（6 个）
-│   ├── test_subscription.py   # 订阅管理单元测试（17 个）
-│   └── test_live_api.py       # 实时 API 集成测试（13 个）
+│   ├── test_subscription.py   # 订阅管理单元测试（20 个）
+│   ├── test_web_api.py        # WebUI API handler 单元测试（30 个）
+│   ├── test_live_api.py       # Suwayomi 客户端集成测试（13 个）
+│   └── test_live_web_api.py   # WebUI API handler 集成测试（19 个）
 ├── docs/
 │   ├── dev/                   # 开发者文档（本目录）
 │   └── superpowers/           # 设计文档和实现计划
@@ -102,6 +112,24 @@ astrbot_suwayomi_server/
 - 通过 AstrBot 的 `get_kv_data()` / `put_kv_data()` 持久化
 - 数据结构：`{manga_id: {title, source_id, latest_chapter_id, subscribers: [umo, ...], auto_push: {umo: {enabled: bool}}}}`
 - `umo`（`unified_msg_origin`）是 AstrBot 的会话唯一标识
+- `delete_manga(manga_id)` — 删除漫画的全部订阅者（公开方法）
+
+#### `web/api.py` — WebUI API handlers
+
+- 独立 async 函数，通过参数注入依赖（`client`、`sub_mgr`、`config`），便于单元测试
+- 8 个 handler：`api_status`、`api_subscriptions`、`api_subscription_delete`、`api_subscription_push`、`api_config_get`、`api_config_post`、`api_sources`、`api_update`
+- 成功返回 `dict`（HTTP 200），错误返回 `(dict, int)` 元组（HTTP 4xx/5xx）
+- `main.py` 中通过 `_json_response()` 辅助方法统一处理返回格式
+
+#### `pages/dashboard/` — 管理面板前端
+
+- AstrBot Plugin Pages，通过 Bridge SDK 的 `postMessage` 机制与后端通信
+- 单页面 3 Tab 结构：仪表盘（状态卡片 + 订阅总览 + 更新检查）、订阅管理（五维筛选 + 删除单条订阅）、设置（配置表单）
+- 订阅表按（漫画 + UMO）展开为独立行，每行可单独删除
+- 原生 HTML/CSS/JS，零外部依赖
+- 支持 light/dark 主题（CSS 变量，由 AstrBot 自动设置 `data-theme` 属性）
+- 事件委托模式处理按钮点击，避免 XSS 风险
+- 使用自定义 DOM 弹窗（`showConfirm()`）替代原生 `confirm()`，兼容 sandbox iframe（无 `allow-modals`）
 
 ### 数据流
 
@@ -202,14 +230,14 @@ uv add --dev pytest pytest-asyncio
 ### 运行测试
 
 ```bash
-# 全部单元测试（51 个，无需网络）
-uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_subscription.py -v
+# 全部单元测试（84 个，无需网络）
+uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_subscription.py tests/test_web_api.py -v
 
 # 实时 API 集成测试（需要 Suwayomi-Server 可访问）
-uv run pytest tests/test_live_api.py -v -s
+uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
 
 # 指定自定义服务器地址
-SUWAYOMI_URL=http://your-server:9330 uv run pytest tests/test_live_api.py -v -s
+SUWAYOMI_URL=http://your-server:9330 uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
 
 # 全部测试
 uv run pytest -v

@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Suwayomi 漫画助手</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1>Suwayomi 漫画助手</h1>
+      <nav class="tabs">
+        <button class="tab-btn active" data-tab="dashboard">仪表盘</button>
+        <button class="tab-btn" data-tab="subscriptions">订阅管理</button>
+        <button class="tab-btn" data-tab="settings">设置</button>
+      </nav>
+    </header>
+
+    <!-- Tab 1: Dashboard -->
+    <section id="tab-dashboard" class="tab-content active">
+      <div class="status-cards" id="status-cards">
+        <div class="card" id="card-connected">
+          <div class="card-label">连接状态</div>
+          <div class="card-value" id="val-connected">--</div>
+        </div>
+        <div class="card">
+          <div class="card-label">漫画源</div>
+          <div class="card-value" id="val-sources">--</div>
+        </div>
+        <div class="card">
+          <div class="card-label">书库漫画</div>
+          <div class="card-value" id="val-library">--</div>
+        </div>
+        <div class="card">
+          <div class="card-label">订阅</div>
+          <div class="card-value" id="val-subs">--</div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-header">
+          <h2>订阅总览</h2>
+          <button class="btn btn-primary" id="btn-check-update">检查更新</button>
+        </div>
+        <div id="update-result" class="update-result hidden"></div>
+        <table class="table" id="overview-table">
+          <thead>
+            <tr>
+              <th>漫画名</th>
+              <th>源</th>
+              <th>最新章节 ID</th>
+              <th>订阅人数</th>
+              <th>推送开启</th>
+            </tr>
+          </thead>
+          <tbody id="overview-tbody"></tbody>
+        </table>
+        <div class="empty-state hidden" id="overview-empty">暂无订阅</div>
+      </div>
+    </section>
+
+    <!-- Tab 2: Subscriptions -->
+    <section id="tab-subscriptions" class="tab-content">
+      <div class="section">
+        <div class="filters">
+          <div class="filter-row">
+            <div class="filter-field">
+              <label>漫画 ID</label>
+              <input type="text" class="input" id="filter-id" placeholder="ID">
+            </div>
+            <div class="filter-field">
+              <label>漫画名</label>
+              <input type="text" class="input" id="filter-title" placeholder="模糊匹配">
+            </div>
+            <div class="filter-field">
+              <label>源</label>
+              <input type="text" class="input" id="filter-source" placeholder="源名称">
+            </div>
+            <div class="filter-field">
+              <label>订阅者</label>
+              <input type="text" class="input" id="filter-umo" placeholder="UMO 关键词">
+            </div>
+            <div class="filter-field">
+              <label>推送状态</label>
+              <select class="input" id="filter-push">
+                <option value="">全部</option>
+                <option value="on">已开启</option>
+                <option value="off">未开启</option>
+              </select>
+            </div>
+            <div class="filter-field filter-actions">
+              <button class="btn btn-sm" id="btn-clear-filters" type="button">清除筛选</button>
+              <span class="filter-count" id="filter-count"></span>
+            </div>
+          </div>
+        </div>
+        <table class="table" id="subs-table">
+          <thead>
+            <tr>
+              <th>漫画 ID</th>
+              <th>漫画名</th>
+              <th>源</th>
+              <th>订阅者</th>
+              <th>推送状态</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="subs-tbody"></tbody>
+        </table>
+        <div class="empty-state hidden" id="subs-empty">暂无订阅数据</div>
+      </div>
+    </section>
+
+    <!-- Tab 3: Settings -->
+    <section id="tab-settings" class="tab-content">
+      <form id="config-form" class="config-form">
+        <fieldset>
+          <legend>服务器连接</legend>
+          <div class="form-group">
+            <label for="cfg-server_url">Suwayomi-Server 地址</label>
+            <input type="text" id="cfg-server_url" name="server_url" placeholder="http://localhost:9330">
+          </div>
+          <div class="form-group">
+            <label for="cfg-auth_mode">认证模式</label>
+            <select id="cfg-auth_mode" name="auth_mode">
+              <option value="none">无认证</option>
+              <option value="basic">Basic 认证</option>
+              <option value="jwt">JWT 认证</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="cfg-username">用户名</label>
+            <input type="text" id="cfg-username" name="username">
+          </div>
+          <div class="form-group">
+            <label for="cfg-password">密码</label>
+            <input type="password" id="cfg-password" name="password">
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>阅读体验</legend>
+          <div class="form-group">
+            <label for="cfg-max_pages">单次最大发送页数</label>
+            <input type="number" id="cfg-max_pages" name="max_pages" min="1" max="200">
+          </div>
+          <div class="form-group">
+            <label for="cfg-send_mode">图片发送模式</label>
+            <select id="cfg-send_mode" name="send_mode">
+              <option value="image">直接发图</option>
+              <option value="forward">合并转发</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="cfg-image_fetch_mode">图片获取方式</label>
+            <select id="cfg-image_fetch_mode" name="image_fetch_mode">
+              <option value="url">URL 直接引用</option>
+              <option value="download">先下载到本地</option>
+            </select>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>下载打包</legend>
+          <div class="form-group">
+            <label for="cfg-download_format">默认打包格式</label>
+            <select id="cfg-download_format" name="download_format">
+              <option value="zip">ZIP 压缩包</option>
+              <option value="pdf">PDF 文档</option>
+              <option value="cbz">CBZ 漫画</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="cfg-download_concurrency">并行下载数</label>
+            <input type="number" id="cfg-download_concurrency" name="download_concurrency" min="1" max="20">
+          </div>
+          <div class="form-group">
+            <label for="cfg-download_retries">下载重试次数</label>
+            <input type="number" id="cfg-download_retries" name="download_retries" min="0" max="10">
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>自动推送</legend>
+          <div class="form-group">
+            <label for="cfg-auto_push_mode">推送模式</label>
+            <select id="cfg-auto_push_mode" name="auto_push_mode">
+              <option value="image">图片（复用阅读）</option>
+              <option value="file">文件（复用下载）</option>
+            </select>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>高级</legend>
+          <div class="form-group">
+            <label for="cfg-check_interval">更新检查间隔（分钟）</label>
+            <input type="number" id="cfg-check_interval" name="check_interval" min="1">
+          </div>
+          <div class="form-group">
+            <label for="cfg-chapter_cache_hours">章节缓存时间（小时）</label>
+            <input type="number" id="cfg-chapter_cache_hours" name="chapter_cache_hours" min="-1">
+          </div>
+          <div class="form-group">
+            <label for="cfg-default_source_id">默认搜索源 ID</label>
+            <input type="number" id="cfg-default_source_id" name="default_source_id" min="0">
+          </div>
+          <div class="form-group">
+            <label for="cfg-temp_dir">临时文件目录</label>
+            <input type="text" id="cfg-temp_dir" name="temp_dir" placeholder="留空使用系统默认">
+          </div>
+        </fieldset>
+
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">保存配置</button>
+          <span id="config-msg" class="form-msg"></span>
+        </div>
+      </form>
+    </section>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

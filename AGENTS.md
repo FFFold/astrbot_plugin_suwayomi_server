@@ -17,12 +17,12 @@
 ## Commands
 
 ```bash
-# Unit tests (51 tests, no network needed)
-uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_subscription.py -v
+# Unit tests (84 tests, no network needed)
+uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_subscription.py tests/test_web_api.py -v
 
 # Integration tests (requires live Suwayomi-Server)
-uv run pytest tests/test_live_api.py -v -s
-# Custom server: SUWAYOMI_URL=http://host:9330 uv run pytest tests/test_live_api.py -v -s
+uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
+# Custom server: SUWAYOMI_URL=http://host:9330 uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
 
 # All tests
 uv run pytest -v
@@ -38,14 +38,18 @@ main.py (SuwayomiPlugin)
   ├── suwayomi/client.py (SuwayomiClient - async GraphQL HTTP)
   ├── suwayomi/models.py (Source, Manga, Chapter, SearchResult dataclasses)
   ├── utils/pack.py (pack_zip, pack_cbz, pack_pdf — image packaging)
-  └── utils/subscription.py (SubscriptionManager - AstrBot KV storage)
+  ├── utils/subscription.py (SubscriptionManager - AstrBot KV storage)
+  ├── web/api.py (WebUI API handlers — standalone functions, dependency-injected)
+  └── pages/dashboard/ (WebUI: 仪表盘 + 订阅管理 + 配置)
 ```
 
-- `main.py`: Plugin entry, all 13 commands under `@filter.command_group("漫画")`, background update loop
+- `main.py`: Plugin entry, all 13 commands under `@filter.command_group("漫画")`, background update loop, WebUI API registration
 - `suwayomi/client.py`: All Suwayomi interaction via `POST /api/graphql`; supports none/basic/jwt auth
 - `suwayomi/models.py`: Pure dataclasses with `from_dict()` factory methods
 - `utils/pack.py`: Pack images into ZIP, CBZ, or PDF files; `parse_download_args()` for command arg parsing
 - `utils/subscription.py`: Persists subscriptions via AstrBot's `get_kv_data()`/`put_kv_data()`
+- `web/api.py`: 8 API handlers for admin WebUI (status, subscriptions CRUD, config, sources, update); each receives `client`/`sub_mgr`/`config` as params for testability
+- `pages/dashboard/`: AstrBot Plugin Pages — single HTML file with 3 tabs (仪表盘/订阅管理/设置), vanilla JS + CSS, communicates via Bridge SDK
 
 ## Critical Quirks
 
@@ -72,6 +76,10 @@ main.py (SuwayomiPlugin)
 11. **Chapter data is lazy-loaded**: `fetchSourceManga` (search) only returns metadata. Chapters must be fetched separately via `fetchChapters` mutation. Use `_get_or_fetch_chapters()` helper which handles caching: reads from DB first, fetches from source if stale or empty. Cache duration is controlled by `chapter_cache_hours` config.
 
 12. **AstrBot arg splitting**: AstrBot's command handler splits arguments by spaces, so trailing keywords like `zip`/`pdf`/`cbz` or `--刷新` may be lost. Always parse from `event.message_str` for commands with optional trailing args.
+
+13. **PLUGIN_NAME must match metadata name**: AstrBot's Bridge SDK constructs WebUI API URLs using the plugin's `name` from `metadata.yaml` (e.g. `astrbot_plugin_suwayomi_server`), NOT the directory name on disk (e.g. `astrbot_suwayomi_server`). The `PLUGIN_NAME` constant in `main.py` and `web/api.py` must match the metadata name, or all WebUI API calls will return "未找到该路由".
+
+14. **Sandbox iframe blocks native dialogs**: AstrBot Plugin Pages run in a sandboxed iframe with `allow-scripts allow-forms allow-downloads` (no `allow-modals`). Native `confirm()`, `alert()`, `prompt()` are silently blocked — `confirm()` returns `false` without showing a dialog. Use custom DOM-based modal dialogs instead (see `showConfirm()` in `app.js`).
 
 ## Key Helper Methods
 
@@ -117,7 +125,8 @@ Key non-obvious config values (in `_conf_schema.json`):
 - `requirements.txt`: Runtime deps (currently `aiohttp>=3.9.0`, `img2pdf>=0.5.0`, and `opencc-python-reimplemented>=0.1.7`)
 - `pyproject.toml`: Dev deps (pytest, pytest-asyncio), gitignored
 - Tests in `tests/` - unit tests are synchronous or use `@pytest.mark.asyncio`
-- `test_live_api.py`: Integration tests, skipped by default, need live server
+- `test_live_api.py`: Integration tests for Suwayomi client, skipped by default, need live server
+- `test_live_web_api.py`: Integration tests for WebUI API handlers, skipped by default, need live server
 - Version is in `metadata.yaml`, not `pyproject.toml`
 
 ## Documentation Update Checklist

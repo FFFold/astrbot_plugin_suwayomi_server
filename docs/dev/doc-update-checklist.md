@@ -66,6 +66,20 @@
 | `suwayomi/models.py` | 对应的 `from_dict()` 方法 |
 | `docs/dev/suwayomi-api.md` | API 参考文档 |
 
+## WebUI 变更
+
+| 文件 | 更新内容 |
+|------|---------|
+| `web/api.py` | 新增/修改 API handler |
+| `main.py` | API 注册 + 委托方法 |
+| `pages/dashboard/index.html` | 页面结构、Tab 内容 |
+| `pages/dashboard/app.js` | 前端逻辑、API 调用 |
+| `pages/dashboard/style.css` | 样式、主题适配 |
+| `tests/test_web_api.py` | 对应的单元测试 |
+| `tests/test_live_web_api.py` | 对应的集成测试 |
+| `AGENTS.md` | Architecture 段落 |
+| `docs/dev/development.md` | 架构图、模块说明 |
+
 ## 用户可见文本变更
 
 | 文件 | 更新内容 |
@@ -82,7 +96,7 @@
 | `pyproject.toml` | 版本发布 |
 | `README.md` | 版本发布、新命令、新配置、新功能、描述变更 |
 | `CHANGELOG.md` | 版本发布 |
-| `main.py` | 新命令、配置读取、用户文本变更 |
+| `main.py` | 新命令、配置读取、用户文本变更、WebUI API 注册 |
 | `_conf_schema.json` | 新增/修改配置 |
 | `AGENTS.md` | 架构变更、新命令、新配置、测试变更、依赖变更 |
 | `docs/setup.md` | 新增/修改配置 |
@@ -90,3 +104,7 @@
 | `docs/dev/suwayomi-api.md` | GraphQL API 变更 |
 | `CONTRIBUTING.md` | 新增命令类型、测试文件变更、项目结构变更、版本发布流程变更 |
 | `requirements.txt` | 新增/修改依赖 |
+| `web/api.py` | 新增/修改 WebUI API handler |
+| `pages/dashboard/` | WebUI 前端变更 |
+| `tests/test_web_api.py` | WebUI API handler 变更 |
+| `tests/test_live_web_api.py` | WebUI 集成测试变更 |

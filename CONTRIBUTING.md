@@ -38,13 +38,13 @@ uv add --dev pytest pytest-asyncio
 
 ```bash
 # 单元测试（无需网络）
-uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_subscription.py -v
+uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_subscription.py tests/test_web_api.py -v
 
 # 集成测试（需要 Suwayomi-Server）
-uv run pytest tests/test_live_api.py -v -s
+uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
 
 # 指定服务器地址
-SUWAYOMI_URL=http://your-server:9330 uv run pytest tests/test_live_api.py -v -s
+SUWAYOMI_URL=http://your-server:9330 uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
 
 # 全部测试
 uv run pytest -v
@@ -60,7 +60,7 @@ python -c "import ast; ast.parse(open('main.py', encoding='utf-8').read()); prin
 
 ```
 astrbot_plugin_suwayomi_server/
-├── main.py                    # 插件入口，命令定义和后台更新逻辑
+├── main.py                    # 插件入口，命令定义、后台更新逻辑、WebUI API 注册
 ├── metadata.yaml              # AstrBot 插件元数据（名称、版本、平台）
 ├── _conf_schema.json          # AstrBot 配置 schema（WebUI 自动生成表单）
 ├── requirements.txt           # Python 运行时依赖
@@ -72,6 +72,14 @@ astrbot_plugin_suwayomi_server/
 │   ├── __init__.py
 │   ├── pack.py               # 图片打包工具（ZIP/CBZ/PDF）
 │   └── subscription.py        # 订阅管理器（AstrBot KV 存储封装）
+├── web/
+│   ├── __init__.py
+│   └── api.py                # WebUI API handler 函数（依赖注入，独立可测试）
+├── pages/
+│   └── dashboard/
+│       ├── index.html         # 管理面板页面（3 Tab: 仪表盘/订阅管理/设置）
+│       ├── app.js             # 前端逻辑（Tab 切换、API 调用、DOM 渲染）
+│       └── style.css          # 样式（支持 light/dark 主题）
 ├── tests/
 │   ├── __init__.py
 │   ├── conftest.py             # Mock astrbot 模块（独立运行集成测试）
@@ -79,7 +87,9 @@ astrbot_plugin_suwayomi_server/
 │   ├── test_models.py         # 数据模型单元测试
 │   ├── test_client.py         # 客户端单元测试（mocked HTTP）
 │   ├── test_subscription.py   # 订阅管理单元测试
-│   └── test_live_api.py       # 实时 API 集成测试
+│   ├── test_web_api.py        # WebUI API handler 单元测试
+│   ├── test_live_api.py       # Suwayomi 客户端集成测试
+│   └── test_live_web_api.py   # WebUI API handler 集成测试
 ├── docs/
 │   ├── setup.md               # 用户配置教程
 │   ├── dev/                   # 开发者文档
@@ -112,7 +122,7 @@ git checkout -b fix/your-bug-fix
 
 ```bash
 # 确保所有单元测试通过
-uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_subscription.py -v
+uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_subscription.py tests/test_web_api.py -v
 
 # 语法检查
 python -c "import ast; ast.parse(open('main.py', encoding='utf-8').read()); print('OK')"
@@ -245,6 +255,7 @@ SUWAYOMI_URL=http://localhost:9330 uv run pytest tests/test_live_api.py -v -s
 | 新增/修改命令 | `README.md`, `AGENTS.md`, `main.py` 帮助文本 |
 | 新增/修改配置 | `_conf_schema.json`, `docs/setup.md`, `AGENTS.md` |
 | 新增/修改 API | `docs/dev/suwayomi-api.md` |
+| 新增/修改 WebUI | `web/api.py`, `pages/dashboard/`, `AGENTS.md`, `docs/dev/development.md` |
 | 架构变更 | `docs/dev/development.md`, `AGENTS.md` |
 | 版本发布 | `metadata.yaml`, `CHANGELOG.md` |
 

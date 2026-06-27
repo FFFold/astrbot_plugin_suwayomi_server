@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [Unreleased]
+
+### Added
+
+- **管理员 WebUI** — 新增 AstrBot Plugin Pages 管理界面，包含 3 个 Tab：
+  - **仪表盘** — Suwayomi 连接状态、源数量、书库漫画数、订阅统计、订阅总览表、手动检查更新
+  - **订阅管理** — 跨所有用户的订阅列表，支持按漫画 ID、漫画名、源、订阅者（UMO）、推送状态五个维度同时筛选，删除单条订阅、自定义确认弹窗
+  - **设置** — 可视化编辑全部插件配置（服务器连接、阅读体验、下载打包、自动推送、高级选项）
+- **WebUI API 模块** — 新增 `web/api.py`，7 个独立 API handler（status, subscriptions CRUD, config, sources, update），依赖注入便于测试
+- **SubscriptionManager.delete_manga()** — 新增公开方法删除漫画的全部订阅者，替代直接访问私有 `_load`/`_save`
+- **API 集成测试** — 新增 `tests/test_live_web_api.py`（19 个测试），覆盖所有 WebUI API handler 的端到端调用
+- **多维筛选** — 订阅管理支持漫画 ID / 漫画名 / 源 / 订阅者 / 推送状态五个筛选条件同时生效，带计数显示和一键清除
+
+### Fixed
+
+- **XSS 防护** — WebUI 前端改用 data-attribute + 事件委托，`esc()` 函数增加单引号转义
+- **密码掩码** — WebUI 配置接口返回时掩码 password 字段（返回 `***`）
+- **JSON 空体防护** — POST 接口增加 `request.get_json()` 返回 None 的安全检查
+- **删除按钮修复** — 订阅管理的删除按钮现在正确删除单条（漫画 + UMO）订阅关系，而非整个漫画的所有订阅者
+- **sandbox iframe 兼容** — 用自定义确认弹窗替代原生 `confirm()`，解决 AstrBot sandbox iframe 无 `allow-modals` 导致确认框被静默跳过的问题
+- **PLUGIN_NAME 路由修复** — `PLUGIN_NAME` 常量必须与 `metadata.yaml` 中的 `name` 一致，否则 Bridge SDK 构建的 API URL 无法匹配后端路由
+- **配置保存密码丢失** — 修复配置保存时 GET 返回的掩码密码 `"***"` 覆盖真实密码的问题；增加配置键白名单防止写入非法字段
+
+### Changed
+
+- **项目结构重构** — API handler 从 `main.py` 提取到 `web/api.py`，`main.py` 仅负责注册和委托
+- **WebUI 前端** — 事件处理改为一次性注册（`initHandlers()`），Tab 切换不再重复绑定
+- **订阅表重构** — 订阅管理表改为每行一个（漫画 + UMO）订阅关系，而非每行一个漫画，便于精确管理单条订阅
+- **测试扩充** — 单元测试从 51 个增加到 77 个，集成测试新增 19 个 WebUI API 测试
+
 ## [0.3.2] - 2026-06-26
 
 ### Fixed

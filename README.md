@@ -40,6 +40,7 @@
 | 🔐 | **多种认证** | 支持无认证 / Basic / JWT 三种 Suwayomi 认证模式 |
 | 🖼️ | **灵活发图** | 直接引用 URL 或先下载到本地再发送，适配不同网络环境 |
 | 🌐 | **多平台** | 支持 aiocqhttp / Telegram / QQ官方 / 企业微信 / 飞书 / Discord / Slack / KOOK |
+| 🖥️ | **管理面板** | AstrBot WebUI 内嵌仪表盘：连接状态总览、订阅管理、配置编辑 |
 
 ---
 

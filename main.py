@@ -19,8 +19,18 @@ from .suwayomi.client import SuwayomiClient, SuwayomiError
 from .suwayomi.models import Chapter, Manga, SearchResult
 from .utils.pack import pack_cbz, pack_pdf, pack_zip, parse_download_args
 from .utils.subscription import SubscriptionManager
+from .web.api import (
+    api_config_get,
+    api_config_post,
+    api_sources as api_sources_handler,
+    api_status,
+    api_subscription_delete,
+    api_subscription_push,
+    api_subscriptions,
+    api_update as api_update_handler,
+)
 
-PLUGIN_NAME = "astrbot_suwayomi_server"
+PLUGIN_NAME = "astrbot_plugin_suwayomi_server"
 
 # Search cache TTL in seconds
 _CACHE_TTL = 600  # 10 minutes
@@ -70,6 +80,29 @@ class SuwayomiPlugin(Star):
         self._bg_task: asyncio.Task | None = None
 
         logger.info(f"[{PLUGIN_NAME}] 插件已加载 | 服务器: {config.get('server_url')} | 缓存: {config.get('chapter_cache_hours', 6)}h | 检查间隔: {config.get('check_interval', 60)}min")
+
+        # Register WebUI API endpoints
+        context.register_web_api(
+            f"/{PLUGIN_NAME}/status", self._api_status, ["GET"], "获取服务器状态",
+        )
+        context.register_web_api(
+            f"/{PLUGIN_NAME}/subscriptions", self._api_subscriptions, ["GET"], "获取全部订阅",
+        )
+        context.register_web_api(
+            f"/{PLUGIN_NAME}/subscription/delete", self._api_subscription_delete, ["POST"], "删除订阅",
+        )
+        context.register_web_api(
+            f"/{PLUGIN_NAME}/subscription/push", self._api_subscription_push, ["POST"], "切换推送",
+        )
+        context.register_web_api(
+            f"/{PLUGIN_NAME}/config", self._api_config, ["GET", "POST"], "插件配置",
+        )
+        context.register_web_api(
+            f"/{PLUGIN_NAME}/sources", self._api_sources, ["GET"], "获取源列表",
+        )
+        context.register_web_api(
+            f"/{PLUGIN_NAME}/update", self._api_update, ["POST"], "手动更新",
+        )
 
     @filter.on_astrbot_loaded()
     async def on_loaded(self):
@@ -1134,3 +1167,72 @@ class SuwayomiPlugin(Star):
         except Exception as e:
             logger.error(f"[{PLUGIN_NAME}] manual_update error: {e}")
             yield event.plain_result("更新检查失败。")
+
+    # ── WebUI API delegates ────────────────────────────────────────
+
+    @staticmethod
+    def _json_response(result):
+        """Convert handler result to (jsonify, status) tuple.
+
+        Handler may return dict (200) or (dict, int) tuple (error with status code).
+        """
+        from quart import jsonify
+        if isinstance(result, tuple):
+            return jsonify(result[0]), result[1]
+        return jsonify(result)
+
+    async def _api_status(self):
+        result = await api_status(self.client, self.sub_mgr, self.get_kv_data)
+        return self._json_response(result)
+
+    async def _api_subscriptions(self):
+        result = await api_subscriptions(self.client, self.sub_mgr)
+        return self._json_response(result)
+
+    async def _api_subscription_delete(self):
+        from quart import request
+        data = await request.get_json()
+        if data is None:
+            return self._json_response(({"success": False, "message": "Invalid JSON"}, 400))
+        result = await api_subscription_delete(self.sub_mgr, data)
+        return self._json_response(result)
+
+    async def _api_subscription_push(self):
+        from quart import request
+        data = await request.get_json()
+        if data is None:
+            return self._json_response(({"success": False, "message": "Invalid JSON"}, 400))
+        result = await api_subscription_push(self.sub_mgr, data)
+        return self._json_response(result)
+
+    async def _api_config(self):
+        from quart import request
+        if request.method == "GET":
+            return self._json_response(api_config_get(self.config))
+
+        data = await request.get_json()
+        if data is None:
+            return self._json_response(({"success": False, "message": "Invalid JSON"}, 400))
+
+        async def rebuild_client(cfg):
+            try:
+                await self.client.close()
+            except Exception:
+                pass
+            self.client = SuwayomiClient(
+                server_url=cfg.get("server_url", "http://localhost:9330"),
+                auth_mode=cfg.get("auth_mode", "none"),
+                username=cfg.get("username", ""),
+                password=cfg.get("password", ""),
+            )
+
+        result = await api_config_post(self.config, data, rebuild_client)
+        return self._json_response(result)
+
+    async def _api_sources(self):
+        result = await api_sources_handler(self.client)
+        return self._json_response(result)
+
+    async def _api_update(self):
+        result = await api_update_handler(self._check_updates, self.put_kv_data)
+        return self._json_response(result)

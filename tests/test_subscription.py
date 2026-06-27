@@ -160,3 +160,30 @@ async def test_auto_push_backward_compat(mgr):
         del data["42"]["auto_push"]
     await mgr._save(data)
     assert await mgr.get_auto_push(42, "user1") is False
+
+
+@pytest.mark.asyncio
+async def test_delete_manga(mgr):
+    """delete_manga removes entire manga entry."""
+    await mgr.subscribe(42, "One Piece", 100, "user1")
+    await mgr.subscribe(42, "One Piece", 100, "user2")
+    await mgr.delete_manga(42)
+    all_subs = await mgr.get_all_subscriptions()
+    assert "42" not in all_subs
+
+
+@pytest.mark.asyncio
+async def test_delete_manga_nonexistent(mgr):
+    """delete_manga on nonexistent manga should not raise."""
+    await mgr.delete_manga(999)
+
+
+@pytest.mark.asyncio
+async def test_delete_manga_preserves_others(mgr):
+    """delete_manga only removes the target manga."""
+    await mgr.subscribe(1, "A", 10, "user1")
+    await mgr.subscribe(2, "B", 20, "user1")
+    await mgr.delete_manga(1)
+    subs = await mgr.get_subscriptions("user1")
+    assert len(subs) == 1
+    assert subs[0]["manga_id"] == 2

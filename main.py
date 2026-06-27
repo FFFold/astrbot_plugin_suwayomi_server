@@ -265,6 +265,33 @@ class SuwayomiPlugin(Star):
             logger.error(f"[{PLUGIN_NAME}] list_sources error: {e}")
             yield event.plain_result("漫画服务暂时不可用，请稍后重试。")
 
+    async def _search_best_match(self, name: str, source_filter=None) -> tuple[Manga | None, str | None]:
+        """搜索漫画名称，返回最佳匹配结果。返回 (manga, error_msg)。"""
+        sources = await self.client.get_sources()
+        if not sources:
+            return None, "未找到已安装的漫画源"
+
+        if source_filter:
+            target_sources = [source_filter]
+        else:
+            default_sid = self.config.get("default_source_id", 0)
+            if default_sid:
+                target_sources = [s for s in sources if s.id == default_sid]
+                if not target_sources:
+                    target_sources = sources[:3]
+            else:
+                target_sources = sources[:3]
+
+        for src in target_sources:
+            try:
+                result = await self.client.search_manga(src.id, name)
+                if result.mangas:
+                    return result.mangas[0], None
+            except Exception as e:
+                logger.warning(f"[{PLUGIN_NAME}] 批量订阅搜索源 {src.name} 失败: {e}")
+
+        return None, "未找到匹配结果"
+
     # ── 漫画搜索 ──────────────────────────────────────────────────
 
     @manga_group.command("搜索")

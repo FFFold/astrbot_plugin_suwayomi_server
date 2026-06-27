@@ -30,7 +30,7 @@ from .web.api import (
     api_update as api_update_handler,
 )
 
-PLUGIN_NAME = "astrbot_suwayomi_server"
+PLUGIN_NAME = "astrbot_plugin_suwayomi_server"
 
 # Search cache TTL in seconds
 _CACHE_TTL = 600  # 10 minutes

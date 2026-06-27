@@ -14,7 +14,7 @@ from typing import Any, Awaitable, Callable
 
 from astrbot.api import logger
 
-PLUGIN_NAME = "astrbot_suwayomi_server"
+PLUGIN_NAME = "astrbot_plugin_suwayomi_server"
 
 
 async def api_status(

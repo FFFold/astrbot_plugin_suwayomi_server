@@ -278,7 +278,7 @@ class SuwayomiPlugin(Star):
         else:
             default_sid = self.config.get("default_source_id", 0)
             if default_sid:
-                target_sources = [s for s in sources if s.id == default_sid]
+                target_sources = [s for s in sources if s.id == str(default_sid)]
                 if not target_sources:
                     target_sources = sources[:3]
             else:
@@ -325,7 +325,7 @@ class SuwayomiPlugin(Star):
             if source_filter:
                 target_sources = [source_filter]
             elif default_sid:
-                target_sources = [s for s in sources if s.id == default_sid]
+                target_sources = [s for s in sources if s.id == str(default_sid)]
                 if not target_sources:
                     target_sources = sources[:3]
             else:

@@ -162,7 +162,20 @@ async def api_config_post(
     if not server_url:
         return {"success": False, "message": "服务器地址不能为空"}, 400
 
+    # Whitelist of known config keys to prevent overwriting internal attributes
+    allowed_keys = {
+        "server_url", "auth_mode", "username", "password",
+        "check_interval", "max_pages", "send_mode", "image_fetch_mode",
+        "download_concurrency", "download_retries", "default_source_id",
+        "chapter_cache_hours", "download_format", "temp_dir", "auto_push_mode",
+    }
+
     for key, value in data.items():
+        if key not in allowed_keys:
+            continue
+        # Skip masked password from GET response
+        if key == "password" and value == "***":
+            continue
         config[key] = value
 
     try:

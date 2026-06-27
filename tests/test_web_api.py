@@ -255,6 +255,47 @@ async def test_config_post_empty_body():
     assert result[1] == 400
 
 
+@pytest.mark.asyncio
+async def test_config_post_skips_masked_password():
+    """Password field with '***' from GET should not overwrite real password."""
+    cfg = FakeConfig({"server_url": "http://old:9330", "password": "real_pw"})
+
+    result = await api_config_post(cfg, {
+        "server_url": "http://new:9330",
+        "password": "***",
+    }, AsyncMock())
+    assert result["success"] is True
+    assert cfg["password"] == "real_pw"  # not overwritten
+
+
+@pytest.mark.asyncio
+async def test_config_post_allows_real_password():
+    """Explicitly set password (not masked) should be saved."""
+    cfg = FakeConfig({"server_url": "http://old:9330", "password": "old_pw"})
+
+    result = await api_config_post(cfg, {
+        "server_url": "http://new:9330",
+        "password": "new_pw",
+    }, AsyncMock())
+    assert result["success"] is True
+    assert cfg["password"] == "new_pw"
+
+
+@pytest.mark.asyncio
+async def test_config_post_rejects_unknown_keys():
+    """Unknown keys should not be written to config."""
+    cfg = FakeConfig({"server_url": "http://old:9330"})
+
+    result = await api_config_post(cfg, {
+        "server_url": "http://new:9330",
+        "evil_key": "bad_value",
+        "_internal": 42,
+    }, AsyncMock())
+    assert result["success"] is True
+    assert "evil_key" not in cfg
+    assert "_internal" not in cfg
+
+
 # ── api_sources ─────────────────────────────────────────
 
 

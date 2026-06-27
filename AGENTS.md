@@ -17,7 +17,7 @@
 ## Commands
 
 ```bash
-# Unit tests (77 tests, no network needed)
+# Unit tests (84 tests, no network needed)
 uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_subscription.py tests/test_web_api.py -v
 
 # Integration tests (requires live Suwayomi-Server)
@@ -48,7 +48,7 @@ main.py (SuwayomiPlugin)
 - `suwayomi/models.py`: Pure dataclasses with `from_dict()` factory methods
 - `utils/pack.py`: Pack images into ZIP, CBZ, or PDF files; `parse_download_args()` for command arg parsing
 - `utils/subscription.py`: Persists subscriptions via AstrBot's `get_kv_data()`/`put_kv_data()`
-- `web/api.py`: 7 API handlers for admin WebUI (status, subscriptions CRUD, config, sources, update); each receives `client`/`sub_mgr`/`config` as params for testability
+- `web/api.py`: 8 API handlers for admin WebUI (status, subscriptions CRUD, config, sources, update); each receives `client`/`sub_mgr`/`config` as params for testability
 - `pages/dashboard/`: AstrBot Plugin Pages — single HTML file with 3 tabs (仪表盘/订阅管理/设置), vanilla JS + CSS, communicates via Bridge SDK
 
 ## Critical Quirks

@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
-## [0.4.0] - 2026-06-27
+## [Unreleased]
 
 ### Added
 
@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 ### Fixed
 
 - **`default_source_id` 类型比较** — 修复 `Source.id`（str）与配置值（int）比较永远不匹配的 bug，影响 `search_manga` 和新增的 `_search_best_match`
+
+## [0.4.0] - 2026-06-27
+
+### Added
 
 - **管理员 WebUI** — 新增 AstrBot Plugin Pages 管理界面，包含 3 个 Tab：
   - **仪表盘** — Suwayomi 连接状态、源数量、书库漫画数、订阅统计、订阅总览表、手动检查更新

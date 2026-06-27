@@ -623,11 +623,12 @@ class SuwayomiPlugin(Star):
                 return mangas[0], None
 
             # Build source ID -> display name map
+            src_map: dict[str, str] = {}
             try:
                 sources = await self.client.get_sources()
                 src_map = {str(s.id): s.display_name for s in sources}
             except Exception:
-                src_map = {}
+                pass
 
             lines = [f"找到多个结果，请使用 ID 指定。例如: /漫画 {cmd} {mangas[0].id}"]
             for m in mangas:
@@ -769,7 +770,7 @@ class SuwayomiPlugin(Star):
                 chunks[-1].append(line)
 
             for i, chunk in enumerate(chunks):
-                prefix = header if i == 0 else f"📖「{manga.title}」{src_tag}章节续 ({i + 1}/{len(chunks)}):"
+                prefix = header if i == 0 else f"📖「{manga.title}」{src_tag} 章节续 ({i + 1}/{len(chunks)}):"
                 msg = prefix + "\n" + "\n".join(chunk)
                 if i == 0:
                     yield event.plain_result(msg)

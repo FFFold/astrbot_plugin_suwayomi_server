@@ -526,9 +526,13 @@ class SuwayomiPlugin(Star):
             if not subs:
                 yield event.plain_result("📭 你还没有订阅任何漫画。使用「漫画 搜索」来查找并订阅。")
                 return
+            sources = await self.client.get_sources()
+            src_map = {str(s.id): s.display_name for s in sources}
             lines = ["📋 你的订阅列表:"]
             for s in subs:
-                lines.append(f"  • {s['title']} (ID: {s['manga_id']})")
+                source_name = src_map.get(str(s["source_id"]), "")
+                tag = f" - {source_name}" if source_name else ""
+                lines.append(f"  • {s['title']}{tag} - ID: {s['manga_id']}")
             yield event.plain_result("\n".join(lines))
         except Exception as e:
             logger.error(f"[{PLUGIN_NAME}] my_subscriptions error: {e}")
@@ -751,9 +755,8 @@ class SuwayomiPlugin(Star):
                 src_name = next((s.display_name for s in sources if str(s.id) == str(manga.source_id)), None)
             except Exception:
                 src_name = None
-            src_tag = f" [{src_name}]" if src_name else ""
-
-            header = f"📖「{manga.title}」{src_tag}章节列表（共 {len(chapters)} 话）:"
+            src_tag = f" - {src_name}" if src_name else ""
+            header = f"📖「{manga.title}」{src_tag} 章节列表（共 {len(chapters)} 话）:"
             chunks: list[list[str]] = [[]]
             for ch in chapters:
                 read_mark = "✅" if ch.is_read else "⬜"

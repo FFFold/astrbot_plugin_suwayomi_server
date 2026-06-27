@@ -184,7 +184,11 @@ async def api_config_post(
         logger.error(f"[{PLUGIN_NAME}] config save error: {e}")
         return {"success": False, "message": f"保存失败: {e}"}, 500
 
-    await rebuild_client(config)
+    try:
+        await rebuild_client(config)
+    except Exception as e:
+        logger.error(f"[{PLUGIN_NAME}] client rebuild error: {e}")
+        return {"success": True, "message": "配置已保存，但连接重建失败，请手动重载插件"}
 
     return {"success": True, "message": "配置已保存"}
 

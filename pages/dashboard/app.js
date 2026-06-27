@@ -326,6 +326,7 @@ function showConfirm(message) {
       if (val === 'true') { overlay.remove(); resolve(true); }
       else if (val === 'false') { overlay.remove(); resolve(false); }
       else if (e.target === overlay) { overlay.remove(); resolve(false); }
+      // Clicks inside .modal-box but not on buttons — ignore
     });
   });
 }

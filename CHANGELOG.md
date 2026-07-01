@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.4.2] - 2026-07-01
+
+### Fixed
+
+- **自动推送 TypeError** — 修复 `_push_chapter_images` 和 `_push_chapter_file` 中调用 `MessageChain().chain(chain)` 导致的 `TypeError: 'list' object is not callable` 错误。`chain` 是 `MessageChain` 的列表字段而非方法，应使用 `MessageChain(chain=chain)` 构造。此 bug 导致所有启用自动推送的订阅在更新时都会抛出异常，降级为"图片发送失败"文本提示。
+
 ## [0.4.1] - 2026-06-27
 
 ### Added

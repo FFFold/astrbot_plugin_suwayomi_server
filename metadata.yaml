@@ -1,7 +1,7 @@
 name: astrbot_plugin_suwayomi_server
 author: Fold
 desc: 将 Suwayomi-Server 作为漫画后端，为聊天用户提供漫画搜索、阅读、下载和订阅更新推送服务。
-version: "0.4.1"
+version: "0.4.2"
 repo: https://github.com/FFFold/astrbot_plugin_suwayomi_server
 display_name: Suwayomi 漫画助手
 short_desc: 漫画搜索、阅读、订阅更新推送

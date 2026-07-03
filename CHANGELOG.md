@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.4.3] - 2026-07-03
+
+### Fixed
+
+- **自动推送忽略合并转发配置** — 修复 `_push_chapter_images` 不检查 `send_mode` 配置，始终以单条内联消息发送全部图片的问题。当群聊有 30+ 页时，QQ NT 会拒绝单条消息中的过多图片元素（`result: 34` / `retcode 1200`）。现在自动推送复用阅读指令的发送逻辑：`send_mode=forward` 时在 aiocqhttp 平台用 `Comp.Nodes`（合并转发）发送；非 QQ 平台或 `send_mode=image` 时回退为内联发图。
+
 ## [0.4.2] - 2026-07-01
 
 ### Fixed

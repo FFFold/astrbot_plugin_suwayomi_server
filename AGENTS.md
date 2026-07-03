@@ -92,7 +92,7 @@ main.py (SuwayomiPlugin)
 - `_fetch_pages_local(chapter_id, max_pages)` — Fetch page URLs and download images to temp dir. Returns `(total_pages, page_urls, local_paths)`. Shared by read and download.
 - `_download_images(urls)` — Parallel download with retry. Returns local file paths.
 - `_download_one(session, url, dest)` — Single image download with exponential backoff retry.
-- `_push_chapter_images(umo, title, chapter)` — Push chapter as inline images (reuses read logic). Used by auto-push.
+- `_push_chapter_images(umo, title, chapter)` — Push chapter as images (reuses read send logic, respects `send_mode` for forward mode). Used by auto-push.
 - `_push_chapter_file(umo, title, chapter)` — Push chapter as packaged file (reuses download logic). Used by auto-push.
 - `_search_best_match(name, source_filter)` — Search manga name across sources, return first match. Used by batch subscribe.
 

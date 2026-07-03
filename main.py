@@ -859,13 +859,8 @@ class SuwayomiPlugin(Star):
     def _is_aiocqhttp_target(self, umo: str) -> bool:
         """Check whether a conversation (umo) targets an aiocqhttp platform instance."""
         pid = umo.split(":", 1)[0]
-        try:
-            for platform in self.context.platform_manager.platform_insts:
-                if platform.meta().id == pid:
-                    return platform.meta().name == "aiocqhttp"
-        except Exception:
-            pass
-        return False
+        platform = self.context.get_platform_inst(pid)
+        return platform is not None and platform.meta().name == "aiocqhttp"
 
     async def _push_chapter_images(self, umo: str, title: str, chapter: Chapter):
         """Push a chapter as images to a conversation (reuses read send logic)."""

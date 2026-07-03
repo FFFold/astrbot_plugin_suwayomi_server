@@ -856,11 +856,23 @@ class SuwayomiPlugin(Star):
         local_paths = await self._download_images(page_urls)
         return total_pages, page_urls, local_paths
 
+    def _is_aiocqhttp_target(self, umo: str) -> bool:
+        """Check whether a conversation (umo) targets an aiocqhttp platform instance."""
+        pid = umo.split(":", 1)[0]
+        try:
+            for platform in self.context.platform_manager.platform_insts:
+                if platform.meta().id == pid:
+                    return platform.meta().name == "aiocqhttp"
+        except Exception:
+            pass
+        return False
+
     async def _push_chapter_images(self, umo: str, title: str, chapter: Chapter):
-        """Push a chapter as inline images to a conversation (reuses read logic)."""
+        """Push a chapter as images to a conversation (reuses read send logic)."""
         num_label = _fmt_chapter_num(chapter.chapter_number)
         max_pages = self.config.get("max_pages", 30)
         fetch_mode = self.config.get("image_fetch_mode", "url")
+        send_mode = self.config.get("send_mode", "image")
 
         local_paths: list[str] = []
         try:
@@ -881,13 +893,32 @@ class SuwayomiPlugin(Star):
                     return Comp.Image.fromFileSystem(local_paths[idx])
                 return Comp.Image.fromURL(page_urls[idx])
 
-            chain = [Comp.Plain(f"📖「{title}」第 {num_label} 话")]
-            chain.extend(_img(i) for i in range(len(page_urls)))
-            if total_pages > max_pages:
-                chain.append(Comp.Plain(f"... 还有 {total_pages - max_pages} 页，请使用「漫画 阅读」查看"))
-
             try:
-                await self.context.send_message(umo, MessageChain(chain=chain))
+                if send_mode == "forward" and self._is_aiocqhttp_target(umo):
+                    nodes = [Comp.Node(
+                        uin="0",
+                        name=f"「{title}」第 {num_label} 话",
+                        content=[Comp.Plain(f"📖「{title}」第 {num_label} 话")],
+                    )]
+                    for i in range(len(page_urls)):
+                        nodes.append(Comp.Node(
+                            uin="0",
+                            name=f"第 {num_label} 话 - 第 {i + 1} 页",
+                            content=[_img(i)],
+                        ))
+                    if total_pages > max_pages:
+                        nodes.append(Comp.Node(
+                            uin="0",
+                            name="提示",
+                            content=[Comp.Plain(f"... 还有 {total_pages - max_pages} 页，请使用「漫画 阅读」查看")],
+                        ))
+                    await self.context.send_message(umo, MessageChain(chain=[Comp.Nodes(nodes)]))
+                else:
+                    chain = [Comp.Plain(f"📖「{title}」第 {num_label} 话")]
+                    chain.extend(_img(i) for i in range(len(page_urls)))
+                    if total_pages > max_pages:
+                        chain.append(Comp.Plain(f"... 还有 {total_pages - max_pages} 页，请使用「漫画 阅读」查看"))
+                    await self.context.send_message(umo, MessageChain(chain=chain))
             except Exception as e:
                 logger.warning(f"[{PLUGIN_NAME}] 图片推送到{umo}失败: {e}")
                 await self.context.send_message(umo, MessageChain().message(

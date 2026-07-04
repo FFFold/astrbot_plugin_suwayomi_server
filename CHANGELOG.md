@@ -5,18 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
-## [0.4.3] - 2026-07-04
+## [0.4.4] - 2026-07-04
 
 ### Fixed
 
-- **自动推送忽略合并转发配置** — 修复 `_push_chapter_images` 不检查 `send_mode` 配置，始终以单条内联消息发送全部图片的问题。当群聊有 30+ 页时，QQ NT 会拒绝单条消息中的过多图片元素（`result: 34` / `retcode 1200`）。现在自动推送复用阅读指令的发送逻辑：`send_mode=forward` 时在 aiocqhttp 平台用 `Comp.Nodes`（合并转发）发送；非 QQ 平台或 `send_mode=image` 时回退为内联发图。
+- **自动推送 TypeError** — 修复 `_push_chapter_images` 和 `_push_chapter_file` 中调用 `MessageChain().chain(chain)` 导致的 `TypeError: 'list' object is not callable` 错误。`chain` 是 `MessageChain` 的列表字段而非方法，应使用 `MessageChain(chain=chain)` 构造。此 bug 导致所有启用自动推送的订阅在更新时都抛出异常，降级为"图片发送失败"文本提示。
+- **自动推送忽略合并转发配置** — 修复 `_push_chapter_images` 不检查 `send_mode` 配置，始终以单条内联消息发送全部图片的问题。当群聊有 30+ 页时，QQ NT 拒绝单条消息中的过多图片元素（`result: 34` / `retcode 1200`）。现在自动推送复用阅读指令的发送逻辑：`send_mode=forward` 时在 aiocqhttp 平台用 `Comp.Nodes`（合并转发）发送；非 QQ 平台或 `send_mode=image` 时回退为内联发图。
 - **合并转发节点缺少真实 user_id** — 修复 forward 节点中 `uin="0"` 被新版 Napcat 拒绝的问题（`forward node user_id/uin is required`）。新增 `_get_bot_uin()` 通过 `get_login_info` API 获取机器人真实 QQ 号并缓存，用于 forward 节点的 `user_id`。
-
-## [0.4.2] - 2026-07-01
-
-### Fixed
-
-- **自动推送 TypeError** — 修复 `_push_chapter_images` 和 `_push_chapter_file` 中调用 `MessageChain().chain(chain)` 导致的 `TypeError: 'list' object is not callable` 错误。`chain` 是 `MessageChain` 的列表字段而非方法，应使用 `MessageChain(chain=chain)` 构造。此 bug 导致所有启用自动推送的订阅在更新时都会抛出异常，降级为"图片发送失败"文本提示。
 
 ## [0.4.1] - 2026-06-27
 

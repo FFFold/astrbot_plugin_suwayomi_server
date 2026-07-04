@@ -200,7 +200,7 @@ uv pip install -r astrbot_suwayomi_server/requirements.txt
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
-| `server_url` | string | `http://localhost:9330` | Suwayomi-Server 地址 |
+| `server_url` | string | `http://localhost:4567` | Suwayomi-Server 地址 |
 | `auth_mode` | string | `none` | 认证模式：`none` / `basic` / `jwt` |
 | `username` | string | `""` | 认证用户名（basic / jwt 模式） |
 | `password` | string | `""` | 认证密码（basic / jwt 模式） |

@@ -70,7 +70,7 @@ class SuwayomiPlugin(Star):
         super().__init__(context)
         self.config = config
         self.client = SuwayomiClient(
-            server_url=config.get("server_url", "http://localhost:9330"),
+            server_url=config.get("server_url", "http://localhost:4567"),
             auth_mode=config.get("auth_mode", "none"),
             username=config.get("username", ""),
             password=config.get("password", ""),
@@ -1394,7 +1394,7 @@ class SuwayomiPlugin(Star):
             except Exception:
                 pass
             self.client = SuwayomiClient(
-                server_url=cfg.get("server_url", "http://localhost:9330"),
+                server_url=cfg.get("server_url", "http://localhost:4567"),
                 auth_mode=cfg.get("auth_mode", "none"),
                 username=cfg.get("username", ""),
                 password=cfg.get("password", ""),

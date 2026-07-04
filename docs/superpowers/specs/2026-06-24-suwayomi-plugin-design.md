@@ -38,7 +38,7 @@ Defined in `_conf_schema.json`, loaded as `AstrBotConfig` in `__init__`:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `server_url` | string | `http://localhost:9330` | Suwayomi-Server base URL |
+| `server_url` | string | `http://localhost:4567` | Suwayomi-Server base URL |
 | `auth_mode` | string | `none` | `none` / `basic` / `jwt` |
 | `username` | string | `""` | Auth username (for basic/jwt) |
 | `password` | string | `""` | Auth password (for basic/jwt) |

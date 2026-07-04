@@ -33,7 +33,7 @@
        volumes:
          - ./data:/home/suwayomi/.local/share/Tachidesk
        ports:
-         - "9330:4567"    # 左边的端口可以改，右边必须是 4567
+         - "4567:4567"    # 左边的端口可以改，右边必须是 4567
        environment:
          - TZ=Asia/Shanghai
          # 如果需要认证，取消下面的注释并填写：
@@ -50,7 +50,7 @@
 
 4. 验证服务运行：
    ```bash
-   curl http://localhost:9330/api/v1/settings/about
+   curl http://localhost:4567/api/v1/settings/about
    ```
    返回 JSON 信息即表示成功。
 
@@ -59,7 +59,7 @@
 ```bash
 docker run -d \
   --name suwayomi-server \
-  -p 9330:4567 \
+  -p 4567:4567 \
   -v ~/suwayomi/data:/home/suwayomi/.local/share/Tachidesk \
   -e TZ=Asia/Shanghai \
   --restart unless-stopped \
@@ -90,7 +90,7 @@ docker run -d \
 
 **通过 WebUI 配置：**
 
-1. 打开 `http://你的服务器地址:9330`
+1. 打开 `http://你的服务器地址:4567`
 2. 进入设置（齿轮图标）
 3. 找到「服务器设置」→「认证模式」
 4. 选择模式并设置用户名密码
@@ -124,7 +124,7 @@ Suwayomi 本身不包含漫画内容，需要安装「扩展」来连接漫画�
 
 ### 操作步骤
 
-1. 打开 Suwayomi WebUI：`http://你的服务器地址:9330`
+1. 打开 Suwayomi WebUI：`http://你的服务器地址:4567`
 
 2. 点击左侧菜单的「扩展」（Extensions）
 
@@ -154,7 +154,7 @@ environment:
 
 ```bash
 # 查询已安装的源列表
-curl http://localhost:9330/api/graphql \
+curl http://localhost:4567/api/graphql \
   -H "Content-Type: application/json" \
   -d '{"query":"{ sources { nodes { id name displayName lang } } }"}'
 ```
@@ -178,7 +178,7 @@ git clone https://github.com/FFFold/astrbot_suwayomi_server.git
 
 | 配置项 | 填写 |
 |--------|------|
-| `server_url` | `http://你的Suwayomi地址:端口`（如 `http://localhost:9330`） |
+| `server_url` | `http://你的Suwayomi地址:端口`（如 `http://localhost:4567`） |
 | `auth_mode` | `none`（如果 Suwayomi 没开认证）/ `basic` / `jwt` |
 | `username` | 认证用户名（auth_mode 为 none 时留空） |
 | `password` | 认证密码（auth_mode 为 none 时留空） |
@@ -191,19 +191,19 @@ git clone https://github.com/FFFold/astrbot_suwayomi_server.git
 | `temp_dir` | 临时文件目录，留空使用系统默认。Docker 环境请设置为 AstrBot 和聊天平台容器共享的目录，例如 `/AstrBot/data/temp` |
 | `auto_push_mode` | 自动推送模式，`image`（图片，复用阅读逻辑）/ `file`（文件，复用下载逻辑），默认 `image` |
 
-**网络连通性**：AstrBot 所在机器必须能访问 Suwayomi-Server 地址。如果 AstrBot 和 Suwayomi 都在同一台机器上，用 `http://localhost:9330`。如果 AstrBot 在 Docker 中，需要用宿主机 IP 或 Docker 网络地址。
+**网络连通性**：AstrBot 所在机器必须能访问 Suwayomi-Server 地址。如果 AstrBot 和 Suwayomi 都在同一台机器上，用 `http://localhost:4567`。如果 AstrBot 在 Docker 中，需要用宿主机 IP 或 Docker 网络地址。
 
 ### 填写示例
 
 **场景 1：同一台机器，无认证**
 ```
-server_url: http://localhost:9330
+server_url: http://localhost:4567
 auth_mode: none
 ```
 
 **场景 2：Suwayomi 在另一台服务器，Basic 认证**
 ```
-server_url: http://192.168.1.100:9330
+server_url: http://192.168.1.100:4567
 auth_mode: basic
 username: admin
 password: mypassword123

@@ -348,7 +348,7 @@ from .web.api import (
             except Exception:
                 pass
             self.client = SuwayomiClient(
-                server_url=cfg.get("server_url", "http://localhost:9330"),
+                server_url=cfg.get("server_url", "http://localhost:4567"),
                 auth_mode=cfg.get("auth_mode", "none"),
                 username=cfg.get("username", ""),
                 password=cfg.get("password", ""),
@@ -492,7 +492,7 @@ mkdir -p pages/dashboard
           <legend>服务器连接</legend>
           <div class="form-group">
             <label for="cfg-server_url">Suwayomi-Server 地址</label>
-            <input type="text" id="cfg-server_url" name="server_url" placeholder="http://localhost:9330">
+            <input type="text" id="cfg-server_url" name="server_url" placeholder="http://localhost:4567">
           </div>
           <div class="form-group">
             <label for="cfg-auth_mode">认证模式</label>
@@ -1345,27 +1345,27 @@ async def test_push_missing_params():
 # ── api_config ──────────────────────────────────────────
 
 def test_config_get():
-    cfg = {"server_url": "http://localhost:9330", "auth_mode": "none"}
+    cfg = {"server_url": "http://localhost:4567", "auth_mode": "none"}
     result = api_config_get(cfg)
     assert result == cfg
 
 
 @pytest.mark.asyncio
 async def test_config_post_save():
-    cfg = {"server_url": "http://old:9330"}
+    cfg = {"server_url": "http://old:4567"}
     cfg.save_config = MagicMock()
     rebuild = AsyncMock()
 
-    result = await api_config_post(cfg, {"server_url": "http://new:9330"}, rebuild)
+    result = await api_config_post(cfg, {"server_url": "http://new:4567"}, rebuild)
     assert result["success"] is True
-    assert cfg["server_url"] == "http://new:9330"
+    assert cfg["server_url"] == "http://new:4567"
     cfg.save_config.assert_called_once()
     rebuild.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_config_post_empty_url():
-    cfg = {"server_url": "http://old:9330"}
+    cfg = {"server_url": "http://old:4567"}
     cfg.save_config = MagicMock()
 
     result = await api_config_post(cfg, {"server_url": ""}, AsyncMock())

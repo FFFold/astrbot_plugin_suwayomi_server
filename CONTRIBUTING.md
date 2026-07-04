@@ -44,7 +44,7 @@ uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests
 uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
 
 # 指定服务器地址
-SUWAYOMI_URL=http://your-server:9330 uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
+SUWAYOMI_URL=http://your-server:4567 uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
 
 # 全部测试
 uv run pytest -v
@@ -245,7 +245,7 @@ async def test_subscribe():
 集成测试放在 `tests/test_live_api.py`，默认跳过。需要设置环境变量：
 
 ```bash
-SUWAYOMI_URL=http://localhost:9330 uv run pytest tests/test_live_api.py -v -s
+SUWAYOMI_URL=http://localhost:4567 uv run pytest tests/test_live_api.py -v -s
 ```
 
 ## 文档更新
@@ -268,7 +268,7 @@ SUWAYOMI_URL=http://localhost:9330 uv run pytest tests/test_live_api.py -v -s
 ### Q: 如何调试 GraphQL 查询？
 
 使用 Suwayomi-Server 的 GraphQL Playground：
-1. 打开 `http://localhost:9330/api/graphql`
+1. 打开 `http://localhost:4567/api/graphql`
 2. 在浏览器中直接测试查询
 
 ### Q: 如何添加新的 GraphQL 查询？

@@ -162,7 +162,7 @@
 
 ```json
 // 请求
-{ "server_url": "http://192.168.1.100:9330", "auth_mode": "none", ... }
+{ "server_url": "http://192.168.1.100:4567", "auth_mode": "none", ... }
 
 // 响应
 { "success": true, "message": "配置已保存" }

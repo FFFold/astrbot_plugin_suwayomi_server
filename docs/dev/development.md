@@ -78,7 +78,7 @@ astrbot_suwayomi_server/
 └──────────────────────────────────────────────────┘
                    │ GraphQL over HTTP
 ┌──────────────────▼──────────────────────────────┐
-│           Suwayomi-Server (:9330)                │
+│           Suwayomi-Server (:4567)                │
 │  /api/graphql  (GraphQL Endpoint)                │
 │  /api/v1/...   (REST Legacy)                     │
 └─────────────────────────────────────────────────┘
@@ -247,7 +247,7 @@ uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests
 uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
 
 # 指定自定义服务器地址
-SUWAYOMI_URL=http://your-server:9330 uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
+SUWAYOMI_URL=http://your-server:4567 uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
 
 # 全部测试
 uv run pytest -v

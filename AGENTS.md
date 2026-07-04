@@ -22,7 +22,7 @@ uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests
 
 # Integration tests (requires live Suwayomi-Server)
 uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
-# Custom server: SUWAYOMI_URL=http://host:9330 uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
+# Custom server: SUWAYOMI_URL=http://host:4567 uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
 
 # All tests
 uv run pytest -v

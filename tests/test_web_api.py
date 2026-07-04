@@ -211,14 +211,14 @@ async def test_push_missing_params():
 
 
 def test_config_get():
-    cfg = {"server_url": "http://localhost:9330", "auth_mode": "none"}
+    cfg = {"server_url": "http://localhost:4567", "auth_mode": "none"}
     result = api_config_get(cfg)
-    assert result["server_url"] == "http://localhost:9330"
+    assert result["server_url"] == "http://localhost:4567"
     assert result is not cfg
 
 
 def test_config_get_masks_password():
-    cfg = {"server_url": "http://localhost:9330", "password": "s3cret"}
+    cfg = {"server_url": "http://localhost:4567", "password": "s3cret"}
     result = api_config_get(cfg)
     assert result["password"] == "***"
     assert cfg["password"] == "s3cret"  # original unchanged
@@ -234,19 +234,19 @@ class FakeConfig(dict):
 
 @pytest.mark.asyncio
 async def test_config_post_save():
-    cfg = FakeConfig({"server_url": "http://old:9330"})
+    cfg = FakeConfig({"server_url": "http://old:4567"})
     rebuild = AsyncMock()
 
-    result = await api_config_post(cfg, {"server_url": "http://new:9330"}, rebuild)
+    result = await api_config_post(cfg, {"server_url": "http://new:4567"}, rebuild)
     assert result["success"] is True
-    assert cfg["server_url"] == "http://new:9330"
+    assert cfg["server_url"] == "http://new:4567"
     cfg.save_config.assert_called_once()
     rebuild.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_config_post_empty_url():
-    cfg = FakeConfig({"server_url": "http://old:9330"})
+    cfg = FakeConfig({"server_url": "http://old:4567"})
 
     result = await api_config_post(cfg, {"server_url": ""}, AsyncMock())
     assert isinstance(result, tuple)
@@ -267,10 +267,10 @@ async def test_config_post_empty_body():
 @pytest.mark.asyncio
 async def test_config_post_skips_masked_password():
     """Password field with '***' from GET should not overwrite real password."""
-    cfg = FakeConfig({"server_url": "http://old:9330", "password": "real_pw"})
+    cfg = FakeConfig({"server_url": "http://old:4567", "password": "real_pw"})
 
     result = await api_config_post(cfg, {
-        "server_url": "http://new:9330",
+        "server_url": "http://new:4567",
         "password": "***",
     }, AsyncMock())
     assert result["success"] is True
@@ -280,10 +280,10 @@ async def test_config_post_skips_masked_password():
 @pytest.mark.asyncio
 async def test_config_post_allows_real_password():
     """Explicitly set password (not masked) should be saved."""
-    cfg = FakeConfig({"server_url": "http://old:9330", "password": "old_pw"})
+    cfg = FakeConfig({"server_url": "http://old:4567", "password": "old_pw"})
 
     result = await api_config_post(cfg, {
-        "server_url": "http://new:9330",
+        "server_url": "http://new:4567",
         "password": "new_pw",
     }, AsyncMock())
     assert result["success"] is True
@@ -293,10 +293,10 @@ async def test_config_post_allows_real_password():
 @pytest.mark.asyncio
 async def test_config_post_rejects_unknown_keys():
     """Unknown keys should not be written to config."""
-    cfg = FakeConfig({"server_url": "http://old:9330"})
+    cfg = FakeConfig({"server_url": "http://old:4567"})
 
     result = await api_config_post(cfg, {
-        "server_url": "http://new:9330",
+        "server_url": "http://new:4567",
         "evil_key": "bad_value",
         "_internal": 42,
     }, AsyncMock())
@@ -308,10 +308,10 @@ async def test_config_post_rejects_unknown_keys():
 @pytest.mark.asyncio
 async def test_config_post_validates_numeric_fields():
     """Numeric fields should be coerced to int with min bounds."""
-    cfg = FakeConfig({"server_url": "http://old:9330", "check_interval": 60})
+    cfg = FakeConfig({"server_url": "http://old:4567", "check_interval": 60})
 
     result = await api_config_post(cfg, {
-        "server_url": "http://new:9330",
+        "server_url": "http://new:4567",
         "check_interval": "0",  # below min of 1
     }, AsyncMock())
     assert result["success"] is True
@@ -321,10 +321,10 @@ async def test_config_post_validates_numeric_fields():
 @pytest.mark.asyncio
 async def test_config_post_validates_numeric_string():
     """Numeric string values should be coerced to int."""
-    cfg = FakeConfig({"server_url": "http://old:9330"})
+    cfg = FakeConfig({"server_url": "http://old:4567"})
 
     result = await api_config_post(cfg, {
-        "server_url": "http://new:9330",
+        "server_url": "http://new:4567",
         "max_pages": "50",
     }, AsyncMock())
     assert result["success"] is True
@@ -333,7 +333,7 @@ async def test_config_post_validates_numeric_string():
 
 def test_config_get_only_returns_allowed_keys():
     """api_config_get should only return whitelisted keys."""
-    cfg = {"server_url": "http://localhost:9330", "password": "pw", "internal_key": "secret"}
+    cfg = {"server_url": "http://localhost:4567", "password": "pw", "internal_key": "secret"}
     result = api_config_get(cfg)
     assert "server_url" in result
     assert "password" in result

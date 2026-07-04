@@ -3,7 +3,7 @@
 Usage:
     uv run pytest tests/test_live_web_api.py -v -s
 
-Set SUWAYOMI_URL env var or it defaults to http://100.87.49.15:9330
+Set SUWAYOMI_URL env var or it defaults to http://100.87.49.15:4567
 """
 import asyncio
 import os
@@ -25,7 +25,7 @@ from web.api import (
     api_update,
 )
 
-SERVER_URL = os.environ.get("SUWAYOMI_URL", "http://100.87.49.15:9330")
+SERVER_URL = os.environ.get("SUWAYOMI_URL", "http://100.87.49.15:4567")
 
 
 # ── Fixtures ────────────────────────────────────────────────────
@@ -303,7 +303,7 @@ async def test_config_post_save(config):
         rebuild_called = True
 
     result = await api_config_post(config, {
-        "server_url": "http://100.87.49.15:9330",
+        "server_url": "http://100.87.49.15:4567",
         "max_pages": 50,
     }, rebuild)
 
@@ -317,7 +317,7 @@ async def test_config_post_save(config):
 @pytest.mark.asyncio
 async def test_config_post_validation():
     """api_config_post rejects empty server_url."""
-    cfg = FakeConfig({"server_url": "http://old:9330"})
+    cfg = FakeConfig({"server_url": "http://old:4567"})
 
     result = await api_config_post(cfg, {"server_url": ""}, None)
     assert isinstance(result, tuple)

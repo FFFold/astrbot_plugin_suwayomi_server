@@ -2,8 +2,8 @@
   "server_url": {
     "description": "Suwayomi-Server 地址",
     "type": "string",
-    "default": "http://localhost:9330",
-    "hint": "例如 http://192.168.1.100:9330"
+    "default": "http://localhost:4567",
+    "hint": "例如 http://192.168.1.100:4567。请勿随意更换suwayomi-server实例，否则会导致ID混乱。参阅https://github.com/FFFold/astrbot_plugin_suwayomi_server/blob/main/docs/setup.md"
   },
   "auth_mode": {
     "description": "认证模式",

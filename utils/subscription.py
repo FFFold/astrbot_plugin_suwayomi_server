@@ -15,9 +15,13 @@ class SubscriptionManager:
         data = await self._plugin.get_kv_data(KV_KEY, {})
         if not isinstance(data, dict):
             return {}
+        return data
+
+    async def run_migration(self):
+        """Check for legacy subscription data and migrate to new format. Safe to call multiple times."""
+        data = await self._load()
         if self._migrate(data):
             await self._save(data)
-        return data
 
     @staticmethod
     def _migrate(data: dict[str, Any]) -> bool:

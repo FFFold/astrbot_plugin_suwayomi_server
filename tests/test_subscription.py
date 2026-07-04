@@ -164,6 +164,7 @@ async def test_auto_push_backward_compat(mgr):
         }
     }
     await mgr._save(data)
+    await mgr.run_migration()
     loaded = await mgr._load()
     subs = loaded["42"]["subscribers"]
     assert isinstance(subs, dict)
@@ -186,6 +187,7 @@ async def test_auto_push_backward_compat_no_auto_push(mgr):
         }
     }
     await mgr._save(data)
+    await mgr.run_migration()
     loaded = await mgr._load()
     subs = loaded["42"]["subscribers"]
     assert isinstance(subs, dict)

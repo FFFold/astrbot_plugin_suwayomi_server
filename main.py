@@ -109,6 +109,7 @@ class SuwayomiPlugin(Star):
     @filter.on_astrbot_loaded()
     async def on_loaded(self):
         """Start background update task after AstrBot event loop is running."""
+        await self.sub_mgr.run_migration()
         interval = self.config.get("check_interval", 60) * 60
         self._bg_task = asyncio.create_task(self._update_loop(interval))
 

@@ -174,22 +174,7 @@ git clone https://github.com/FFFold/astrbot_suwayomi_server.git
 
 ### 配置
 
-在 AstrBot WebUI 的插件管理中找到「Suwayomi 漫画助手」，点击设置：
-
-| 配置项 | 填写 |
-|--------|------|
-| `server_url` | `http://你的Suwayomi地址:端口`（如 `http://localhost:4567`） |
-| `auth_mode` | `none`（如果 Suwayomi 没开认证）/ `basic` / `jwt` |
-| `username` | 认证用户名（auth_mode 为 none 时留空） |
-| `password` | 认证密码（auth_mode 为 none 时留空） |
-| `check_interval` | 更新检查间隔，单位分钟，默认 `60` |
-| `max_pages` | 单次阅读最大发送页数，默认 `30` |
-| `send_mode` | `image`（直接发图）或 `forward`（合并转发，仅 QQ） |
-| `default_source_id` | 默认搜索源 ID，`0` 搜索全部源 |
-| `chapter_cache_hours` | 章节缓存时间（小时），默认 `6`。`0` 不自动刷新，`-1` 每次都刷新 |
-| `download_format` | 下载打包格式，`zip`（ZIP 压缩包）/ `pdf`（PDF 文档）/ `cbz`（CBZ 漫画），默认 `zip` |
-| `temp_dir` | 临时文件目录，留空使用系统默认。Docker 环境请设置为 AstrBot 和聊天平台容器共享的目录，例如 `/AstrBot/data/temp` |
-| `auto_push_mode` | 自动推送模式，`image`（图片，复用阅读逻辑）/ `file`（文件，复用下载逻辑），默认 `image` |
+在 AstrBot WebUI 的插件管理中找到「Suwayomi 漫画助手」，点击设置。完整配置项说明见 [README 配置表](../README.md#%E9%85%8D%E7%BD%AE)。
 
 **网络连通性**：AstrBot 所在机器必须能访问 Suwayomi-Server 地址。如果 AstrBot 和 Suwayomi 都在同一台机器上，用 `http://localhost:4567`。如果 AstrBot 在 Docker 中，需要用宿主机 IP 或 Docker 网络地址。
 

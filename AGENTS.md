@@ -17,7 +17,7 @@
 ## Commands
 
 ```bash
-# Unit tests (113 tests, no network needed)
+# Unit tests (no network needed)
 uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_subscription.py tests/test_web_api.py tests/test_batch_subscribe.py tests/test_push.py -v
 
 # Integration tests (requires live Suwayomi-Server)
@@ -43,7 +43,7 @@ main.py (SuwayomiPlugin)
   └── pages/dashboard/ (WebUI: 仪表盘 + 订阅管理 + 配置)
 ```
 
-- `main.py`: Plugin entry, all 14 commands under `@filter.command_group("漫画")`, background update loop, WebUI API registration
+- `main.py`: Plugin entry, all commands under `@filter.command_group("漫画")`, background update loop, WebUI API registration
 - `suwayomi/client.py`: All Suwayomi interaction via `POST /api/graphql`; supports none/basic/jwt auth
 - `suwayomi/models.py`: Pure dataclasses with `from_dict()` factory methods
 - `utils/pack.py`: Pack images into ZIP, CBZ, or PDF files; `parse_download_args()` for command arg parsing
@@ -99,15 +99,7 @@ main.py (SuwayomiPlugin)
 
 ## Config Options
 
-Key non-obvious config values (in `_conf_schema.json`):
-- `image_fetch_mode`: `url` (direct reference) or `download` (download to temp first, more reliable)
-- `download_concurrency`: Parallel download count (default 6)
-- `download_retries`: Retry count per image with exponential backoff (default 3)
-- `download_format`: `zip` (ZIP archive), `pdf` (PDF document), or `cbz` (comic book archive). Default `zip`.
-- `send_mode`: `image` (direct) or `forward` (QQ merged forward, uses `Comp.Nodes` wrapper)
-- `chapter_cache_hours`: Hours before auto-refreshing chapters from source (default 6). `0` = never auto-refresh, `-1` = always refresh
-- `auto_push_mode`: `image` (inline images, reuses read logic) or `file` (packaged file, reuses download logic). Default `image`.
-- `temp_dir`: Custom temp directory for image downloads. Leave empty for system default. Set to shared directory for Docker environments.
+完整配置项参考 [README 配置表](README.md#%E9%85%8D%E7%BD%AE)。
 
 ## Adding New Commands
 

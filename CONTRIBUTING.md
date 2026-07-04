@@ -89,7 +89,7 @@ astrbot_plugin_suwayomi_server/
 │   ├── test_subscription.py   # 订阅管理单元测试
 │   ├── test_web_api.py        # WebUI API handler 单元测试
 │   ├── test_batch_subscribe.py # 批量订阅参数解析单元测试
-│   ├── test_push.py           # 自动推送单元测试（14 个）
+│   ├── test_push.py           # 自动推送单元测试
 │   ├── test_live_api.py       # Suwayomi 客户端集成测试
 │   └── test_live_web_api.py   # WebUI API handler 集成测试
 ├── docs/
@@ -250,18 +250,18 @@ SUWAYOMI_URL=http://localhost:4567 uv run pytest tests/test_live_api.py -v -s
 
 ## 文档更新
 
-修改以下内容时，请同步更新文档：
+本项目采用文档责任分层，同一信息只在一个地方维护：
 
-| 修改内容 | 需要更新的文档 |
-|---------|---------------|
-| 新增/修改命令 | `README.md`, `AGENTS.md`, `main.py` 帮助文本 |
-| 新增/修改配置 | `_conf_schema.json`, `docs/setup.md`, `AGENTS.md` |
-| 新增/修改 API | `docs/dev/suwayomi-api.md` |
-| 新增/修改 WebUI | `web/api.py`, `pages/dashboard/`, `AGENTS.md`, `docs/dev/development.md` |
-| 架构变更 | `docs/dev/development.md`, `AGENTS.md` |
-| 版本发布 | `metadata.yaml`, `CHANGELOG.md` |
+| 修改内容 | 唯一需要更新的文档 |
+|---------|------------------|
+| 新增/修改命令 | `main.py` docstring + `README.md` 命令表 |
+| 新增/修改配置 | `_conf_schema.json` + `README.md` 配置表 |
+| 新增/修改 API | `suwayomi/client.py` + `docs/dev/suwayomi-api.md` |
+| 新增/修改 WebUI | `web/api.py` + `pages/dashboard/` + `AGENTS.md` + `docs/dev/development.md` |
+| 架构变更 | `AGENTS.md` |
+| 版本发布 | `metadata.yaml` + `CHANGELOG.md` + `README.md` badge |
 
-> 完整的文件更新清单见 [docs/dev/doc-update-checklist.md](docs/dev/doc-update-checklist.md)。
+> 完整清单见 [docs/dev/doc-update-checklist.md](docs/dev/doc-update-checklist.md)。
 
 ## 常见问题
 
@@ -282,7 +282,7 @@ SUWAYOMI_URL=http://localhost:4567 uv run pytest tests/test_live_api.py -v -s
 
 1. 在 `_conf_schema.json` 中添加配置定义
 2. 在 `main.py` 的 `__init__` 或使用处读取配置：`self.config.get("key", default)`
-3. 更新 `docs/setup.md` 配置表格
+3. 更新 `README.md` 配置表
 
 ### Q: 版本号在哪里更新？
 

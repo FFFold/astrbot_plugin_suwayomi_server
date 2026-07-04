@@ -79,6 +79,7 @@ class SuwayomiPlugin(Star):
         self._search_cache: dict[str, tuple[float, dict[str, Manga]]] = {}
         self._update_lock = asyncio.Lock()
         self._bg_task: asyncio.Task | None = None
+        self._uin_cache: dict[str, str] = {}
 
         logger.info(f"[{PLUGIN_NAME}] 插件已加载 | 服务器: {config.get('server_url')} | 缓存: {config.get('chapter_cache_hours', 6)}h | 检查间隔: {config.get('check_interval', 60)}min")
 
@@ -862,6 +863,28 @@ class SuwayomiPlugin(Star):
         platform = self.context.get_platform_inst(pid)
         return platform is not None and platform.meta().name == "aiocqhttp"
 
+    async def _get_bot_uin(self, umo: str) -> str:
+        """Get the bot's own QQ number for a conversation (aiocqhttp only).
+
+        Uses get_login_info API, cached per platform instance.
+        Falls back to '0' on error (will fail on strict Napcat versions).
+        """
+        pid = umo.split(":", 1)[0]
+        cached = self._uin_cache.get(pid)
+        if cached:
+            return cached
+        platform = self.context.get_platform_inst(pid)
+        if platform is None or platform.meta().name != "aiocqhttp":
+            return "0"
+        try:
+            result = await platform.bot.call_action("get_login_info")
+            data = result.get("data", result)
+            uin = str(data.get("user_id", "0"))
+        except Exception:
+            return "0"
+        self._uin_cache[pid] = uin
+        return uin
+
     async def _push_chapter_images(self, umo: str, title: str, chapter: Chapter):
         """Push a chapter as images to a conversation (reuses read send logic)."""
         num_label = _fmt_chapter_num(chapter.chapter_number)
@@ -890,20 +913,21 @@ class SuwayomiPlugin(Star):
 
             try:
                 if send_mode == "forward" and self._is_aiocqhttp_target(umo):
+                    bot_uin = await self._get_bot_uin(umo)
                     nodes = [Comp.Node(
-                        uin="0",
+                        uin=bot_uin,
                         name=f"「{title}」第 {num_label} 话",
                         content=[Comp.Plain(f"📖「{title}」第 {num_label} 话")],
                     )]
                     for i in range(len(page_urls)):
                         nodes.append(Comp.Node(
-                            uin="0",
+                            uin=bot_uin,
                             name=f"第 {num_label} 话 - 第 {i + 1} 页",
                             content=[_img(i)],
                         ))
                     if total_pages > max_pages:
                         nodes.append(Comp.Node(
-                            uin="0",
+                            uin=bot_uin,
                             name="提示",
                             content=[Comp.Plain(f"... 还有 {total_pages - max_pages} 页，请使用「漫画 阅读」查看")],
                         ))

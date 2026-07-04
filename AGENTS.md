@@ -17,8 +17,8 @@
 ## Commands
 
 ```bash
-# Unit tests (95 tests, no network needed)
-uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_subscription.py tests/test_web_api.py tests/test_batch_subscribe.py -v
+# Unit tests (109 tests, no network needed)
+uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_subscription.py tests/test_web_api.py tests/test_batch_subscribe.py tests/test_push.py -v
 
 # Integration tests (requires live Suwayomi-Server)
 uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s

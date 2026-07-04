@@ -38,7 +38,7 @@ uv add --dev pytest pytest-asyncio
 
 ```bash
 # 单元测试（无需网络）
-uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_subscription.py tests/test_web_api.py tests/test_batch_subscribe.py -v
+uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_subscription.py tests/test_web_api.py tests/test_batch_subscribe.py tests/test_push.py -v
 
 # 集成测试（需要 Suwayomi-Server）
 uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
@@ -89,6 +89,7 @@ astrbot_plugin_suwayomi_server/
 │   ├── test_subscription.py   # 订阅管理单元测试
 │   ├── test_web_api.py        # WebUI API handler 单元测试
 │   ├── test_batch_subscribe.py # 批量订阅参数解析单元测试
+│   ├── test_push.py           # 自动推送单元测试（14 个）
 │   ├── test_live_api.py       # Suwayomi 客户端集成测试
 │   └── test_live_web_api.py   # WebUI API handler 集成测试
 ├── docs/
@@ -123,7 +124,7 @@ git checkout -b fix/your-bug-fix
 
 ```bash
 # 确保所有单元测试通过
-uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_subscription.py tests/test_web_api.py tests/test_batch_subscribe.py -v
+uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_subscription.py tests/test_web_api.py tests/test_batch_subscribe.py tests/test_push.py -v
 
 # 语法检查
 python -c "import ast; ast.parse(open('main.py', encoding='utf-8').read()); print('OK')"

@@ -112,7 +112,7 @@ astrbot_suwayomi_server/
 #### `utils/subscription.py` — 订阅管理
 
 - 通过 AstrBot 的 `get_kv_data()` / `put_kv_data()` 持久化
-- 数据结构：`{manga_id: {title, source_id, latest_chapter_id, subscribers: [umo, ...], auto_push: {umo: {enabled: bool}}}}`
+- 数据结构：`{manga_id: {title, source_id, latest_chapter_id, subscribers: {umo: {push_enabled: bool}}}}`
 - `umo`（`unified_msg_origin`）是 AstrBot 的会话唯一标识
 - `delete_manga(manga_id)` — 删除漫画的全部订阅者（公开方法）
 

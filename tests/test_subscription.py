@@ -153,12 +153,77 @@ async def test_set_auto_push_all(mgr):
 
 @pytest.mark.asyncio
 async def test_auto_push_backward_compat(mgr):
-    """Old data without auto_push field should default to disabled."""
-    await mgr.subscribe(42, "One Piece", 100, "user1")
-    data = await mgr._load()
-    if "auto_push" in data.get("42", {}):
-        del data["42"]["auto_push"]
+    """Old list-format subscribers with separate auto_push should migrate correctly."""
+    data = {
+        "42": {
+            "title": "One Piece",
+            "source_id": 100,
+            "latest_chapter_id": 0,
+            "subscribers": ["user1", "user2"],
+            "auto_push": {"user1": {"enabled": True}},
+        }
+    }
     await mgr._save(data)
+    await mgr.run_migration()
+    loaded = await mgr._load()
+    subs = loaded["42"]["subscribers"]
+    assert isinstance(subs, dict)
+    assert subs["user1"]["push_enabled"] is True
+    assert subs["user2"]["push_enabled"] is False
+    assert "auto_push" not in loaded["42"]
+    assert await mgr.get_auto_push(42, "user1") is True
+    assert await mgr.get_auto_push(42, "user2") is False
+
+
+@pytest.mark.asyncio
+async def test_auto_push_backward_compat_no_auto_push(mgr):
+    """Legacy data without auto_push field should migrate with all push_enabled=False."""
+    data = {
+        "42": {
+            "title": "Naruto",
+            "source_id": 200,
+            "latest_chapter_id": 0,
+            "subscribers": ["alice", "bob"],
+        }
+    }
+    await mgr._save(data)
+    await mgr.run_migration()
+    loaded = await mgr._load()
+    subs = loaded["42"]["subscribers"]
+    assert isinstance(subs, dict)
+    assert subs["alice"]["push_enabled"] is False
+    assert subs["bob"]["push_enabled"] is False
+    assert "auto_push" not in loaded["42"]
+    assert await mgr.get_auto_push(42, "alice") is False
+    assert await mgr.get_auto_push(42, "bob") is False
+
+
+@pytest.mark.asyncio
+async def test_set_auto_push_ignored_for_missing_manga(mgr):
+    """set_auto_push on nonexistent manga should not raise or alter data."""
+    await mgr.subscribe(1, "A", 10, "user1")
+    await mgr.set_auto_push(999, "user1", True)
+    assert await mgr.get_auto_push(1, "user1") is False
+
+
+@pytest.mark.asyncio
+async def test_set_auto_push_ignored_for_non_subscribed_umo(mgr):
+    """set_auto_push for a umo not in subscribers should leave data unchanged."""
+    await mgr.subscribe(1, "A", 10, "user1")
+    await mgr.set_auto_push(1, "stranger", True)
+    assert await mgr.get_auto_push(1, "user1") is False
+    assert await mgr.get_auto_push(1, "stranger") is False
+
+
+@pytest.mark.asyncio
+async def test_unsubscribe_removes_push_state(mgr):
+    """Unsubscribing a user should remove their push state along with subscriber entry."""
+    await mgr.subscribe(42, "One Piece", 100, "user1")
+    await mgr.set_auto_push(42, "user1", True)
+    assert await mgr.get_auto_push(42, "user1") is True
+    await mgr.unsubscribe(42, "user1")
+    subs = await mgr.get_subscriptions("user1")
+    assert len(subs) == 0
     assert await mgr.get_auto_push(42, "user1") is False
 
 

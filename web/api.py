@@ -64,7 +64,7 @@ async def api_status(
         all_subs = await sub_mgr.get_all_subscriptions()
         subscription_count = len(all_subs)
         for info in all_subs.values():
-            subscriber_total += len(info.get("subscribers", []))
+            subscriber_total += len(info.get("subscribers", {}))
     except Exception:
         pass
 
@@ -98,9 +98,9 @@ async def api_subscriptions(
     for manga_id_str, info in all_subs.items():
         manga_id = int(manga_id_str)
         source_id = info.get("source_id", 0)
-        auto_push = info.get("auto_push", {})
+        subscribers = info.get("subscribers", {})
         push_enabled_count = sum(
-            1 for v in auto_push.values() if isinstance(v, dict) and v.get("enabled")
+            1 for s in subscribers.values() if s.get("push_enabled")
         )
         result.append({
             "manga_id": manga_id,
@@ -108,10 +108,9 @@ async def api_subscriptions(
             "source_id": source_id,
             "source_name": source_map.get(str(source_id), f"源{source_id}"),
             "latest_chapter_id": info.get("latest_chapter_id", 0),
-            "subscribers": info.get("subscribers", []),
-            "subscriber_count": len(info.get("subscribers", [])),
+            "subscribers": subscribers,
+            "subscriber_count": len(subscribers),
             "push_enabled_count": push_enabled_count,
-            "auto_push": auto_push,
         })
 
     return {"subscriptions": result}

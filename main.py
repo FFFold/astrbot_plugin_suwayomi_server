@@ -1233,7 +1233,7 @@ class SuwayomiPlugin(Star):
             except Exception as e:
                 logger.warning(f"[{PLUGIN_NAME}] 触发书库更新失败: {e}")
 
-            updated_mangas: list[tuple[int, str, list[str], list[Chapter], list[str]]] = []
+            updated_mangas: list[tuple[int, str, list[str], list[Chapter], dict]] = []
 
             cache_hours = self.config.get("chapter_cache_hours", 6)
             if cache_hours < -1:
@@ -1243,7 +1243,7 @@ class SuwayomiPlugin(Star):
                 manga_id = int(manga_id_str)
                 title = info.get("title", f"ID:{manga_id}")
                 latest_stored = info.get("latest_chapter_id", 0)
-                subscribers = info.get("subscribers", [])
+                subscribers = info.get("subscribers", {})
 
                 if not subscribers:
                     continue

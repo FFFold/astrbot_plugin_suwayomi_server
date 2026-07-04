@@ -181,15 +181,13 @@ async function loadSubscriptions() {
 function flattenSubscriptions(subs) {
   const rows = [];
   for (const s of subs) {
-    for (const umo of s.subscribers) {
-      const ap = s.auto_push[umo];
-      const pushEnabled = !!(ap && ap.enabled);
+    for (const [umo, info] of Object.entries(s.subscribers)) {
       rows.push({
         manga_id: s.manga_id,
         title: s.title,
         source_name: s.source_name,
         umo,
-        push_enabled: pushEnabled,
+        push_enabled: !!(info && info.push_enabled),
       });
     }
   }

@@ -216,6 +216,18 @@ async def test_set_auto_push_ignored_for_non_subscribed_umo(mgr):
 
 
 @pytest.mark.asyncio
+async def test_unsubscribe_removes_push_state(mgr):
+    """Unsubscribing a user should remove their push state along with subscriber entry."""
+    await mgr.subscribe(42, "One Piece", 100, "user1")
+    await mgr.set_auto_push(42, "user1", True)
+    assert await mgr.get_auto_push(42, "user1") is True
+    await mgr.unsubscribe(42, "user1")
+    subs = await mgr.get_subscriptions("user1")
+    assert len(subs) == 0
+    assert await mgr.get_auto_push(42, "user1") is False
+
+
+@pytest.mark.asyncio
 async def test_delete_manga(mgr):
     """delete_manga removes entire manga entry."""
     await mgr.subscribe(42, "One Piece", 100, "user1")

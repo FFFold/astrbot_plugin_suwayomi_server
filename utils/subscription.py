@@ -19,12 +19,17 @@ class SubscriptionManager:
     @staticmethod
     def _migrate(data: dict[str, Any]):
         """Migrate old list-format subscribers to dict format."""
-        for info in data.values():
+        for key in list(data.keys()):
+            info = data[key]
+            if not isinstance(info, dict):
+                data.pop(key, None)
+                continue
             subs = info.get("subscribers")
             if isinstance(subs, list):
-                auto_push = info.pop("auto_push", {})
+                raw_auto_push = info.pop("auto_push", {})
+                auto_push = raw_auto_push if isinstance(raw_auto_push, dict) else {}
                 info["subscribers"] = {
-                    umo: {"push_enabled": auto_push.get(umo, {}).get("enabled", False)}
+                    umo: {"push_enabled": auto_push.get(umo, {}).get("enabled", False) if isinstance(auto_push.get(umo), dict) else False}
                     for umo in subs
                 }
 

@@ -181,7 +181,7 @@ async function loadSubscriptions() {
 function flattenSubscriptions(subs) {
   const rows = [];
   for (const s of subs) {
-    for (const [umo, info] of Object.entries(s.subscribers)) {
+    for (const [umo, info] of Object.entries(s.subscribers || {})) {
       rows.push({
         manga_id: s.manga_id,
         title: s.title,

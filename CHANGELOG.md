@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [Unreleased]
+
+### Changed
+
+- **订阅数据结构重构** — 将 `subscribers` 从 `list[str]` 改为 `dict[str, dict]`，`auto_push` 字段合并到 `subscribers` 中，消除订阅人数 vs 推送开启人数不一致的 bug。
+  - 新结构：`subscribers: {umo: {push_enabled: bool}}`，存在即订阅
+  - 取消订阅时自动清除所有关联状态
+  - 自动迁移旧格式（list → dict），无需手动干预
+  - `set_auto_push` 和 `is_auto_push_enabled` 等公开方法接口不变
+
 ## [0.4.4] - 2026-07-04
 
 ### Fixed

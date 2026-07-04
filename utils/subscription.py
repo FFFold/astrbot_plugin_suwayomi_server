@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from astrbot.api import logger
+
 KV_KEY = "suwayomi_subscriptions"
 
 
@@ -13,25 +15,33 @@ class SubscriptionManager:
         data = await self._plugin.get_kv_data(KV_KEY, {})
         if not isinstance(data, dict):
             return {}
-        self._migrate(data)
+        if self._migrate(data):
+            await self._save(data)
         return data
 
     @staticmethod
-    def _migrate(data: dict[str, Any]):
-        """Migrate old list-format subscribers to dict format."""
+    def _migrate(data: dict[str, Any]) -> bool:
+        """Migrate old list-format subscribers to dict format. Returns True if any migration occurred."""
+        migrated = False
         for key in list(data.keys()):
             info = data[key]
             if not isinstance(info, dict):
                 data.pop(key, None)
+                migrated = True
                 continue
             subs = info.get("subscribers")
             if isinstance(subs, list):
+                logger.info(f"[suwayomi_subscription] Migrating subscription data for manga {key}")
                 raw_auto_push = info.pop("auto_push", {})
                 auto_push = raw_auto_push if isinstance(raw_auto_push, dict) else {}
                 info["subscribers"] = {
                     umo: {"push_enabled": auto_push.get(umo, {}).get("enabled", False) if isinstance(auto_push.get(umo), dict) else False}
                     for umo in subs
                 }
+                migrated = True
+        if migrated:
+            logger.info("[suwayomi_subscription] Subscription data migration completed")
+        return migrated
 
     async def _save(self, data: dict[str, Any]):
         await self._plugin.put_kv_data(KV_KEY, data)

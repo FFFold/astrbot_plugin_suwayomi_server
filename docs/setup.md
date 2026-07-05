@@ -49,10 +49,8 @@
    ```
 
 4. 验证服务运行：
-   ```bash
-   curl http://localhost:4567/api/v1/settings/about
-   ```
-   返回 JSON 信息即表示成功。
+
+    浏览器打开 http://localhost:4567/ ，能正常访问WebUI即表示成功。
 
 ### 方式二：Docker 命令
 
@@ -120,52 +118,31 @@ docker run -d \
 
 ## 第二步：安装漫画源扩展
 
-Suwayomi 本身不包含漫画内容，需要安装「扩展」来连接漫画源网站。
+Suwayomi 本身不包含漫画内容，需要安装「扩展」来连接漫画源网站。而Suwayomi 本身也不包含扩展库，所以需要先手动添加。
 
 ### 操作步骤
 
 1. 打开 Suwayomi WebUI：`http://你的服务器地址:4567`
 
-2. 点击左侧菜单的「扩展」（Extensions）
+2. 点击左侧菜单的「设置」→「浏览」→「扩展库」，添加合适的扩展库（如[keiyoushi](https://keiyoushi.github.io/docs/guides/getting-started)中提供的库链接）
 
-3. 浏览可用扩展列表，找到你想用的源，点击「安装」：
+3. 点击左侧菜单的「浏览」（Browse），再点击上方「扩展」标签
+
+4. 浏览可用扩展列表，找到你想用的源，点击「安装」：
    - **中文用户推荐**：拷贝漫画、再漫画、Komiic 等
    - **英文用户推荐**：MangaDex、MangaPlus 等
 
-4. 安装完成后，扩展状态变为「已安装」
+5. 安装完成后，扩展状态变为「已安装」
 
-5. 部分源可能需要额外配置（如语言过滤），点击扩展名称可查看详情
-
-### 添加额外扩展仓库（可选）
-
-如果默认仓库中找不到需要的源，可以添加第三方扩展仓库：
-
-在 Suwayomi WebUI 的设置中找到「扩展仓库」（Extension Repos），添加仓库 URL。
-
-或通过 Docker 环境变量：
-```yaml
-environment:
-  - 'EXTENSION_REPOS=["https://example.com/repo"]'
-```
-
-### 验证源安装
-
-安装扩展后，可以通过以下方式验证：
-
-```bash
-# 查询已安装的源列表
-curl http://localhost:4567/api/graphql \
-  -H "Content-Type: application/json" \
-  -d '{"query":"{ sources { nodes { id name displayName lang } } }"}'
-```
-
-返回的 JSON 应包含你安装的源。记住源的 `id`（一串大数字），后面配置插件时可能用到。
+6. 安装扩展后，可在 Suwayomi-Server 的 WebUI 中调整插件的相关设置，如登录状态、语言过滤等。
 
 ---
 
 ## 第三步：配置 AstrBot 插件
 
 ### 安装插件
+
+在Astrbot 插件市场中点击安装本插件，或Git安装：
 
 ```bash
 cd AstrBot/data/plugins
@@ -174,9 +151,9 @@ git clone https://github.com/FFFold/astrbot_suwayomi_server.git
 
 ### 配置
 
-在 AstrBot WebUI 的插件管理中找到「Suwayomi 漫画助手」，点击设置。完整配置项说明见 [README 配置表](../README.md#%E9%85%8D%E7%BD%AE)。
+在 AstrBot WebUI 的插件管理中找到「Suwayomi 漫画助手」，点击设置。完整配置项说明见 [README 配置表](../README.md#%EF%B8%8F-%E9%85%8D%E7%BD%AE)。
 
-**网络连通性**：AstrBot 所在机器必须能访问 Suwayomi-Server 地址。如果 AstrBot 和 Suwayomi 都在同一台机器上，用 `http://localhost:4567`。如果 AstrBot 在 Docker 中，需要用宿主机 IP 或 Docker 网络地址。
+**网络连通性**：AstrBot 所在机器必须能访问 Suwayomi-Server 地址。如果 AstrBot 和 Suwayomi 都在同一台机器上，用 `http://localhost:4567`。如果 AstrBot 运行在 Docker 中，则需要使用宿主机 IP 或 Docker 网桥 IP 确保 Suwayomi-Server 对 Astrbot 可达。
 
 ### 填写示例
 

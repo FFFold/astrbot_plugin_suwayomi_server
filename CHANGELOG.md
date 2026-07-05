@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
-## [Unreleased]
+## [0.4.6] - 2026-07-05
 
 ### Fixed
 
@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 ### Changed
 
+- **配置教程更新** — `docs/setup.md` 简化验证步骤，补充扩展库添加说明。
 - **API 文档更新** — `docs/dev/suwayomi-api.md` 中 `updateLibrary` mutation 更正为 `updateStatus { jobsInfo { isRunning } }`。
 - **`api_status()` 错误日志** — `get_sources()`、`get_library_mangas()`、`get_all_subscriptions()` 三个调用的异常从静默忽略改为记录 `logger.warning()`。
 

@@ -81,6 +81,8 @@ main.py (SuwayomiPlugin)
 
 14. **Sandbox iframe blocks native dialogs**: AstrBot Plugin Pages run in a sandboxed iframe with `allow-scripts allow-forms allow-downloads` (no `allow-modals`). Native `confirm()`, `alert()`, `prompt()` are silently blocked — `confirm()` returns `false` without showing a dialog. Use custom DOM-based modal dialogs instead (see `showConfirm()` in `app.js`).
 
+15. **`LibraryUpdateStatus` has no `state` or `isRunning` field directly**: The `updateLibrary` mutation's `updateStatus` field returns a `LibraryUpdateStatus` type with fields `categoryUpdates`, `jobsInfo`, and `mangaUpdates`. To check if the updater is running, use `updateStatus { jobsInfo { isRunning } }`. Both `{updateStatus{state}}` and `{updateStatus{isRunning}}` will fail with `FieldUndefined` validation errors.
+
 ## Key Helper Methods
 
 - `_check_updates(force=False)` — Check all subscriptions for new chapters. `force=True` bypasses chapter cache and syncs title from source. Used by both manual `/漫画 更新` and background update loop (both always force). Pushes notifications to all subscribers.

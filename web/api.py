@@ -51,22 +51,22 @@ async def api_status(
         sources = await client.get_sources()
         source_count = len(sources)
         connected = True
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[{PLUGIN_NAME}] api_status: get_sources() 失败: {e}")
 
     try:
         mangas = await client.get_library_mangas()
         library_count = len(mangas)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[{PLUGIN_NAME}] api_status: get_library_mangas() 失败: {e}")
 
     try:
         all_subs = await sub_mgr.get_all_subscriptions()
         subscription_count = len(all_subs)
         for info in all_subs.values():
             subscriber_total += len(info.get("subscribers", {}))
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[{PLUGIN_NAME}] api_status: get_all_subscriptions() 失败: {e}")
 
     last_ts = await get_kv_data("suwayomi_last_update_check", 0)
 

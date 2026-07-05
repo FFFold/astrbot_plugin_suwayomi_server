@@ -146,7 +146,7 @@ mutation($ids: [Int!]!) {
 ```graphql
 mutation {
   updateLibrary(input: { categories: null }) {
-    updateStatus { isRunning }
+    updateStatus { jobsInfo { isRunning } }
   }
 }
 ```

@@ -156,7 +156,7 @@ class SuwayomiClient:
 
     async def update_library(self) -> None:
         await self._raw_query(
-            'mutation{updateLibrary(input:{categories:null}){updateStatus{state}}}'
+            'mutation{updateLibrary(input:{categories:null}){updateStatus{jobsInfo{isRunning}}}}'
         )
 
     async def get_library_mangas(self) -> list[Manga]:

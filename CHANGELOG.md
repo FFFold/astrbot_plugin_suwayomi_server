@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [Unreleased]
+
+### Fixed
+
+- **`updateLibrary` GraphQL 字段错误** — `update_library()` 查询了 `{updateStatus{state}}`，但 `LibraryUpdateStatus` 类型没有 `state` 字段——`isRunning` 存在于 `jobsInfo` 子字段中。修复为 `{updateStatus{jobsInfo{isRunning}}}`。此前错误被 `_check_updates()` 中的 `except` 静默吞掉，导致"检查更新"返回假成功。同时给 `api_status()` 中的三个 `except Exception: pass` 添加了日志输出，避免未来连接问题无法排查。
+
+### Changed
+
+- **API 文档更新** — `docs/dev/suwayomi-api.md` 中 `updateLibrary` mutation 更正为 `updateStatus { jobsInfo { isRunning } }`。
+- **`api_status()` 错误日志** — `get_sources()`、`get_library_mangas()`、`get_all_subscriptions()` 三个调用的异常从静默忽略改为记录 `logger.warning()`。
+
 ## [0.4.5] - 2026-07-04
 
 ### Changed

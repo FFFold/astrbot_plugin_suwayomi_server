@@ -1,4 +1,4 @@
-"""Tests for auto-push (_push_chapter_images, _is_aiocqhttp_target, _get_bot_uin).
+"""Tests for auto-push (_push_chapter_images, _is_aiocqhttp_target).
 
 Uses a PushTester class that replicates the push logic.
 CompSpy tracks what Comp types were created to avoid MagicMock ambiguity.
@@ -54,30 +54,12 @@ class PushTester:
     def __init__(self, context, config, comp_spy):
         self.context = context
         self.config = config
-        self._uin_cache: dict[str, str] = {}
         self.c = comp_spy  # Comp-like spy
 
     def _is_aiocqhttp_target(self, umo: str) -> bool:
         pid = umo.split(":", 1)[0]
         platform = self.context.get_platform_inst(pid)
         return platform is not None and platform.meta().name == "aiocqhttp"
-
-    async def _get_bot_uin(self, umo: str) -> str:
-        pid = umo.split(":", 1)[0]
-        cached = self._uin_cache.get(pid)
-        if cached:
-            return cached
-        platform = self.context.get_platform_inst(pid)
-        if platform is None or platform.meta().name != "aiocqhttp":
-            return "0"
-        try:
-            result = await platform.bot.call_action("get_login_info")
-            data = result.get("data", result)
-            uin = str(data.get("user_id", "0"))
-        except Exception:
-            return "0"
-        self._uin_cache[pid] = uin
-        return uin
 
     async def _push_chapter_images(self, umo, title, chapter, pages):
         num_label = _fmt_chapter_num(chapter.chapter_number)
@@ -95,21 +77,20 @@ class PushTester:
 
         try:
             if send_mode == "forward" and self._is_aiocqhttp_target(umo):
-                bot_uin = await self._get_bot_uin(umo)
                 nodes = [self.c.Node(
-                    uin=bot_uin,
+                    uin="0",
                     name=f"「{title}」第 {num_label} 话",
                     content=[self.c.Plain(f"\U0001f4d6「{title}」第 {num_label} 话")],
                 )]
                 for i in range(len(page_urls)):
                     nodes.append(self.c.Node(
-                        uin=bot_uin,
+                        uin="0",
                         name=f"第 {num_label} 话 - 第 {i + 1} 页",
                         content=[_img(i)],
                     ))
                 if total_pages > max_pages:
                     nodes.append(self.c.Node(
-                        uin=bot_uin,
+                        uin="0",
                         name="提示",
                         content=[self.c.Plain(f"... 还有 {total_pages - max_pages} 页")],
                     ))
@@ -147,7 +128,6 @@ def mock_context():
 def aiocqhttp_platform():
     p = MagicMock()
     p.meta.return_value.name = "aiocqhttp"
-    p.bot.call_action = AsyncMock(return_value={"user_id": 123456789})
     return p
 
 
@@ -214,62 +194,6 @@ class TestPushChapterImages:
 
         assert mock_context.send_message.await_count == 2
         assert any(c["type"] == "FallbackText" for c in spy.created)
-
-    @pytest.mark.asyncio
-    async def test_forward_node_uses_bot_uin(self, mock_context, aiocqhttp_platform, spy, chapter):
-        """Forward nodes use bot's real QQ number."""
-        mock_context.get_platform_inst = MagicMock(return_value=aiocqhttp_platform)
-        tester = PushTester(mock_context, FakeConfig(send_mode="forward", max_pages=30), spy)
-        await tester._push_chapter_images("QQ:GroupMessage:999", "Test", chapter, _fake_pages(2))
-
-        # All Node calls should use the bot uin, not "0"
-        nodes = [c for c in spy.created if c["type"] == "Node"]
-        assert len(nodes) == 3  # title + 2 pages
-        for n in nodes:
-            assert n["uin"] == "123456789"
-
-
-class TestGetBotUin:
-
-    @pytest.mark.asyncio
-    async def test_aiocqhttp_returns_uin(self, mock_context, aiocqhttp_platform):
-        mock_context.get_platform_inst = MagicMock(return_value=aiocqhttp_platform)
-        tester = PushTester(mock_context, FakeConfig(), CompSpy())
-        assert await tester._get_bot_uin("QQ:GroupMessage:999") == "123456789"
-        aiocqhttp_platform.bot.call_action.assert_awaited_once_with("get_login_info")
-
-    @pytest.mark.asyncio
-    async def test_non_aiocqhttp_returns_zero(self, mock_context):
-        p = MagicMock(); p.meta.return_value.name = "telegram"
-        mock_context.get_platform_inst = MagicMock(return_value=p)
-        tester = PushTester(mock_context, FakeConfig(), CompSpy())
-        assert await tester._get_bot_uin("tg:GroupMessage:999") == "0"
-
-    @pytest.mark.asyncio
-    async def test_no_platform_returns_zero(self, mock_context):
-        mock_context.get_platform_inst = MagicMock(return_value=None)
-        tester = PushTester(mock_context, FakeConfig(), CompSpy())
-        assert await tester._get_bot_uin("unknown:Private:123") == "0"
-
-    @pytest.mark.asyncio
-    async def test_caching(self, mock_context, aiocqhttp_platform):
-        mock_context.get_platform_inst = MagicMock(return_value=aiocqhttp_platform)
-        tester = PushTester(mock_context, FakeConfig(), CompSpy())
-        assert await tester._get_bot_uin("QQ:GroupMessage:999") == "123456789"
-        assert await tester._get_bot_uin("QQ:GroupMessage:999") == "123456789"
-        aiocqhttp_platform.bot.call_action.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_error_not_cached(self, mock_context):
-        p = MagicMock()
-        p.meta.return_value.name = "aiocqhttp"
-        p.bot.call_action = AsyncMock(side_effect=RuntimeError("fail"))
-        mock_context.get_platform_inst = MagicMock(return_value=p)
-        tester = PushTester(mock_context, FakeConfig(), CompSpy())
-        assert await tester._get_bot_uin("QQ:GroupMessage:999") == "0"
-        assert await tester._get_bot_uin("QQ:GroupMessage:999") == "0"
-        assert p.bot.call_action.await_count == 2
-
 
 class TestIsAiocqhttpTarget:
 

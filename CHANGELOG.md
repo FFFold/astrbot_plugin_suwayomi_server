@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [Unreleased]
+
+### Removed
+
+- **移除 UIN 获取逻辑** — 删除 `_get_bot_uin()`、`_uin_cache` 及相关代码。此前 SnowLuma 对 forward 节点 `uin="0"` 报错，故引入 `get_login_info` API 获取 bot 真实 QQ 号作为 workaround。SnowLuma 已在上游 commit `b6107e38` 修复：`user_id="0"` 或缺失时自动 fallback 到 `selfId`，与 NapCat/LLBot 行为对齐。现所有已知 OneBot 实现均接受 `uin="0"`，因此移除该冗余逻辑。两个 forward 分支（`_push_chapter_images` 自动推送、`漫画 阅读` 命令）统一使用 `uin="0"`。同时修复了 `漫画 阅读` 命令误用 `event.get_sender_id()`（用户 QQ 而非 bot QQ）的问题。
+
 ## [0.4.6] - 2026-07-05
 
 ### Fixed

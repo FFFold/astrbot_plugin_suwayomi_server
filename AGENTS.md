@@ -95,7 +95,6 @@ main.py (SuwayomiPlugin)
 - `_download_images(urls)` — Parallel download with retry. Returns local file paths.
 - `_download_one(session, url, dest)` — Single image download with exponential backoff retry.
 - `_push_chapter_images(umo, title, chapter)` — Push chapter as images (reuses read send logic, respects `send_mode` for forward mode). Used by auto-push.
-- `_get_bot_uin(umo)` — Get bot's QQ number via `get_login_info` API (cached). Used by `_push_chapter_images` for forward-mode node `user_id`.
 - `_push_chapter_file(umo, title, chapter)` — Push chapter as packaged file (reuses download logic). Used by auto-push.
 - `_search_best_match(name, source_filter)` — Search manga name across sources, return first match. Used by batch subscribe.
 

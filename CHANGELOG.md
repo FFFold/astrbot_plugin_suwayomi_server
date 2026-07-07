@@ -7,9 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 ## [Unreleased]
 
+### Changed
+
+- **项目结构重构** — `main.py` 拆分为 4 个模块（`suwayomi/service.py`、`suwayomi/updater.py`、`utils/downloader.py`、`utils/pusher.py`），各模块遵循依赖注入模式；`PLUGIN_NAME` 统一到 `suwayomi/__init__.py`
+
+### Fixed
+
+- **`_build_check_updates_fn` 中的参数顺序和闭包问题** — push callbacks 与数据参数顺序不匹配；后台 lambda 未延迟解析导致 `rebuild_client` 后仍引用旧客户端；手动/Web API 更新缺 None guard
+- **`resolve_chapter` 错误消息** — 区分 ID 格式无效与 ID 未找到
+- **临时目录清理遗漏** — `download_chapter` 和 `push_chapter_file` 在早期 return 路径中缺少清理
+
 ### Removed
 
 - **移除 UIN 获取逻辑** — 删除 `_get_bot_uin()`、`_uin_cache` 及相关代码。此前 SnowLuma 对 forward 节点 `uin="0"` 报错，故引入 `get_login_info` API 获取 bot 真实 QQ 号作为 workaround。SnowLuma 已在上游 commit `b6107e38` 修复：`user_id="0"` 或缺失时自动 fallback 到 `selfId`，与 NapCat/LLBot 行为对齐。现所有已知 OneBot 实现均接受 `uin="0"`，因此移除该冗余逻辑。两个 forward 分支（`_push_chapter_images` 自动推送、`漫画 阅读` 命令）统一使用 `uin="0"`。同时修复了 `漫画 阅读` 命令误用 `event.get_sender_id()`（用户 QQ 而非 bot QQ）的问题。
+- **内联方法** — `_push_chapter_images/file`、`_download_one/images/fetch_pages_local`、`_resolve_manga/chapter`、`_fmt_*`、`_check_updates/update_loop`、`_normalize_zh`、`STATUS_EMOJI` 等移至对应模块；`push_chapter_file` 未使用的 `client` 参数移除；测试 fixture 弃用 `asyncio.get_event_loop().run_until_complete()`
 
 ## [0.4.6] - 2026-07-05
 

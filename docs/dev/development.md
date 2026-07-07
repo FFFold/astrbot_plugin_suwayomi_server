@@ -6,21 +6,25 @@
 
 ```
 astrbot_suwayomi_server/
-├── main.py                    # 插件入口，命令定义、后台更新逻辑、WebUI API 注册
+├── main.py                    # 插件入口，薄调度层——所有业务逻辑委托给子模块
 ├── metadata.yaml              # AstrBot 插件元数据
 ├── _conf_schema.json          # AstrBot 配置 schema（WebUI 自动生成配置表单）
 ├── requirements.txt           # Python 运行时依赖
 ├── suwayomi/
-│   ├── __init__.py
+│   ├── __init__.py            # PLUGIN_NAME 常量
 │   ├── client.py              # Suwayomi GraphQL 异步 HTTP 客户端
-│   └── models.py              # 数据模型定义
+│   ├── models.py              # 数据模型定义
+│   ├── service.py             # 业务逻辑层（漫画/章节解析、缓存策略、格式化）
+│   └── updater.py             # 更新引擎（check_updates + run_update_loop）
 ├── utils/
 │   ├── __init__.py
-│   ├── pack.py               # 图片打包工具（ZIP/CBZ/PDF）
+│   ├── downloader.py          # 图片下载管道（download_one/download_images/fetch_pages_local）
+│   ├── pack.py                # 图片打包工具（ZIP/CBZ/PDF）
+│   ├── pusher.py              # 推送投递（push_chapter_images/push_chapter_file）+ schedule_cleanup
 │   └── subscription.py        # 订阅管理器（AstrBot KV 存储封装）
 ├── web/
 │   ├── __init__.py
-│   └── api.py                # WebUI API handler 函数（依赖注入，独立可测试）
+│   └── api.py                 # WebUI API handler 函数（依赖注入，独立可测试）
 ├── pages/
 │   └── dashboard/
 │       ├── index.html         # 管理面板页面（3 Tab: 仪表盘/订阅管理/设置）
@@ -55,21 +59,32 @@ astrbot_suwayomi_server/
 └──────────────────┬──────────────────────────────┘
                    │ @filter.command / on_astrbot_loaded
 ┌──────────────────▼──────────────────────────────┐
-│              main.py - SuwayomiPlugin            │
+│              main.py — SuwayomiPlugin            │
 │  ┌────────────┐ ┌────────────┐ ┌──────────────┐ │
 │  │ Commands   │ │ Update     │ │ Search Cache │ │
-│  │ (所有命令) │ │ Loop (后台)│ │ (TTL 10min)  │ │
-│  └─────┬──────┘ └─────┬──────┘ └──────────────┘ │
-│        │              │                          │
-│  ┌─────▼──────────────▼──────────────────────┐   │
-│  │         suwayomi/client.py                │   │
-│  │  SuwayomiClient (async GraphQL HTTP)      │   │
-│  └─────────────────┬─────────────────────────┘   │
-│                    │                              │
-│  ┌─────────────────▼─────────────────────────┐   │
-│  │         suwayomi/models.py                │   │
-│  │  Source, Manga, Chapter, SearchResult     │   │
-│  └───────────────────────────────────────────┘   │
+│  │ (薄调度层)  │ │ Loop (后台)│ │ (TTL 10min)  │ │
+│  └──────┬─────┘ └─────┬──────┘ └──────┬───────┘ │
+│         │             │               │          │
+│  ┌──────▼─────────────▼───────────────▼───────┐  │
+│  │          suwayomi/service.py               │  │
+│  │  resolve_manga / resolve_chapter /         │  │
+│  │  get_or_fetch_chapters / fmt helpers       │  │
+│  └──────┬─────────────┬───────────────────────┘  │
+│         │             │                          │
+│  ┌──────▼─────────────▼───────┐                  │
+│  │    suwayomi/client.py     │                  │
+│  │ SuwayomiClient (GraphQL)  │                  │
+│  └──────────┬────────────────┘                  │
+│             │                                   │
+│  ┌──────────▼────────────────┐                  │
+│  │    suwayomi/models.py     │                  │
+│  │ Source, Manga, Chapter    │                  │
+│  └───────────────────────────┘                  │
+│                                                  │
+│  ┌───────────┐  ┌────────────┐  ┌────────────┐  │
+│  │ utils/    │  │ utils/     │  │ utils/      │  │
+│  │download.py│  │ pusher.py  │  │ pack.py     │  │
+│  └───────────┘  └────────────┘  └────────────┘  │
 │                                                  │
 │  ┌───────────────────────────────────────────┐   │
 │  │         utils/subscription.py             │   │
@@ -86,14 +101,45 @@ astrbot_suwayomi_server/
 
 ### 核心模块
 
-#### `main.py` — 插件主类
+#### `main.py` — 插件主类（薄调度层）
 
 - 继承 `astrbot.api.star.Star`
 - 使用 `@filter.command_group("漫画")` 组织命令
-- `__init__` 中初始化客户端和订阅管理器
-- `@filter.on_astrbot_loaded()` 中启动后台任务（确保事件循环就绪）
+- `__init__` 中初始化客户端、订阅管理器、搜索缓存，注册 7 个 WebUI API 端点
+- `@filter.on_astrbot_loaded()` 中构建更新检查闭包并启动后台任务（确保事件循环就绪）
 - `terminate()` 中取消后台任务并关闭 HTTP 会话
 - 搜索缓存使用 `(timestamp, {index: Manga})` 结构，10 分钟 TTL 自动过期
+- 所有业务逻辑委托给 `suwayomi/service.py`、`suwayomi/updater.py`、`utils/downloader.py`、`utils/pusher.py`
+
+#### `suwayomi/service.py` — 业务逻辑层
+
+- 独立 async 函数，依赖注入参数（`client`、`sub_mgr`、`get_kv_data` 等）
+- `resolve_manga(client, sub_mgr, umo, name_or_id, cmd)` — 按 ID 或名称模糊解析漫画
+- `resolve_chapter(chapters, chapter_num, manga_name_or_id, cmd)` — 按编号或 ID 解析章节（支持重复编号检测）
+- `get_or_fetch_chapters(client, get_kv_data, put_kv_data, config, manga_id, force)` — 智能缓存/拉取章节
+- `search_best_match(client, config, name, source_filter)` — 跨源搜索最佳匹配
+- 格式化工具：`fmt_chapter_num`、`fmt_chapter_label`、`normalize_zh`
+- 缓存管理：`get_chapter_timestamp` / `set_chapter_timestamp`
+- 常量：`STATUS_EMOJI`、`KV_CHAPTER_TS`
+
+#### `suwayomi/updater.py` — 更新引擎
+
+- `check_updates(client, sub_mgr, context, config, get_kv_data, put_kv_data, update_lock, push_chapter_images_fn, push_chapter_file_fn, force)` — 全部订阅检查，同步标题，检测新章节，推送通知，自动推送内容
+- `run_update_loop(interval, check_fn)` — 后台循环包装器，被 `main.py` 的 `on_astrbot_loaded` 启动
+- 所有依赖通过参数注入，`push_chapter_images_fn` 和 `push_chapter_file_fn` 在 `main.py` 的 `_build_check_updates_fn` 中预绑定
+
+#### `utils/downloader.py` — 图片下载管道
+
+- `download_one(session, url, dest, retries)` — 单图下载，指数退避重试
+- `download_images(urls, concurrency, custom_tmp, retries)` — 并行批量下载，返回 `(paths, tmp_dir)`
+- `fetch_pages_local(client, chapter_id, max_pages, concurrency, custom_tmp, retries)` — 获取页面列表并下载到临时目录，返回 `(total_pages, page_urls, local_paths, tmp_dir)`
+
+#### `utils/pusher.py` — 推送投递
+
+- `push_chapter_images(client, context, config, umo, title, chapter, fetch_pages_local_fn, fmt_chapter_num_fn)` — 推送章节为图片（支持 `send_mode=forward` 合并转发）
+- `push_chapter_file(context, config, umo, title, chapter, fetch_pages_local_fn, fmt_chapter_num_fn)` — 推送章节为打包文件（ZIP/CBZ/PDF）
+- `schedule_cleanup(tmp_dir, delay)` — 延迟清理临时目录（消除 4 处重复的 asyncio 任务）
+- `is_aiocqhttp_target(context, umo)` — 检测平台是否为 aiocqhttp（用于 forward 模式判断）
 
 #### `suwayomi/client.py` — GraphQL 客户端
 
@@ -144,27 +190,29 @@ astrbot_suwayomi_server/
 **批量订阅流程：**
 ```
 用户输入 → batch_subscribe() → 按逗号/分号分割名称列表
-          → 逐个 _search_best_match() → client.search_manga() → 取第一个结果
+          → 逐个 suwayomi.service.search_best_match() → client.search_manga() → 取第一个结果
           → 检查是否已订阅 → sub_mgr.subscribe() + 快照章节水位线
           → 汇总报告（✅ 新增 / ⏭ 已存在 / ❌ 失败）
 ```
 
 **订阅更新流程：**
 ```
-_update_loop (定时) → _check_updates(force=True) → client.update_library() (触发书库更新)
-                   → 遍历订阅 → 同步标题 + 拉取章节 + 对比 latest_chapter_id
-                   → 发现新章节 → context.send_message() 推送到各订阅者
+updater.run_update_loop (定时) → updater.check_updates(force=True)
+                              → client.update_library() (触发书库更新)
+                              → 遍历订阅 → 同步标题 + service.get_or_fetch_chapters() + 对比 latest_chapter_id
+                              → 发现新章节 → context.send_message() 推送到各订阅者
+                              → 对开启自动推送的订阅者: pusher.push_chapter_images() / pusher.push_chapter_file()
 ```
 
 **更新机制核心方法：**
 
 | 方法 | 职责 | 调用者 |
 |------|------|--------|
-| `_check_updates(force)` | 主更新逻辑：同步标题、拉取章节、检测新章节、推送通知 | `/漫画 更新`（force=True）、后台定时更新（force=True） |
-| `_get_or_fetch_chapters(manga_id, force)` | 章节获取：读缓存或从源拉取 | `_check_updates`、`/漫画 章节`、`/漫画 阅读`、`/漫画 下载` |
-| `_get_chapter_timestamp(manga_id)` / `_set_chapter_timestamp(manga_id)` | 管理每个漫画的章节缓存时间戳 | `_get_or_fetch_chapters`、`_check_updates` |
-| `SubscriptionManager.update_latest_chapter(manga_id, chapter_id)` | 更新水位线（已通知到的最大章节 ID） | `_check_updates` |
-| `SubscriptionManager.update_title(manga_id, new_title)` | 同步漫画标题（仅在变化时写入） | `_check_updates` |
+| `updater.check_updates(force)` | 主更新逻辑：同步标题、拉取章节、检测新章节、推送通知 | `/漫画 更新`（force=True）、后台定时更新（force=True） |
+| `service.get_or_fetch_chapters(manga_id, force)` | 章节获取：读缓存或从源拉取 | `check_updates`、`/漫画 章节`、`/漫画 阅读`、`/漫画 下载` |
+| `service.get_chapter_timestamp(manga_id)` / `service.set_chapter_timestamp(manga_id)` | 管理每个漫画的章节缓存时间戳 | `get_or_fetch_chapters`、`check_updates` |
+| `SubscriptionManager.update_latest_chapter(manga_id, chapter_id)` | 更新水位线（已通知到的最大章节 ID） | `check_updates` |
+| `SubscriptionManager.update_title(manga_id, new_title)` | 同步漫画标题（仅在变化时写入） | `check_updates` |
 
 **更新判断逻辑：**
 
@@ -184,14 +232,14 @@ for ch in chapters:
 
 | 入口 | force | 标题同步 | 章节来源 | 水位线更新 |
 |------|-------|---------|---------|-----------|
-| `/漫画 章节` | False | 否 | 缓存（过期才拉取） | 否 |
-| `/漫画 章节 --刷新` | True | 否 | 源站 | 否 |
-| `/漫画 更新` | True | 是 | 源站 | 是 |
-| 后台定时更新 | True | 是 | 源站 | 是 |
-| `/漫画 阅读` / `/漫画 下载` | False | 否 | 缓存 | 否 |
+| `/漫画 章节` | 使用 `service.get_or_fetch_chapters` 决定 | 否 | 缓存（过期才拉取） | 否 |
+| `/漫画 章节 --刷新` | 传递 force=True | 否 | 源站 | 否 |
+| `/漫画 更新` | force=True | 是 | 源站 | 是 |
+| 后台定时更新 | force=True | 是 | 源站 | 是 |
+| `/漫画 阅读` / `/漫画 下载` | 使用 `service.get_or_fetch_chapters` 决定 | 否 | 缓存 | 否 |
 
 **章节缓存机制：**
-- `_get_or_fetch_chapters(manga_id, force=False)` 管理章节数据的缓存
+- `service.get_or_fetch_chapters(client, get_kv_data, put_kv_data, config, manga_id, force=False)` 管理章节数据的缓存
 - 缓存时间由 `chapter_cache_hours` 配置控制（默认 6 小时）
 - `0` = 仅在 DB 为空时拉取，`-1` = 每次都从源刷新
 - `force=True` 可绕过缓存（通过 `--刷新` 参数或更新检查触发）
@@ -199,22 +247,39 @@ for ch in chapters:
 
 **阅读流程：**
 ```
-用户输入 → read_chapter() → _resolve_manga() (ID/名称/模糊匹配)
-         → _get_or_fetch_chapters() → 匹配章节号（支持 ID:xxx 语法）
+用户输入 → read_chapter() → service.resolve_manga() (ID/名称/模糊匹配)
+         → service.get_or_fetch_chapters() → service.resolve_chapter()（支持 ID:xxx 语法）
          → event.send(loading hint)
          → client.fetch_chapter_pages() → 获取页面 URL 列表
-         → url 模式: Comp.Image.fromURL() / download 模式: _download_images() + fromFileSystem()
+         → url 模式: Comp.Image.fromURL()
+         → download 模式: downloader.fetch_pages_local() + Comp.Image.fromFileSystem()
          → 逐页发送 / Comp.Node 合并转发
+         → pusher.schedule_cleanup() 延迟清理临时文件
 ```
 
 **下载流程：**
 ```
-用户输入 → download_chapter() → _resolve_manga() → _get_or_fetch_chapters()
-         → 匹配章节号（支持 ID:xxx 语法）
+用户输入 → download_chapter() → service.resolve_manga() → service.get_or_fetch_chapters()
+         → service.resolve_chapter()（支持 ID:xxx 语法）
          → event.send(loading hint)
-         → _fetch_pages_local() → 下载所有页面到临时目录
+         → downloader.fetch_pages_local() → 下载所有页面到临时目录
          → pack_zip/pack_pdf/pack_cbz() → 打包为文件
-         → Comp.File() 发送文件 → 延迟清理临时目录
+         → Comp.File() 发送文件 → pusher.schedule_cleanup() 延迟清理
+```
+
+**自动推送流程：**
+```
+updater.check_updates() 检测到新章节 → 遍历订阅者：
+  ├─ pusher.push_chapter_images() — 图片模式
+  │   ├─ fetch 页面 URL client.fetch_chapter_pages()
+  │   ├─ 或 downloader.fetch_pages_local()（image_fetch_mode=download）
+  │   ├─ context.send_message() 发送图片/forward
+  │   └─ schedule_cleanup() 清理
+  └─ pusher.push_chapter_file() — 文件模式
+      ├─ downloader.fetch_pages_local() 下载全部页面
+      ├─ pack_zip/pack_pdf/pack_cbz() 打包
+      ├─ context.send_message() 发送文件
+      └─ schedule_cleanup() 清理
 ```
 
 ## 开发环境
@@ -246,8 +311,8 @@ uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests
 # 实时 API 集成测试（需要 Suwayomi-Server 可访问）
 uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
 
-# 指定自定义服务器地址
-SUWAYOMI_URL=http://your-server:4567 uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
+# 指定自定义服务器地址（推荐：先设置环境变量避免连接默认 :4567 失败）
+$env:SUWAYOMI_URL="http://your-server:9330"; uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
 
 # 全部测试
 uv run pytest -v

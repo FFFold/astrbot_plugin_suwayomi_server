@@ -43,8 +43,8 @@ uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests
 # 集成测试（需要 Suwayomi-Server）
 uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
 
-# 指定服务器地址
-SUWAYOMI_URL=http://your-server:4567 uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
+# 指定服务器地址（推荐先设置环境变量）
+$env:SUWAYOMI_URL="http://your-server:9330"; uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
 
 # 全部测试
 uv run pytest -v
@@ -53,24 +53,29 @@ uv run pytest -v
 ### 语法检查
 
 ```bash
-python -c "import ast; ast.parse(open('main.py', encoding='utf-8').read()); print('OK')"
+python -c "import ast; ast.parse(open('main.py', encoding='utf-8').read()); print('main.py OK')"
+python -c "import ast; ast.parse(open('suwayomi/service.py', encoding='utf-8').read()); print('service.py OK')"
 ```
 
 ## 项目结构
 
 ```
 astrbot_plugin_suwayomi_server/
-├── main.py                    # 插件入口，命令定义、后台更新逻辑、WebUI API 注册
+├── main.py                    # 插件入口，薄调度层——所有业务逻辑委托给子模块
 ├── metadata.yaml              # AstrBot 插件元数据（名称、版本、平台）
 ├── _conf_schema.json          # AstrBot 配置 schema（WebUI 自动生成表单）
 ├── requirements.txt           # Python 运行时依赖
 ├── suwayomi/
-│   ├── __init__.py
+│   ├── __init__.py            # PLUGIN_NAME 常量
 │   ├── client.py              # Suwayomi GraphQL 异步 HTTP 客户端
-│   └── models.py              # 数据模型（Source, Manga, Chapter, SearchResult）
+│   ├── models.py              # 数据模型（Source, Manga, Chapter, SearchResult）
+│   ├── service.py             # 业务逻辑层（漫画/章节解析、缓存策略、格式化）
+│   └── updater.py             # 更新引擎（check_updates + run_update_loop）
 ├── utils/
 │   ├── __init__.py
+│   ├── downloader.py          # 图片下载管道（download_one/download_images/fetch_pages_local）
 │   ├── pack.py               # 图片打包工具（ZIP/CBZ/PDF）
+│   ├── pusher.py              # 推送投递 + schedule_cleanup
 │   └── subscription.py        # 订阅管理器（AstrBot KV 存储封装）
 ├── web/
 │   ├── __init__.py

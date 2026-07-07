@@ -5,10 +5,10 @@ Usage:
 
 Set SUWAYOMI_URL env var or it defaults to http://100.87.49.15:4567
 """
-import asyncio
 import os
 
 import pytest
+import pytest_asyncio
 
 from suwayomi.client import SuwayomiClient, SuwayomiError
 from suwayomi.models import Chapter, Manga, SearchResult, Source
@@ -16,11 +16,11 @@ from suwayomi.models import Chapter, Manga, SearchResult, Source
 SERVER_URL = os.environ.get("SUWAYOMI_URL", "http://100.87.49.15:4567")
 
 
-@pytest.fixture
-def client():
+@pytest_asyncio.fixture
+async def client():
     c = SuwayomiClient(SERVER_URL, "none", "", "")
     yield c
-    asyncio.get_event_loop().run_until_complete(c.close())
+    await c.close()
 
 
 # ── Sources ─────────────────────────────────────────────────────

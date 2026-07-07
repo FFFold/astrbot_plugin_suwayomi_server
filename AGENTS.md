@@ -131,3 +131,7 @@ main.py (SuwayomiPlugin — thin dispatch layer)
 - `test_live_api.py`: Integration tests for Suwayomi client, skipped by default, need live server
 - `test_live_web_api.py`: Integration tests for WebUI API handlers, skipped by default, need live server
 - Version is in `metadata.yaml`, not `pyproject.toml`
+
+## Documentation Update Checklist
+
+各类变更（版本发布、新命令、新配置、架构变更等）需同步更新的文件清单见 [docs/dev/doc-update-checklist.md](docs/dev/doc-update-checklist.md)。

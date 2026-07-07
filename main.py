@@ -693,6 +693,7 @@ class SuwayomiPlugin(Star):
             )
             return
 
+        tmp_dir: Path | None = None
         try:
             manga, err = await resolve_manga(self.client, self.sub_mgr, event.unified_msg_origin, manga_name_or_id, "下载")
             if err or manga is None:
@@ -764,13 +765,13 @@ class SuwayomiPlugin(Star):
                     chain.append(Comp.Image.fromFileSystem(valid_paths[i]))
                 yield event.chain_result(chain)
 
-            schedule_cleanup(tmp_dir, delay=120)
-
         except SuwayomiError as e:
             yield event.plain_result(f"下载失败: {e}")
         except Exception as e:
             logger.error(f"[{PLUGIN_NAME}] download error: {e}")
             yield event.plain_result("下载失败。")
+        finally:
+            schedule_cleanup(tmp_dir, delay=120)
 
     # ── Manual update ──────────────────────────────────────────────
 

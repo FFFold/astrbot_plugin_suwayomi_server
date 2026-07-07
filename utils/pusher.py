@@ -151,10 +151,12 @@ async def push_chapter_file(
 
     _, page_urls, local_paths, tmp_dir = await fetch_pages_local_fn(chapter.id)
     if not page_urls:
+        schedule_cleanup(tmp_dir, delay=120)
         return
 
     valid_paths = [p for p in local_paths if p]
     if not valid_paths:
+        schedule_cleanup(tmp_dir, delay=120)
         return
 
     try:

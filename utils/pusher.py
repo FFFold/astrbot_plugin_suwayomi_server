@@ -15,8 +15,6 @@ from .pack import pack_cbz, pack_pdf, pack_zip
 if TYPE_CHECKING:
     from astrbot.api.star import Context
 
-    from ..suwayomi.client import SuwayomiClient
-
 from ..suwayomi import PLUGIN_NAME
 _PLUGIN_NAME = PLUGIN_NAME
 
@@ -140,7 +138,6 @@ async def push_chapter_images(
 
 
 async def push_chapter_file(
-    client: SuwayomiClient,
     context: Context,
     config: dict,
     umo: str,

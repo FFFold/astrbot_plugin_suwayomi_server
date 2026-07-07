@@ -96,7 +96,7 @@ class SuwayomiPlugin(Star):
         self._build_check_updates_fn()
         interval = self.config.get("check_interval", 60) * 60
         self._bg_task = asyncio.create_task(
-            run_update_loop(interval, self._check_updates_fn)
+            run_update_loop(interval, lambda force=False: self._check_updates_fn(force=force) if self._check_updates_fn else None)
         )
 
     async def terminate(self):
@@ -127,7 +127,7 @@ class SuwayomiPlugin(Star):
 
         async def _push_file(umo, title, chapter):
             return await push_chapter_file(
-                client, context, config,
+                context, config,
                 umo, title, chapter,
                 lambda cid, mp=0: fetch_pages_local(
                     client, cid, max_pages=mp,

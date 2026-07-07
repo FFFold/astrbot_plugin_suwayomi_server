@@ -70,12 +70,12 @@ def resolve_chapter(
     if chapter_num.lower().startswith("id:"):
         try:
             cid = int(chapter_num[3:])
-            target = find_chapter_by_id(chapters, cid)
-            if target:
-                return target, None
         except ValueError:
-            pass
-        return None, "章节 ID 格式无效。示例: ID:123"
+            return None, "章节 ID 格式无效。示例: ID:123"
+        target = find_chapter_by_id(chapters, cid)
+        if target:
+            return target, None
+        return None, f"未找到 ID 为 {cid} 的章节。"
     try:
         chapter_num_f = float(chapter_num)
     except ValueError:

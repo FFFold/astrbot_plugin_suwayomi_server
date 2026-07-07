@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 ### Fixed
 
+- **后台更新循环静默失败** — `update_library` 添加 30s 超时；`run_update_loop` 补全兜底日志和 Task 异常回调；无订阅时不再静默返回。
+- **热重载后后台循环不启动** — `on_astrbot_loaded` 在热重载时不触发，改为 `__init__` 中检测事件循环状态，已运行时直接启动。
+- **WebUI 改配置后间隔不生效** — `rebuild_client` 现取消旧后台任务并按新间隔重启循环，同时清除搜索缓存。
 - **`_build_check_updates_fn` 中的参数顺序和闭包问题** — push callbacks 与数据参数顺序不匹配；后台 lambda 未延迟解析导致 `rebuild_client` 后仍引用旧客户端；手动/Web API 更新缺 None guard
 - **`resolve_chapter` 错误消息** — 区分 ID 格式无效与 ID 未找到
 - **临时目录清理遗漏** — `download_chapter` 和 `push_chapter_file` 在早期 return 路径中缺少清理

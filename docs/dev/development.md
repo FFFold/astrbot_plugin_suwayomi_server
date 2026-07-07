@@ -105,9 +105,10 @@ astrbot_suwayomi_server/
 
 - 继承 `astrbot.api.star.Star`
 - 使用 `@filter.command_group("漫画")` 组织命令
-- `__init__` 中初始化客户端、订阅管理器、搜索缓存，注册 7 个 WebUI API 端点
-- `@filter.on_astrbot_loaded()` 中构建更新检查闭包并启动后台任务（确保事件循环就绪）
+- `__init__` 中初始化客户端、订阅管理器、搜索缓存，注册 7 个 WebUI API 端点，并尝试启动后台循环（热重载时事件循环已运行则立即启动）
+- `@filter.on_astrbot_loaded()` 中构建更新检查闭包并启动后台任务（作为首次启动的兜底）
 - `terminate()` 中取消后台任务并关闭 HTTP 会话
+- WebUI 保存配置时 (`rebuild_client`) 取消旧后台任务、按新间隔重启循环，并清除搜索缓存
 - 搜索缓存使用 `(timestamp, {index: Manga})` 结构，10 分钟 TTL 自动过期
 - 所有业务逻辑委托给 `suwayomi/service.py`、`suwayomi/updater.py`、`utils/downloader.py`、`utils/pusher.py`
 
@@ -124,8 +125,8 @@ astrbot_suwayomi_server/
 
 #### `suwayomi/updater.py` — 更新引擎
 
-- `check_updates(client, sub_mgr, context, config, get_kv_data, put_kv_data, update_lock, push_chapter_images_fn, push_chapter_file_fn, force)` — 全部订阅检查，同步标题，检测新章节，推送通知，自动推送内容
-- `run_update_loop(interval, check_fn)` — 后台循环包装器，被 `main.py` 的 `on_astrbot_loaded` 启动
+- `check_updates(client, sub_mgr, context, config, get_kv_data, put_kv_data, update_lock, push_chapter_images_fn, push_chapter_file_fn, force)` — 全部订阅检查，同步标题，检测新章节，推送通知，自动推送内容。`update_library()` 调用有 30 秒超时，避免挂死。
+- `run_update_loop(interval, check_fn)` — 后台循环包装器，被 `main.py` 的 `_start_bg_task` 启动。正确处理 `CancelledError`，Task 异常退出时有日志记录。
 - 所有依赖通过参数注入，`push_chapter_images_fn` 和 `push_chapter_file_fn` 在 `main.py` 的 `_build_check_updates_fn` 中预绑定
 
 #### `utils/downloader.py` — 图片下载管道
@@ -198,11 +199,21 @@ astrbot_suwayomi_server/
 **订阅更新流程：**
 ```
 updater.run_update_loop (定时) → updater.check_updates(force=True)
-                              → client.update_library() (触发书库更新)
+                              → client.update_library() (30s 超时) (触发书库更新)
                               → 遍历订阅 → 同步标题 + service.get_or_fetch_chapters() + 对比 latest_chapter_id
                               → 发现新章节 → context.send_message() 推送到各订阅者
                               → 对开启自动推送的订阅者: pusher.push_chapter_images() / pusher.push_chapter_file()
 ```
+
+**后台循环生命周期：**
+```
+fresh startup: __init__ → asyncio.get_running_loop() 无运行中循环 → 跳过
+             → on_astrbot_loaded() → _start_bg_task() 启动
+hot reload:   __init__ → asyncio.get_running_loop() 已运行 → _try_start_bg_loop() → _start_bg_task()
+config save:  rebuild_client() → 取消旧 bg_task → _try_start_bg_loop() → 按新间隔重启
+terminate:    _bg_task.cancel() → 清理
+```
+`_bg_task is None` 守卫防止重复启动。
 
 **更新机制核心方法：**
 

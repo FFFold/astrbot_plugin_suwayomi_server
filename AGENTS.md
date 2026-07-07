@@ -71,7 +71,7 @@ main.py (SuwayomiPlugin — thin dispatch layer)
 
 5. **Source ID `"0"` crashes searches**: Local source causes NullPointerException. Skip it when iterating sources.
 
-6. **Background task startup**: Use `@filter.on_astrbot_loaded()` not `__init__` for `asyncio.create_task()` - event loop may not be running during plugin load.
+6. **Background task startup (dual path)**: Both `__init__` and `@filter.on_astrbot_loaded()` start the background update loop. `__init__` tries first via `asyncio.get_running_loop()` — if the loop is already running (hot reload), it starts immediately. If not (fresh startup), `on_astrbot_loaded()` serves as the fallback. The `_bg_task is None` guard prevents duplicates. See `_try_start_bg_loop()` and `_start_bg_task()` in `main.py`.
 
 7. **All command args are strings**: AstrBot passes raw strings, not typed values. Explicit `float()`/`int()` conversion required in command handlers. Use `str` type hints with manual conversion.
 

@@ -34,13 +34,17 @@ async def check_updates(
     push_chapter_file_fn: Callable,
     force: bool = False,
 ) -> str:
+    logger.info(f"[{_PLUGIN_NAME}] 开始检查更新 (force={force})")
     async with update_lock:
         all_subs = await sub_mgr.get_all_subscriptions()
         if not all_subs:
+            logger.info(f"[{_PLUGIN_NAME}] 没有订阅的漫画，无需检查更新。")
             return "📭 没有订阅的漫画，无需检查更新。"
 
         try:
-            await client.update_library()
+            await asyncio.wait_for(client.update_library(), timeout=30)
+        except asyncio.TimeoutError:
+            logger.warning(f"[{_PLUGIN_NAME}] 触发书库更新超时(30s)，跳过")
         except Exception as e:
             logger.warning(f"[{_PLUGIN_NAME}] 触发书库更新失败: {e}")
 
@@ -187,14 +191,18 @@ async def run_update_loop(
     interval: float,
     check_fn: Callable,
 ):
+    logger.info(f"[{_PLUGIN_NAME}] 后台更新循环已启动，间隔 {interval}s")
     try:
         while True:
             await asyncio.sleep(interval)
             try:
+                logger.debug(f"[{_PLUGIN_NAME}] 后台更新检查触发")
                 await check_fn(force=True)
+            except asyncio.CancelledError:
+                raise
             except Exception as e:
                 logger.error(
-                    f"[{_PLUGIN_NAME}] 后台更新检查失败: {e}"
+                    f"[{_PLUGIN_NAME}] 后台更新检查失败: {type(e).__name__}: {e}"
                 )
     except asyncio.CancelledError:
-        pass
+        logger.info(f"[{_PLUGIN_NAME}] 后台更新循环已取消")

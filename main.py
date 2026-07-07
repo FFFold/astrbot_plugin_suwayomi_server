@@ -57,6 +57,7 @@ class SuwayomiPlugin(Star):
         self._update_lock = asyncio.Lock()
         self._bg_task: asyncio.Task | None = None
         self._check_updates_fn = None
+        self._build_check_updates_fn()
         logger.info(
             f"[{PLUGIN_NAME}] 插件已加载 | 服务器: {config.get('server_url')} | "
             f"缓存: {config.get('chapter_cache_hours', 6)}h | "
@@ -93,7 +94,6 @@ class SuwayomiPlugin(Star):
             await self.sub_mgr.run_migration()
         except Exception as e:
             logger.error(f"[{PLUGIN_NAME}] 订阅数据迁移失败: {e}")
-        self._build_check_updates_fn()
         interval = self.config.get("check_interval", 60) * 60
         self._bg_task = asyncio.create_task(
             run_update_loop(interval, lambda force=False: self._check_updates_fn(force=force) if self._check_updates_fn else None)

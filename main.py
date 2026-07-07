@@ -851,5 +851,7 @@ class SuwayomiPlugin(Star):
         return self._json_response(result)
 
     async def _api_update(self):
+        if not self._check_updates_fn:
+            return self._json_response(({"success": False, "message": "更新引擎尚未就绪。"}, 503))
         result = await api_update_handler(self._check_updates_fn, self.put_kv_data)
         return self._json_response(result)

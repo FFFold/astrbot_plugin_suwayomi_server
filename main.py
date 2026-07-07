@@ -91,7 +91,7 @@ class SuwayomiPlugin(Star):
 
     def _try_start_bg_loop(self):
         try:
-            loop = asyncio.get_running_loop()
+            asyncio.get_running_loop()
         except RuntimeError:
             return
         if self._bg_task is not None:

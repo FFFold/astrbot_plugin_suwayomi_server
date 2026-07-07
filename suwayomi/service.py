@@ -8,13 +8,14 @@ import opencc
 
 from astrbot.api import logger
 
+from . import PLUGIN_NAME
 from .client import SuwayomiError
 from .models import Chapter, Manga, Source
 
 if TYPE_CHECKING:
     from ..utils.subscription import SubscriptionManager
 
-_PLUGIN_NAME = "astrbot_suwayomi_server"
+_PLUGIN_NAME = PLUGIN_NAME
 
 _t2s = opencc.OpenCC("t2s")
 

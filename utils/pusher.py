@@ -17,7 +17,8 @@ if TYPE_CHECKING:
 
     from ..suwayomi.client import SuwayomiClient
 
-_PLUGIN_NAME = "astrbot_suwayomi_server"
+from ..suwayomi import PLUGIN_NAME
+_PLUGIN_NAME = PLUGIN_NAME
 
 
 def is_aiocqhttp_target(context: Context, umo: str) -> bool:

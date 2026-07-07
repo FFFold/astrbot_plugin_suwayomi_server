@@ -10,6 +10,7 @@ from astrbot.api import AstrBotConfig, logger
 from astrbot.api.event import filter, AstrMessageEvent, MessageChain
 from astrbot.api.star import Context, Star
 
+from .suwayomi import PLUGIN_NAME
 from .suwayomi.client import SuwayomiClient, SuwayomiError
 from .suwayomi.models import Manga, SearchResult
 from .suwayomi.service import (
@@ -38,7 +39,6 @@ from .web.api import (
     api_update as api_update_handler,
 )
 
-PLUGIN_NAME = "astrbot_plugin_suwayomi_server"
 _CACHE_TTL = 600
 
 
@@ -777,6 +777,9 @@ class SuwayomiPlugin(Star):
     @manga_group.command("更新")
     async def manual_update(self, event: AstrMessageEvent):
         '''手动检查漫画更新'''
+        if not self._check_updates_fn:
+            yield event.plain_result("⏳ 更新引擎尚未就绪，请稍后重试。")
+            return
         try:
             summary = await self._check_updates_fn(force=True)
             yield event.plain_result(summary)

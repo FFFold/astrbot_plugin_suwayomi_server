@@ -5,11 +5,11 @@ Usage:
 
 Set SUWAYOMI_URL env var or it defaults to http://100.87.49.15:4567
 """
-import asyncio
 import os
 import time
 
 import pytest
+import pytest_asyncio
 
 from suwayomi.client import SuwayomiClient, SuwayomiError
 from suwayomi.models import Source
@@ -68,11 +68,11 @@ def sub_mgr(kv):
     return SubscriptionManager(kv)
 
 
-@pytest.fixture
-def client():
+@pytest_asyncio.fixture
+async def client():
     c = SuwayomiClient(SERVER_URL, "none", "", "")
     yield c
-    asyncio.run(c.close())
+    await c.close()
 
 
 @pytest.fixture

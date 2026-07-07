@@ -13,7 +13,8 @@ from astrbot.api import logger
 if TYPE_CHECKING:
     from ..suwayomi.client import SuwayomiClient
 
-_PLUGIN_NAME = "astrbot_suwayomi_server"
+from ..suwayomi import PLUGIN_NAME
+_PLUGIN_NAME = PLUGIN_NAME
 
 
 async def download_one(

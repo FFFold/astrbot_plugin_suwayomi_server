@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Callable
 from astrbot.api import logger
 from astrbot.api.event import MessageChain
 
+from . import PLUGIN_NAME
 from .service import (
     fmt_chapter_label,
     fmt_chapter_num,
@@ -18,7 +19,7 @@ if TYPE_CHECKING:
     from ..utils.subscription import SubscriptionManager
     from .client import SuwayomiClient
 
-_PLUGIN_NAME = "astrbot_suwayomi_server"
+_PLUGIN_NAME = PLUGIN_NAME
 
 
 async def check_updates(

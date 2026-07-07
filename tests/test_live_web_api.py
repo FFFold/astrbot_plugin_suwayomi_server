@@ -72,7 +72,7 @@ def sub_mgr(kv):
 def client():
     c = SuwayomiClient(SERVER_URL, "none", "", "")
     yield c
-    asyncio.get_event_loop().run_until_complete(c.close())
+    asyncio.run(c.close())
 
 
 @pytest.fixture

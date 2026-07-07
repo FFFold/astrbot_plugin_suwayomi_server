@@ -20,7 +20,7 @@ SERVER_URL = os.environ.get("SUWAYOMI_URL", "http://100.87.49.15:4567")
 def client():
     c = SuwayomiClient(SERVER_URL, "none", "", "")
     yield c
-    asyncio.get_event_loop().run_until_complete(c.close())
+    asyncio.run(c.close())
 
 
 # ── Sources ─────────────────────────────────────────────────────

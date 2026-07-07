@@ -7,9 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 ## [Unreleased]
 
+### Changed
+
+- **项目结构重构** — 将 `main.py` 拆分为 4 个独立职责模块，各模块遵循 `web/api.py` 的依赖注入模式：
+  - `suwayomi/service.py` — 业务逻辑层（漫画/章节解析、缓存策略、格式化）
+  - `suwayomi/updater.py` — 更新引擎（`check_updates` + `run_update_loop`）
+  - `utils/downloader.py` — 图片下载管道（`download_one` / `download_images` / `fetch_pages_local`）
+  - `utils/pusher.py` — 推送投递 + `schedule_cleanup`（消除 4 处重复的延迟清理代码）
+- **`PLUGIN_NAME` 集中管理** — 统一到 `suwayomi/__init__.py`，所有模块从同一位置导入
+- **集成测试 fixture 现代化** — `test_live_api.py` 和 `test_live_web_api.py` 的 `client` fixture 改为 `async def` + `await c.close()`
+
+### Fixed
+
+- **后台更新闭包陈旧** — `run_update_loop` 使用 lambda 延迟解析 `_check_updates_fn`，避免 `rebuild_client` 后后台任务仍引用旧客户端导致崩溃
+- **`_push_images`/`_push_file` 参数顺序不匹配** — `push_chapter_images`/`push_chapter_file` 签名为 `(client, context, config, umo, title, chapter, ...)`，但 callbacks 传在了 `umo/title/chapter` 前面
+- **手动更新和 Web API 缺少 None guard** — `_check_updates_fn` 在 `on_loaded` 完成前为 `None` 时调用会崩溃
+- **`resolve_chapter` 错误消息** — 区分 "ID 格式无效" 和 "ID 未找到" 两种场景
+- **`download_chapter` 临时目录清理遗漏** — 添加 `finally` 块确保所有路径（包括早期 `return`）都执行 `schedule_cleanup`
+- **`push_chapter_file` 临时目录清理遗漏** — `page_urls` 为空或 `valid_paths` 为空时的早期 `return` 缺少 `schedule_cleanup`
+
 ### Removed
 
 - **移除 UIN 获取逻辑** — 删除 `_get_bot_uin()`、`_uin_cache` 及相关代码。此前 SnowLuma 对 forward 节点 `uin="0"` 报错，故引入 `get_login_info` API 获取 bot 真实 QQ 号作为 workaround。SnowLuma 已在上游 commit `b6107e38` 修复：`user_id="0"` 或缺失时自动 fallback 到 `selfId`，与 NapCat/LLBot 行为对齐。现所有已知 OneBot 实现均接受 `uin="0"`，因此移除该冗余逻辑。两个 forward 分支（`_push_chapter_images` 自动推送、`漫画 阅读` 命令）统一使用 `uin="0"`。同时修复了 `漫画 阅读` 命令误用 `event.get_sender_id()`（用户 QQ 而非 bot QQ）的问题。
+- **`_push_chapter_images`/`_push_chapter_file` 内联方法** — 移至 `utils/pusher.py`
+- **`_download_one`/`_download_images`/`_fetch_pages_local` 内联方法** — 移至 `utils/downloader.py`
+- **`_resolve_manga`/`_resolve_chapter`/`_fmt_chapter_label` 等业务逻辑方法** — 移至 `suwayomi/service.py`
+- **`_check_updates`/`_update_loop` 更新引擎方法** — 移至 `suwayomi/updater.py`
+- **`_normalize_zh`/`_fmt_chapter_num`/`STATUS_EMOJI` 等工具函数** — 移至 `suwayomi/service.py`
+- **`push_chapter_file` 的 `client` 参数** — 未使用，已移除函数签名和 TYPE_CHECKING 导入
+- **`asyncio.get_event_loop().run_until_complete()`** — 测试 fixture 改用 `asyncio.run()` 和 `async def fixture`
 
 ## [0.4.6] - 2026-07-05
 

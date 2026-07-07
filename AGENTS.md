@@ -34,19 +34,27 @@ python -c "import ast; ast.parse(open('main.py', encoding='utf-8').read()); prin
 ## Architecture
 
 ```
-main.py (SuwayomiPlugin)
+main.py (SuwayomiPlugin — thin dispatch layer)
   ├── suwayomi/client.py (SuwayomiClient - async GraphQL HTTP)
   ├── suwayomi/models.py (Source, Manga, Chapter, SearchResult dataclasses)
+  ├── suwayomi/service.py (resolve_manga, resolve_chapter, get_or_fetch_chapters, fmt helpers)
+  ├── suwayomi/updater.py (check_updates, run_update_loop)
+  ├── utils/downloader.py (download_one, download_images, fetch_pages_local)
   ├── utils/pack.py (pack_zip, pack_cbz, pack_pdf — image packaging)
+  ├── utils/pusher.py (push_chapter_images, push_chapter_file, schedule_cleanup)
   ├── utils/subscription.py (SubscriptionManager - AstrBot KV storage)
   ├── web/api.py (WebUI API handlers — standalone functions, dependency-injected)
   └── pages/dashboard/ (WebUI: 仪表盘 + 订阅管理 + 配置)
 ```
 
-- `main.py`: Plugin entry, all commands under `@filter.command_group("漫画")`, background update loop, WebUI API registration
+- `main.py`: Plugin entry, all commands under `@filter.command_group("漫画")`, background update loop, WebUI API registration. Thin dispatch layer — all business logic delegated to service/updater/downloader/pusher modules.
 - `suwayomi/client.py`: All Suwayomi interaction via `POST /api/graphql`; supports none/basic/jwt auth
 - `suwayomi/models.py`: Pure dataclasses with `from_dict()` factory methods
+- `suwayomi/service.py`: Business logic — manga/chapter resolution, chapter fetching/caching, text normalization, status emoji mapping. All functions are standalone with dependency-injected parameters (client, sub_mgr, get_kv_data, etc.)
+- `suwayomi/updater.py`: Update engine — `check_updates()` scans all subscriptions for new chapters, pushes notifications, triggers auto-push. `run_update_loop()` is the background task wrapper. Imported by `main.py` with pre-bound push callbacks.
+- `utils/downloader.py`: Image download pipeline — `download_one()` with exponential backoff, `download_images()` parallel batch download, `fetch_pages_local()` downloads chapter pages to temp dir.
 - `utils/pack.py`: Pack images into ZIP, CBZ, or PDF files; `parse_download_args()` for command arg parsing
+- `utils/pusher.py`: Push delivery — `push_chapter_images()` sends images inline or via forward, `push_chapter_file()` sends packaged file. Also exports `schedule_cleanup()` for delayed temp dir cleanup (replaces 4 duplicated asyncio tasks) and `is_aiocqhttp_target()` for platform detection.
 - `utils/subscription.py`: Persists subscriptions via AstrBot's `get_kv_data()`/`put_kv_data()`
 - `web/api.py`: 8 API handlers for admin WebUI (status, subscriptions CRUD, config, sources, update); each receives `client`/`sub_mgr`/`config` as params for testability
 - `pages/dashboard/`: AstrBot Plugin Pages — single HTML file with 3 tabs (仪表盘/订阅管理/设置), vanilla JS + CSS, communicates via Bridge SDK
@@ -123,7 +131,3 @@ main.py (SuwayomiPlugin)
 - `test_live_api.py`: Integration tests for Suwayomi client, skipped by default, need live server
 - `test_live_web_api.py`: Integration tests for WebUI API handlers, skipped by default, need live server
 - Version is in `metadata.yaml`, not `pyproject.toml`
-
-## Documentation Update Checklist
-
-各类变更（版本发布、新命令、新配置、架构变更等）需同步更新的文件清单见 [docs/dev/doc-update-checklist.md](docs/dev/doc-update-checklist.md)。

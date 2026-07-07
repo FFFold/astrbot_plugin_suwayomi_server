@@ -115,6 +115,7 @@ class SuwayomiPlugin(Star):
         async def _push_images(umo, title, chapter):
             return await push_chapter_images(
                 client, context, config,
+                umo, title, chapter,
                 lambda cid, mp=0: fetch_pages_local(
                     client, cid, max_pages=mp,
                     concurrency=config.get("download_concurrency", 6),
@@ -122,12 +123,12 @@ class SuwayomiPlugin(Star):
                     retries=config.get("download_retries", 3),
                 ),
                 fmt_chapter_num,
-                umo, title, chapter,
             )
 
         async def _push_file(umo, title, chapter):
             return await push_chapter_file(
                 client, context, config,
+                umo, title, chapter,
                 lambda cid, mp=0: fetch_pages_local(
                     client, cid, max_pages=mp,
                     concurrency=config.get("download_concurrency", 6),
@@ -135,7 +136,6 @@ class SuwayomiPlugin(Star):
                     retries=config.get("download_retries", 3),
                 ),
                 fmt_chapter_num,
-                umo, title, chapter,
             )
 
         async def _check(force=False):

@@ -880,6 +880,15 @@ class SuwayomiPlugin(Star):
                 password=cfg.get("password", ""),
             )
             self._build_check_updates_fn()
+            self._search_cache.clear()
+            if self._bg_task and not self._bg_task.done():
+                self._bg_task.cancel()
+                try:
+                    await self._bg_task
+                except asyncio.CancelledError:
+                    pass
+                self._bg_task = None
+            self._try_start_bg_loop()
 
         result = await api_config_post(self.config, data, rebuild_client)
         return self._json_response(result)

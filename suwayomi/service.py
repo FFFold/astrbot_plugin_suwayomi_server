@@ -14,6 +14,7 @@ from .models import Chapter, Manga, Source
 
 if TYPE_CHECKING:
     from ..utils.subscription import SubscriptionManager
+    from .client import SuwayomiClient
 
 _PLUGIN_NAME = PLUGIN_NAME
 
@@ -110,7 +111,7 @@ async def set_chapter_timestamp(
 
 
 async def get_or_fetch_chapters(
-    client,
+    client: SuwayomiClient,
     get_kv_data: Callable,
     put_kv_data: Callable,
     config: dict,
@@ -177,7 +178,7 @@ async def get_or_fetch_chapters(
 
 
 async def resolve_manga(
-    client,
+    client: SuwayomiClient,
     sub_mgr: SubscriptionManager,
     umo: str,
     name_or_id: str,
@@ -226,7 +227,7 @@ async def resolve_manga(
 
 
 async def search_best_match(
-    client,
+    client: SuwayomiClient,
     config: dict,
     name: str,
     source_filter: Source | None = None,

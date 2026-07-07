@@ -58,6 +58,7 @@ class SuwayomiPlugin(Star):
         self._bg_task: asyncio.Task | None = None
         self._check_updates_fn = None
         self._build_check_updates_fn()
+        self._try_start_bg_loop()
         logger.info(
             f"[{PLUGIN_NAME}] 插件已加载 | 服务器: {config.get('server_url')} | "
             f"缓存: {config.get('chapter_cache_hours', 6)}h | "
@@ -88,30 +89,53 @@ class SuwayomiPlugin(Star):
 
     # ── Lifecycle ──────────────────────────────────────────────────
 
+    def _try_start_bg_loop(self):
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        if self._bg_task is not None:
+            return
+        interval = float(self.config.get("check_interval", 60)) * 60
+        logger.info(
+            f"[{PLUGIN_NAME}] 启动后台更新循环 | "
+            f"间隔: {interval / 60:.0f}min ({interval}s)"
+        )
+        self._start_bg_task(interval)
+
+    def _start_bg_task(self, interval: float):
+        async def _check_wrapper(force=False):
+            fn = self._check_updates_fn
+            if fn is None:
+                logger.warning(
+                    f"[{PLUGIN_NAME}] 检查更新: _check_updates_fn 未就绪，跳过"
+                )
+                return
+            return await fn(force=force)
+
+        self._bg_task = asyncio.create_task(
+            run_update_loop(interval, _check_wrapper)
+        )
+
+        def _on_task_done(task: asyncio.Task):
+            if not task.cancelled():
+                exc = task.exception()
+                if exc:
+                    logger.error(
+                        f"[{PLUGIN_NAME}] 后台更新循环异常退出: {exc}"
+                    )
+
+        self._bg_task.add_done_callback(_on_task_done)
+
     @filter.on_astrbot_loaded()
     async def on_loaded(self):
         try:
             await self.sub_mgr.run_migration()
         except Exception as e:
             logger.error(f"[{PLUGIN_NAME}] 订阅数据迁移失败: {e}")
-        interval = float(self.config.get("check_interval", 60)) * 60
-        logger.info(f"[{PLUGIN_NAME}] 启动后台更新循环 | 间隔: {interval / 60:.0f}min ({interval}s)")
-
-        async def _check_wrapper(force=False):
-            fn = self._check_updates_fn
-            if fn is None:
-                logger.warning(f"[{PLUGIN_NAME}] 检查更新: _check_updates_fn 未就绪，跳过")
-                return
-            return await fn(force=force)
-
-        self._bg_task = asyncio.create_task(run_update_loop(interval, _check_wrapper))
-
-        def _on_task_done(task: asyncio.Task):
-            if not task.cancelled():
-                exc = task.exception()
-                if exc:
-                    logger.error(f"[{PLUGIN_NAME}] 后台更新循环异常退出: {exc}")
-        self._bg_task.add_done_callback(_on_task_done)
+        if self._bg_task is None:
+            interval = float(self.config.get("check_interval", 60)) * 60
+            self._start_bg_task(interval)
 
     async def terminate(self):
         if self._bg_task and not self._bg_task.done():

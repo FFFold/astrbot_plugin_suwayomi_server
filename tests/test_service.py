@@ -1,7 +1,11 @@
 """Tests for suwayomi/service.py helpers (no network)."""
 
 from suwayomi.models import Chapter
-from suwayomi.service import fmt_chapter_display, fmt_chapter_label, fmt_chapter_num
+from suwayomi.service import (
+    fmt_chapter_display,
+    fmt_chapter_label,
+    resolve_chapter,
+)
 
 
 def _ch(name: str, num: float) -> Chapter:
@@ -58,3 +62,54 @@ class TestFmtChapterLabel:
     def test_uses_name_with_dup_tag(self):
         ch = _ch("07卷附录", 7)
         assert fmt_chapter_label(ch, {7: 2}) == "#7 07卷附录 (ID:1)"
+
+
+def _chapter(id: int, name: str, num: float) -> Chapter:
+    return Chapter(id=id, url="", name=name, chapter_number=num,
+                   source_order=1, upload_date=0)
+
+
+class TestResolveChapter:
+
+    def test_by_id_ascii_colon(self):
+        chapters = [_chapter(100, "第1话", 1), _chapter(200, "第2话", 2)]
+        target, err = resolve_chapter(chapters, "ID:200", "test", "阅读")
+        assert err is None
+        assert target is not None and target.id == 200
+
+    def test_by_id_fullwidth_colon(self):
+        chapters = [_chapter(100, "第1话", 1), _chapter(200, "第2话", 2)]
+        target, err = resolve_chapter(chapters, "ID：200", "test", "阅读")
+        assert err is None
+        assert target is not None and target.id == 200
+
+    def test_by_id_lowercase(self):
+        chapters = [_chapter(100, "第1话", 1)]
+        target, err = resolve_chapter(chapters, "id:100", "test", "阅读")
+        assert err is None
+        assert target is not None and target.id == 100
+
+    def test_by_id_lowercase_fullwidth(self):
+        chapters = [_chapter(100, "第1话", 1)]
+        target, err = resolve_chapter(chapters, "id：100", "test", "阅读")
+        assert err is None
+        assert target is not None and target.id == 100
+
+    def test_by_id_invalid_format(self):
+        _, err = resolve_chapter([], "ID:abc", "test", "阅读")
+        assert err is not None and "格式无效" in err
+
+    def test_by_id_not_found(self):
+        chapters = [_chapter(100, "第1话", 1)]
+        _, err = resolve_chapter(chapters, "ID:999", "test", "阅读")
+        assert err is not None and "未找到" in err
+
+    def test_by_number(self):
+        chapters = [_chapter(100, "第5话", 5)]
+        target, err = resolve_chapter(chapters, "5", "test", "阅读")
+        assert err is None
+        assert target is not None and target.id == 100
+
+    def test_invalid_number(self):
+        _, err = resolve_chapter([], "abc", "test", "阅读")
+        assert err is not None and "章节号无效" in err

@@ -78,9 +78,10 @@ def find_chapter_by_id(chapters: list[Chapter], chapter_id: int) -> Chapter | No
 def resolve_chapter(
     chapters: list[Chapter], chapter_num: str, manga_name_or_id: str, cmd: str
 ) -> tuple[Chapter | None, str | None]:
-    if chapter_num.lower().startswith("id:"):
+    norm = chapter_num.replace("：", ":").lower()
+    if norm.startswith("id:"):
         try:
-            cid = int(chapter_num[3:])
+            cid = int(norm[3:])
         except ValueError:
             return None, "章节 ID 格式无效。示例: ID:123"
         target = find_chapter_by_id(chapters, cid)

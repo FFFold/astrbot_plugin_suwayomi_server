@@ -15,8 +15,8 @@ from .suwayomi.client import SuwayomiClient, SuwayomiError
 from .suwayomi.models import Manga, SearchResult
 from .suwayomi.service import (
     STATUS_EMOJI,
+    fmt_chapter_display,
     fmt_chapter_label,
-    fmt_chapter_num,
     get_or_fetch_chapters,
     normalize_zh,
     resolve_chapter,
@@ -160,7 +160,6 @@ class SuwayomiPlugin(Star):
                     custom_tmp=config.get("temp_dir", "").strip(),
                     retries=config.get("download_retries", 3),
                 ),
-                fmt_chapter_num,
             )
 
         async def _push_file(umo, title, chapter):
@@ -173,7 +172,6 @@ class SuwayomiPlugin(Star):
                     custom_tmp=config.get("temp_dir", "").strip(),
                     retries=config.get("download_retries", 3),
                 ),
-                fmt_chapter_num,
             )
 
         async def _check(force=False):
@@ -648,7 +646,7 @@ class SuwayomiPlugin(Star):
                 return
 
             try:
-                await event.send(event.plain_result(f"📖 正在加载「{manga.title}」第 {fmt_chapter_num(target.chapter_number)} 话，请稍后..."))
+                await event.send(event.plain_result(f"📖 正在加载「{manga.title}」{fmt_chapter_display(target)}，请稍后..."))
             except Exception:
                 pass
 
@@ -668,13 +666,13 @@ class SuwayomiPlugin(Star):
             else:
                 pages = await self.client.fetch_chapter_pages(target.id)
                 if not pages:
-                    yield event.plain_result(f"第 {fmt_chapter_num(target.chapter_number)} 话暂无可用页面。")
+                    yield event.plain_result(f"{fmt_chapter_display(target)}暂无可用页面。")
                     return
                 total_pages = len(pages)
                 page_urls = [self.client.build_image_url(p) for p in pages[:max_pages]]
 
             if not page_urls:
-                yield event.plain_result(f"第 {fmt_chapter_num(target.chapter_number)} 话暂无可用页面。")
+                yield event.plain_result(f"{fmt_chapter_display(target)}暂无可用页面。")
                 return
 
             def _img(idx: int) -> Comp.Image:
@@ -690,7 +688,7 @@ class SuwayomiPlugin(Star):
                     for i in range(len(page_urls)):
                         nodes.append(Comp.Node(
                             uin="0",
-                            name=f"第 {fmt_chapter_num(target.chapter_number)} 话 - 第 {i + 1} 页",
+                            name=f"{fmt_chapter_display(target)} - 第 {i + 1} 页",
                             content=[_img(i)],
                         ))
                     if total_pages > max_pages:
@@ -750,8 +748,8 @@ class SuwayomiPlugin(Star):
                 yield event.plain_result(f"未找到「{manga.title}」指定的章节。")
                 return
 
-            num_label = fmt_chapter_num(target.chapter_number)
-            await event.send(event.plain_result(f"⏳ 正在下载「{manga.title}」第 {num_label} 话，请稍候..."))
+            num_label = fmt_chapter_display(target)
+            await event.send(event.plain_result(f"⏳ 正在下载「{manga.title}」{num_label}，请稍候..."))
 
             concurrency = self.config.get("download_concurrency", 6)
             custom_tmp = self.config.get("temp_dir", "").strip()
@@ -761,7 +759,7 @@ class SuwayomiPlugin(Star):
             )
 
             if not page_urls:
-                yield event.plain_result(f"第 {num_label} 话暂无可用页面。")
+                yield event.plain_result(f"{num_label}暂无可用页面。")
                 return
 
             valid_paths = [p for p in local_paths if p]
@@ -776,7 +774,7 @@ class SuwayomiPlugin(Star):
             safe_label = "".join(c for c in str(num_label) if c not in r'<>:"/\|?*')
             ext_map = {"zip": "zip", "pdf": "pdf", "cbz": "cbz"}
             file_ext = ext_map.get(fmt, "zip")
-            output_path = Path(valid_paths[0]).parent / f"{safe_title}_第{safe_label}话.{file_ext}"
+            output_path = Path(valid_paths[0]).parent / f"{safe_title}_{safe_label}.{file_ext}"
 
             try:
                 loop = asyncio.get_running_loop()
@@ -791,7 +789,7 @@ class SuwayomiPlugin(Star):
                 yield event.plain_result(f"打包失败: {e}")
                 return
 
-            filename = f"{safe_title}_第{safe_label}话.{file_ext}"
+            filename = f"{safe_title}_{safe_label}.{file_ext}"
             try:
                 chain = [Comp.File(file=str(output_path), name=filename)]
                 yield event.chain_result(chain)

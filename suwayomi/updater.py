@@ -9,6 +9,7 @@ from astrbot.api.event import MessageChain
 
 from . import PLUGIN_NAME
 from .service import (
+    fmt_chapter_display,
     fmt_chapter_label,
     fmt_chapter_num,
     get_chapter_timestamp,
@@ -177,7 +178,7 @@ async def check_updates(
                     except Exception as e:
                         logger.warning(
                             f"[{_PLUGIN_NAME}] 自动推送"
-                            f"「{title}」第{fmt_chapter_num(ch.chapter_number)}话"
+                            f"「{title}」{fmt_chapter_display(ch)}"
                             f"到{umo}失败: {e}"
                         )
 

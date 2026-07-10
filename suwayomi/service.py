@@ -46,6 +46,16 @@ def fmt_chapter_num(num: float) -> int | float | str:
         return "?"
 
 
+def fmt_chapter_display(ch: Chapter) -> str:
+    """Return the human-readable chapter name for display in messages.
+    Uses chapter.name if non-empty, otherwise falls back to 第X话.
+    """
+    name = (ch.name or "").strip()
+    if name:
+        return name
+    return f"第{fmt_chapter_num(ch.chapter_number)}话"
+
+
 def fmt_chapter_label(ch: Chapter, num_counts: dict[float, int]) -> str:
     num = fmt_chapter_num(ch.chapter_number)
     dup_tag = f" (ID:{ch.id})" if num_counts.get(ch.chapter_number, 0) > 1 else ""

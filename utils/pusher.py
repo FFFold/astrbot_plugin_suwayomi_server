@@ -10,6 +10,7 @@ from astrbot.api import logger
 from astrbot.api.event import MessageChain
 
 from ..suwayomi.models import Chapter
+from ..suwayomi.service import fmt_chapter_display
 from .pack import pack_cbz, pack_pdf, pack_zip
 
 if TYPE_CHECKING:
@@ -51,9 +52,8 @@ async def push_chapter_images(
     title: str,
     chapter: Chapter,
     fetch_pages_local_fn: Callable,
-    fmt_chapter_num_fn: Callable,
 ):
-    num_label = fmt_chapter_num_fn(chapter.chapter_number)
+    ch_label = fmt_chapter_display(chapter)
     max_pages = config.get("max_pages", 30)
     fetch_mode = config.get("image_fetch_mode", "url")
     send_mode = config.get("send_mode", "image")
@@ -85,15 +85,15 @@ async def push_chapter_images(
                 nodes = [
                     Comp.Node(
                         uin="0",
-                        name=f"「{title}」第 {num_label} 话",
-                        content=[Comp.Plain(f"📖「{title}」第 {num_label} 话")],
+                        name=f"「{title}」{ch_label}",
+                        content=[Comp.Plain(f"📖「{title}」{ch_label}")],
                     )
                 ]
                 for i in range(len(page_urls)):
                     nodes.append(
                         Comp.Node(
                             uin="0",
-                            name=f"第 {num_label} 话 - 第 {i + 1} 页",
+                            name=f"{ch_label} - 第 {i + 1} 页",
                             content=[_img(i)],
                         )
                     )
@@ -114,7 +114,7 @@ async def push_chapter_images(
                     umo, MessageChain(chain=[Comp.Nodes(nodes)])
                 )
             else:
-                chain = [Comp.Plain(f"📖「{title}」第 {num_label} 话")]
+                chain = [Comp.Plain(f"📖「{title}」{ch_label}")]
                 chain.extend(_img(i) for i in range(len(page_urls)))
                 if total_pages > max_pages:
                     chain.append(
@@ -131,7 +131,7 @@ async def push_chapter_images(
             await context.send_message(
                 umo,
                 MessageChain().message(
-                    f"📖「{title}」第 {num_label} 话已更新，"
+                    f"📖「{title}」{ch_label}已更新，"
                     f"但图片发送失败，请使用「漫画 阅读」查看"
                 ),
             )
@@ -146,9 +146,8 @@ async def push_chapter_file(
     title: str,
     chapter: Chapter,
     fetch_pages_local_fn: Callable,
-    fmt_chapter_num_fn: Callable,
 ):
-    num_label = fmt_chapter_num_fn(chapter.chapter_number)
+    ch_label = fmt_chapter_display(chapter)
     fmt = config.get("download_format", "zip")
 
     _, page_urls, local_paths, tmp_dir = await fetch_pages_local_fn(chapter.id)
@@ -164,11 +163,11 @@ async def push_chapter_file(
     try:
         safe_title = "".join(c for c in title if c not in r'<>:"/\|?*')[:50]
         safe_label = "".join(
-            c for c in str(num_label) if c not in r'<>:"/\|?*'
+            c for c in str(ch_label) if c not in r'<>:"/\|?*'
         )
         ext_map = {"zip": "zip", "pdf": "pdf", "cbz": "cbz"}
         file_ext = ext_map.get(fmt, "zip")
-        output_path = Path(valid_paths[0]).parent / f"{safe_title}_第{safe_label}话.{file_ext}"
+        output_path = Path(valid_paths[0]).parent / f"{safe_title}_{safe_label}.{file_ext}"
 
         try:
             loop = asyncio.get_running_loop()
@@ -182,7 +181,7 @@ async def push_chapter_file(
             logger.error(f"[{_PLUGIN_NAME}] 自动推送打包失败: {e}")
             return
 
-        filename = f"{safe_title}_第{safe_label}话.{file_ext}"
+        filename = f"{safe_title}_{safe_label}.{file_ext}"
         chain = [Comp.File(file=str(output_path), name=filename)]
         try:
             await context.send_message(umo, MessageChain(chain=chain))
@@ -191,7 +190,7 @@ async def push_chapter_file(
             await context.send_message(
                 umo,
                 MessageChain().message(
-                    f"📖「{title}」第 {num_label} 话已更新，"
+                    f"📖「{title}」{ch_label}已更新，"
                     f"但文件发送失败，请使用「漫画 下载」获取"
                 ),
             )

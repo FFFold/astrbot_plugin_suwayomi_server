@@ -75,7 +75,7 @@ main.py (SuwayomiPlugin — thin dispatch layer)
 
 7. **All command args are strings**: AstrBot passes raw strings, not typed values. Explicit `float()`/`int()` conversion required in command handlers. Use `str` type hints with manual conversion.
 
-8. **Duplicate chapter numbers**: Some manga have multiple chapters with same number (e.g., appendices). Plugin detects this and prompts users to use `ID:xxx` syntax (case-insensitive) for disambiguation.
+8. **Duplicate chapter numbers**: Some manga have multiple chapters with same number (e.g., appendices). Plugin detects this and prompts users to use `ID:xxx` syntax (case-insensitive, supports both `:` and `：`) for disambiguation.
 
 9. **QQ forward messages**: Use `Comp.Nodes([node1, node2, ...])` wrapper. Passing `[Node, Node, ...]` directly to `chain_result()` sends each as a separate forward.
 
@@ -97,13 +97,15 @@ main.py (SuwayomiPlugin — thin dispatch layer)
 - `_get_or_fetch_chapters(manga_id, force=False)` — Get chapters from DB, auto-fetch from source if stale or empty. `force=True` bypasses cache. Used by chapter list command (respects cache) and `_check_updates` (always forces).
 - `_get_chapter_timestamp(manga_id)` / `_set_chapter_timestamp(manga_id)` — Manage per-manga chapter fetch timestamps in KV storage.
 - `_fmt_chapter_label(ch, num_counts)` — Format chapter display: `#num name` or `#num name (ID:xxx)` for duplicates. Shared by chapter list and update notifications.
+- `_fmt_chapter_display(ch)` — Return human-readable chapter name for messages. Uses `ch.name` if non-empty, falls back to `第X话`. Used by push, read, download, and updater.
+- `_fmt_chapter_num(num)` — Format chapter number as `int | float | "?"`. Still used internally by `fmt_chapter_display` and for command hint numbers.
 - `_resolve_manga(event, name_or_id, cmd)` — Resolve manga by ID or fuzzy name. Returns `(Manga, None)` or `(None, error_msg)`. `cmd` is used in disambiguation hints (e.g., "章节", "阅读", "下载").
 - `_resolve_chapter(chapters, chapter_num, manga_name_or_id, cmd)` — Resolve chapter by ID or number string. Returns `(Chapter, None)` or `(None, error_msg)`. Shared by read and download.
 - `_fetch_pages_local(chapter_id, max_pages)` — Fetch page URLs and download images to temp dir. Returns `(total_pages, page_urls, local_paths)`. Shared by read and download.
 - `_download_images(urls)` — Parallel download with retry. Returns local file paths.
 - `_download_one(session, url, dest)` — Single image download with exponential backoff retry.
-- `_push_chapter_images(umo, title, chapter)` — Push chapter as images (reuses read send logic, respects `send_mode` for forward mode). Used by auto-push.
-- `_push_chapter_file(umo, title, chapter)` — Push chapter as packaged file (reuses download logic). Used by auto-push.
+- `_push_chapter_images(umo, title, chapter)` — Push chapter as images (reuses read send logic, respects `send_mode` for forward mode). Used by auto-push. Chapter label uses `ch.name` automatically.
+- `_push_chapter_file(umo, title, chapter)` — Push chapter as packaged file (reuses download logic). Used by auto-push. Chapter label uses `ch.name` automatically.
 - `_search_best_match(name, source_filter)` — Search manga name across sources, return first match. Used by batch subscribe.
 
 ## Config Options

@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.4.8] - 2026-07-10
+
+### Fixed
+
+- **章节标签优先使用章节标题** — 推送、阅读提示、文件名中的「第X话」全部改用章节实际名称（如「07卷附录」）。
+- **兼容全角冒号 `ID：xxx`** — `resolve_chapter` 同时接受半角 `:` 和全角 `：`。
+
+### Added
+
+- **`fmt_chapter_display(ch)`** — 章节显示标签工具函数。
+- **`tests/test_service.py`** — 19 个单元测试。
+
 ## [0.4.7] - 2026-07-07
 
 ### Changed

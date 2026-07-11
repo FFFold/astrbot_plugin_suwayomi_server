@@ -1,0 +1,17 @@
+name: 功能建议
+description: 为本插件提出新功能建议
+title: "[Feature] "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: 需求描述
+      description: 清晰描述你希望添加的功能或改进
+    validations:
+      required: true
+  - type: textarea
+    id: implementation
+    attributes:
+      label: 实现思路（可选）
+      description: 如果你对如何实现有想法，可以在这里描述

@@ -1,0 +1,47 @@
+name: Bug 报告
+description: 报告插件错误或异常行为
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: 描述
+      description: 清晰描述这个 bug 是什么
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 如何复现这个 bug
+      placeholder: |
+        1. 执行 '...'
+        2. 看到错误 '...'
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期行为
+      description: 你期望发生什么？
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志 / 截图
+      description: 如有相关日志或截图，请附上
+      render: shell
+  - type: input
+    id: version
+    attributes:
+      label: 插件版本
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 部署平台
+      options:
+        - Windows
+        - Linux
+        - macOS
+        - Docker
+        - 其他

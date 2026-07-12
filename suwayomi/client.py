@@ -61,9 +61,11 @@ class SuwayomiClient:
             {"u": self._username, "p": self._password},
         )
         result = self._response_data(status, response)
-        login_data = result["login"]
-        access_token = login_data.get("accessToken") if login_data else None
-        refresh_token = login_data.get("refreshToken") if login_data else None
+        login_data = result.get("login")
+        if not isinstance(login_data, dict):
+            raise SuwayomiError("JWT login response is missing login data")
+        access_token = login_data.get("accessToken")
+        refresh_token = login_data.get("refreshToken")
         if not access_token or not refresh_token:
             raise SuwayomiError("JWT login response is missing accessToken or refreshToken")
         self._jwt_access_token = access_token
@@ -73,6 +75,7 @@ class SuwayomiClient:
         self,
         query: str,
         variables: dict | None = None,
+        *,
         access_token: str | None = None,
     ) -> tuple[int, dict[str, Any]]:
         headers = dict(self._headers)
@@ -92,10 +95,13 @@ class SuwayomiClient:
                 try:
                     data = json.loads(text) if text else {}
                 except json.JSONDecodeError:
-                    message = text.strip()[:300] or resp.reason or "empty response"
+                    detail = text.strip()[:300] or resp.reason or "empty response"
+                    message = f"HTTP {resp.status}: invalid JSON response: {detail}"
                     data = {"errors": [{"message": message}]}
                 if not isinstance(data, dict):
-                    data = {"errors": [{"message": "Invalid GraphQL response from Suwayomi"}]}
+                    data = {"errors": [{
+                        "message": f"HTTP {resp.status}: invalid GraphQL response from Suwayomi",
+                    }]}
                 return resp.status, data
         except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
             raise SuwayomiError(f"Unable to connect to Suwayomi-Server: {exc}") from exc
@@ -104,16 +110,25 @@ class SuwayomiClient:
     def _is_unauthorized(status: int, response: dict[str, Any]) -> bool:
         if status == 401:
             return True
+        errors = response.get("errors")
+        if not isinstance(errors, list):
+            return False
         return any(
-            "unauthorized" in str(error.get("message", "")).lower()
-            for error in response.get("errors", [])
+            isinstance(error, dict)
+            and "unauthorized" in str(error.get("message", "")).lower()
+            for error in errors
         )
 
     @staticmethod
     def _response_data(status: int, response: dict[str, Any]) -> dict[str, Any]:
-        errors = response.get("errors", [])
+        errors = response.get("errors")
         if errors:
-            raise SuwayomiError(errors[0].get("message", "Unknown GraphQL error"))
+            first_error = errors[0] if isinstance(errors, list) else errors
+            if isinstance(first_error, dict):
+                message = first_error.get("message", "Unknown GraphQL error")
+            else:
+                message = str(first_error) or "Unknown GraphQL error"
+            raise SuwayomiError(message)
         if status >= 400:
             raise SuwayomiError(f"Suwayomi request failed with HTTP {status}")
 
@@ -126,14 +141,18 @@ class SuwayomiClient:
         await self._ensure_jwt()
 
         access_token = self._jwt_access_token if self.auth_mode == "jwt" else None
-        status, response = await self._post_graphql(query, variables, access_token)
+        status, response = await self._post_graphql(
+            query,
+            variables,
+            access_token=access_token,
+        )
 
         if self.auth_mode == "jwt" and self._is_unauthorized(status, response):
             await self._renew_jwt(access_token)
             status, response = await self._post_graphql(
                 query,
                 variables,
-                self._jwt_access_token,
+                access_token=self._jwt_access_token,
             )
 
         return self._response_data(status, response)
@@ -159,8 +178,10 @@ class SuwayomiClient:
             {"r": self._jwt_refresh_token},
         )
         result = self._response_data(status, response)
-        refresh_data = result["refreshToken"]
-        access_token = refresh_data.get("accessToken") if refresh_data else None
+        refresh_data = result.get("refreshToken")
+        if not isinstance(refresh_data, dict):
+            raise SuwayomiError("JWT refresh response is missing refreshToken data")
+        access_token = refresh_data.get("accessToken")
         if not access_token:
             raise SuwayomiError("JWT refresh response is missing accessToken")
         self._jwt_access_token = access_token

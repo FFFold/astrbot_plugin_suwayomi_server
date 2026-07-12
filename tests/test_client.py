@@ -1,5 +1,8 @@
+from unittest.mock import AsyncMock
+
 import pytest
-from suwayomi.client import SuwayomiClient
+
+from suwayomi.client import SuwayomiClient, SuwayomiError
 
 
 @pytest.fixture
@@ -49,3 +52,113 @@ def test_basic_auth_header_content():
     c = SuwayomiClient("http://localhost:4567", "basic", "user", "pass123")
     expected_cred = base64.b64encode(b"user:pass123").decode()
     assert c._headers["Authorization"] == f"Basic {expected_cred}"
+
+
+@pytest.mark.asyncio
+async def test_jwt_first_request_logs_in_without_recursion():
+    client = SuwayomiClient("http://localhost:4567", "jwt", "admin", "secret")
+    client._post_graphql = AsyncMock(side_effect=[
+        (200, {"data": {"login": {
+            "accessToken": "access-token",
+            "refreshToken": "refresh-token",
+        }}}),
+        (200, {"data": {"sources": {"nodes": []}}}),
+    ])
+
+    sources = await client.get_sources()
+
+    assert sources == []
+    assert client._jwt_access_token == "access-token"
+    assert client._jwt_refresh_token == "refresh-token"
+    assert client._post_graphql.await_count == 2
+    assert "access_token" not in client._post_graphql.await_args_list[0].kwargs
+    assert client._post_graphql.await_args_list[1].kwargs["access_token"] == "access-token"
+
+
+@pytest.mark.asyncio
+async def test_jwt_refreshes_on_graphql_unauthorized_error():
+    client = SuwayomiClient("http://localhost:4567", "jwt", "admin", "secret")
+    client._jwt_access_token = "expired-token"
+    client._jwt_refresh_token = "refresh-token"
+    client._post_graphql = AsyncMock(side_effect=[
+        (200, {"errors": [{"message": "Unauthorized\r\nserver stack"}]}),
+        (200, {"data": {"refreshToken": {"accessToken": "fresh-token"}}}),
+        (200, {"data": {"sources": {"nodes": []}}}),
+    ])
+
+    sources = await client.get_sources()
+
+    assert sources == []
+    assert client._jwt_access_token == "fresh-token"
+    assert client._post_graphql.await_count == 3
+    assert client._post_graphql.await_args_list[0].kwargs["access_token"] == "expired-token"
+    assert "access_token" not in client._post_graphql.await_args_list[1].kwargs
+    assert client._post_graphql.await_args_list[2].kwargs["access_token"] == "fresh-token"
+
+
+@pytest.mark.asyncio
+async def test_jwt_refreshes_on_http_401():
+    client = SuwayomiClient("http://localhost:4567", "jwt", "admin", "secret")
+    client._jwt_access_token = "expired-token"
+    client._jwt_refresh_token = "refresh-token"
+    client._post_graphql = AsyncMock(side_effect=[
+        (401, {}),
+        (200, {"data": {"refreshToken": {"accessToken": "fresh-token"}}}),
+        (200, {"data": {"sources": {"nodes": []}}}),
+    ])
+
+    sources = await client.get_sources()
+
+    assert sources == []
+    assert client._jwt_access_token == "fresh-token"
+
+
+@pytest.mark.asyncio
+async def test_jwt_logs_in_again_when_refresh_token_is_invalid():
+    client = SuwayomiClient("http://localhost:4567", "jwt", "admin", "secret")
+    client._jwt_access_token = "expired-token"
+    client._jwt_refresh_token = "invalid-refresh-token"
+    client._post_graphql = AsyncMock(side_effect=[
+        (401, {}),
+        (200, {"errors": [{"message": "Invalid refresh token"}]}),
+        (200, {"data": {"login": {
+            "accessToken": "new-access-token",
+            "refreshToken": "new-refresh-token",
+        }}}),
+        (200, {"data": {"sources": {"nodes": []}}}),
+    ])
+
+    sources = await client.get_sources()
+
+    assert sources == []
+    assert client._jwt_access_token == "new-access-token"
+    assert client._jwt_refresh_token == "new-refresh-token"
+    assert client._post_graphql.await_count == 4
+    assert client._post_graphql.await_args_list[0].kwargs["access_token"] == "expired-token"
+    assert "access_token" not in client._post_graphql.await_args_list[1].kwargs
+    assert "access_token" not in client._post_graphql.await_args_list[2].kwargs
+    assert client._post_graphql.await_args_list[3].kwargs["access_token"] == "new-access-token"
+
+
+@pytest.mark.asyncio
+async def test_jwt_login_rejects_missing_login_payload():
+    client = SuwayomiClient("http://localhost:4567", "jwt", "admin", "secret")
+    client._post_graphql = AsyncMock(return_value=(200, {"data": {}}))
+
+    with pytest.raises(SuwayomiError, match="missing login data"):
+        await client._login_jwt()
+
+
+@pytest.mark.asyncio
+async def test_jwt_refresh_rejects_missing_refresh_payload():
+    client = SuwayomiClient("http://localhost:4567", "jwt", "admin", "secret")
+    client._jwt_refresh_token = "refresh-token"
+    client._post_graphql = AsyncMock(return_value=(200, {"data": {}}))
+
+    with pytest.raises(SuwayomiError, match="missing refreshToken data"):
+        await client._refresh_jwt()
+
+
+def test_unauthorized_detection_ignores_malformed_errors():
+    assert not SuwayomiClient._is_unauthorized(200, {"errors": ["Unauthorized"]})
+    assert not SuwayomiClient._is_unauthorized(200, {"errors": None})

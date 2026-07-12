@@ -147,8 +147,9 @@ astrbot_suwayomi_server/
 - 基于 `aiohttp.ClientSession` 的异步 HTTP 客户端
 - 所有 Suwayomi 交互通过 `POST /api/graphql` 发送 GraphQL 查询/变更
 - 支持三种认证模式：无认证、Basic、JWT（自动刷新）
-- `_raw_query()` 是核心方法，处理认证头、错误解析、401 重试
-- JWT 刷新使用 `_refreshing` 标志防止递归
+- `_post_graphql()` — 底层 HTTP POST，处理 JSON 解析、错误归一化、网络异常捕获
+- `_raw_query()` — 上层认证查询，调用 `_ensure_jwt()`，通过 `_response_data()` 统一校验响应
+- JWT 认证使用 `asyncio.Lock` 保护，`_is_unauthorized()` 检测 HTTP 401 / GraphQL Unauthorized 两种失效，`_renew_jwt()` 自动执行 refresh → re-login 降级续期
 
 #### `suwayomi/models.py` — 数据模型
 

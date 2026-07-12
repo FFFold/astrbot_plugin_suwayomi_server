@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.4.9] - 2026-07-12
+
+### Fixed
+
+- **JWT 认证无限递归** — `_ensure_jwt` 通过 `_raw_query` 发登录请求形成递归死循环。PR #8 拆分 `_post_graphql()` 无状态 HTTP 层，登录绕过认证路径。
+- **GraphQL `Unauthorized` 未触发令牌刷新** — 新增 `_is_unauthorized()` 同时检测 HTTP 401 和 GraphQL errors 中的认证失败。
+- **网络连接错误处理** — 捕获 `aiohttp.ClientError` 和 `asyncio.TimeoutError`，明确定义「无法连接到 Suwayomi-Server」。
+
+### Changed
+
+- **`client.py` 架构重构** — 拆分为 `_post_graphql()`（HTTP 层）、`_response_data()`（响应校验）、`_renew_jwt()`（令牌续期中枢，`asyncio.Lock` 防并发）。
+- **`_refreshing: bool` → `_jwt_lock: asyncio.Lock`** — 原子化令牌管理。
+
+### Added
+
+- **JWT 认证回归测试** — 7 个异步测试覆盖递归、双重认证失效检测、令牌降级续期和异常响应处理。
+
 ## [0.4.8] - 2026-07-10
 
 ### Fixed

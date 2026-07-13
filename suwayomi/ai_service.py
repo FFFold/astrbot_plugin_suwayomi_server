@@ -13,6 +13,7 @@ _LATEST_SELECTORS = {"latest", "newest", "最新", "最新一话", "最新一話
 _LIST_SELECTORS = {"", "list", "all", "列表", "全部"}
 _CHAPTER_ID_RE = re.compile(r"^id\s*[:：]\s*(\d+)$", re.IGNORECASE)
 _RESET_SUCCESS_TEXT = "✅ Conversation reset successfully."
+_SOURCE_SEARCH_TIMEOUT_SEC = 15.0
 
 
 def is_successful_conversation_reset(event: Any) -> bool:
@@ -156,6 +157,14 @@ def chapter_to_agent_dict(chapter: Chapter) -> dict:
     }
 
 
+def source_to_agent_dict(source: Source) -> dict:
+    return {
+        "source_id": source.id,
+        "name": source.display_name,
+        "lang": source.lang,
+    }
+
+
 def select_search_sources(
     sources: list[Source],
     source_hint: str,
@@ -182,7 +191,19 @@ def select_search_sources(
         if matches:
             return matches
 
-    return usable[:limit]
+    # Prefer different extensions before additional language variants of the
+    # same extension, so a small limit is not monopolized by MangaDex variants.
+    primary: list[Source] = []
+    variants: list[Source] = []
+    seen_names: set[str] = set()
+    for source in usable:
+        key = source.name.strip().casefold() or source.display_name.strip().casefold()
+        if key in seen_names:
+            variants.append(source)
+            continue
+        seen_names.add(key)
+        primary.append(source)
+    return (primary + variants)[:limit]
 
 
 async def search_manga_for_agent(
@@ -190,9 +211,11 @@ async def search_manga_for_agent(
     config: Any,
     query: str,
     source_hint: str = "",
+    search_all_sources: bool = False,
 ) -> dict:
     query = str(query or "").strip()
     source_hint = str(source_hint or "").strip()
+    search_all_sources = bool(search_all_sources)
     if not query:
         return {"success": False, "error": "query 不能为空", "results": []}
 
@@ -201,30 +224,41 @@ async def search_manga_for_agent(
     per_source_limit = _bounded_int(
         config.get("ai_results_per_source", 5), 5, 1, 20
     )
-    target_sources = select_search_sources(
-        sources,
-        source_hint,
-        config.get("default_source_id", 0),
-        max_sources,
-    )
+    available_sources = [
+        source_to_agent_dict(source)
+        for source in sources
+        if str(source.id) != "0"
+    ]
+    if search_all_sources:
+        target_sources = [source for source in sources if str(source.id) != "0"]
+    else:
+        target_sources = select_search_sources(
+            sources,
+            source_hint,
+            config.get("default_source_id", 0),
+            max_sources,
+        )
     if not target_sources:
         return {
             "success": False,
             "error": "没有匹配的可用漫画源",
             "query": query,
             "source_hint": source_hint,
-            "available_sources": [
-                {"source_id": source.id, "name": source.display_name, "lang": source.lang}
-                for source in sources
-                if str(source.id) != "0"
-            ][:20],
+            "search_mode": "all" if search_all_sources else "limited",
+            "available_source_count": len(available_sources),
+            "available_sources": available_sources,
             "results": [],
         }
 
     async def _search(source: Source):
         try:
-            result = await client.search_manga(source.id, query)
+            result = await asyncio.wait_for(
+                client.search_manga(source.id, query),
+                timeout=_SOURCE_SEARCH_TIMEOUT_SEC,
+            )
             return source, result, None
+        except TimeoutError:
+            return source, None, f"搜索超时（{_SOURCE_SEARCH_TIMEOUT_SEC:g} 秒）"
         except Exception as exc:  # one broken source must not fail the whole search
             return source, None, str(exc)
 
@@ -249,13 +283,20 @@ async def search_manga_for_agent(
         "success": successful_sources > 0,
         "query": query,
         "source_hint": source_hint,
+        "search_mode": "all" if search_all_sources else "limited",
+        "searched_source_count": len(target_sources),
         "searched_sources": [source.display_name for source in target_sources],
+        "available_source_count": len(available_sources),
+        "available_sources": available_sources,
         "result_count": len(results),
         "results": results,
         "source_errors": errors,
         "instruction": (
-            "使用 manga_id 继续查询章节；如果多个结果都可能匹配，先让用户确认，"
-            "不要按列表位置猜测。"
+            "本次已经在一次调用内搜索全部可用来源，不要再按来源重复调用搜索工具；"
+            "使用 manga_id 继续查询章节，如果多个结果都可能匹配，先让用户确认。"
+            if search_all_sources
+            else "使用 manga_id 继续查询章节；如果用户明确要求搜索全部来源，"
+            "只需再次调用一次本工具并设置 search_all_sources=true，禁止逐源重复调用。"
         ),
     }
 

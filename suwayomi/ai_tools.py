@@ -13,6 +13,24 @@ AI_TOOL_NAMES = (
 )
 
 
+def effective_tool_timeout(
+    configured_timeout: int | float,
+    astrbot_tool_timeout: int | float | None = None,
+    preferred_minimum: int | float = 0,
+) -> float:
+    """Fit the plugin timeout inside AstrBot's outer tool-call budget."""
+    requested = max(float(configured_timeout), float(preferred_minimum), 0.1)
+    try:
+        outer_timeout = float(astrbot_tool_timeout)
+    except (TypeError, ValueError):
+        return requested
+    if outer_timeout <= 0:
+        return requested
+
+    reserve = min(5.0, max(0.1, outer_timeout * 0.1))
+    return min(requested, max(0.1, outer_timeout - reserve))
+
+
 @dataclass
 class SuwayomiFunctionTool(FunctionTool):
     """A plugin-owned tool that is safe across initial load and later re-sync."""
@@ -24,6 +42,9 @@ class SuwayomiFunctionTool(FunctionTool):
         """Dispatch without relying on star_manager's one-time handler binding."""
         event = context.context.event
         method = getattr(self.plugin, self.method_name)
+        outer_timeout = getattr(context, "tool_call_timeout", None)
+        if outer_timeout is not None:
+            kwargs["_astrbot_tool_timeout"] = outer_timeout
         return await method(event, **kwargs)
 
 
@@ -34,6 +55,8 @@ def build_ai_tools(plugin: Any) -> list[FunctionTool]:
             description=(
                 "在 Suwayomi 已安装的漫画源中搜索漫画。适合用户使用简称、别名、"
                 "剧情描述或模糊说法找漫画。返回稳定的 manga_id 和候选元数据；"
+                "用户明确要求搜索全部来源时，只调用一次本工具并设置 search_all_sources=true，"
+                "禁止按来源连续重复调用；"
                 "有多个合理候选时必须先询问用户，不能直接取第一项。"
             ),
             parameters={
@@ -47,6 +70,15 @@ def build_ai_tools(plugin: Any) -> list[FunctionTool]:
                         "type": "string",
                         "description": "可选的漫画源名称、语言代码或来源提示，例如 zh、拷贝漫画。",
                         "default": "",
+                    },
+                    "search_all_sources": {
+                        "type": "boolean",
+                        "description": (
+                            "仅当用户明确要求搜索全部已安装来源时设为 true。"
+                            "插件会在一次 Tool 调用内并行查询所有来源，此时忽略 source_hint；"
+                            "不得为每个来源分别重复调用本工具。"
+                        ),
+                        "default": False,
                     },
                 },
                 "required": ["query"],

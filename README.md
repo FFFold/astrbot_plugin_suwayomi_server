@@ -246,11 +246,11 @@ uv pip install -r astrbot_suwayomi_server/requirements.txt
 | `allow_ai_send` | bool | `true` | 允许 Agent 在用户明确要求阅读时发送章节文件或图片 |
 | `ai_max_sources` | int | `5` | 单次 AI 搜索最多查询的漫画源数（1-10） |
 | `ai_results_per_source` | int | `5` | 每个漫画源最多返回的候选数（1-20） |
-| `ai_tool_timeout_sec` | int | `60` | 单次搜索、章节查询或发送 Tool 的超时（10-300 秒） |
+| `ai_tool_timeout_sec` | int | `60` | 插件内部的搜索、章节查询或发送超时（10-300 秒）；运行时会自动限制在 AstrBot 工具调用超时以内并预留回传时间 |
 
 插件注册的 Tool：
 
-- `suwayomi_search_manga`：按标题、别名或推断关键词跨源搜索，返回稳定 `manga_id`。
+- `suwayomi_search_manga`：按标题、别名或推断关键词跨源搜索，返回稳定 `manga_id` 和完整的已安装来源列表；单个来源超过 15 秒会独立跳过，不影响其他来源的结果。用户明确要求扫描全部来源时，Agent 通过一次 `search_all_sources=true` 调用完成，不需要逐源重复调用。
 - `suwayomi_get_chapters`：查询详情与章节，返回稳定 `chapter_id`，支持 `latest`、`list`、章节号和 `ID:数字`。
 - `suwayomi_send_chapter`：仅在明确阅读意图下发送已经查询确认的章节；默认 PDF，支持用户指定 ZIP、CBZ 或图片，同一 Agent 回合自动去重。
 

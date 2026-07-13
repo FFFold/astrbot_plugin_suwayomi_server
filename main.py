@@ -18,7 +18,7 @@ from .suwayomi.ai_service import (
     is_successful_conversation_reset,
     search_manga_for_agent,
 )
-from .suwayomi.ai_tools import AI_TOOL_NAMES, build_ai_tools
+from .suwayomi.ai_tools import AI_TOOL_NAMES, build_ai_tools, effective_tool_timeout
 from .suwayomi.client import SuwayomiClient, SuwayomiError
 from .suwayomi.models import Manga, SearchResult
 from .suwayomi.service import (
@@ -132,12 +132,21 @@ class SuwayomiPlugin(Star):
         self._ai_tools_config_enabled = False
         logger.info(f"[{PLUGIN_NAME}] AI 漫画工具已关闭")
 
-    def _ai_timeout(self) -> int:
+    def _ai_timeout(
+        self,
+        astrbot_tool_timeout: int | float | None = None,
+        preferred_minimum: int | float = 0,
+    ) -> float:
         try:
             value = int(self.config.get("ai_tool_timeout_sec", 60))
         except (TypeError, ValueError):
             value = 60
-        return max(10, min(value, 300))
+        configured_timeout = max(10, min(value, 300))
+        return effective_tool_timeout(
+            configured_timeout,
+            astrbot_tool_timeout,
+            preferred_minimum,
+        )
 
     @staticmethod
     def _ai_scope_key(event: AstrMessageEvent) -> tuple[str, str]:
@@ -194,13 +203,20 @@ class SuwayomiPlugin(Star):
         event: AstrMessageEvent,
         query: str,
         source_hint: str = "",
+        search_all_sources: bool = False,
+        *,
+        _astrbot_tool_timeout: int | float | None = None,
     ) -> str:
         if not self._config_bool(self.config.get("enable_ai_tools", True), True):
             return self._tool_json({"success": False, "error": "AI 漫画工具已关闭"})
         try:
-            async with asyncio.timeout(self._ai_timeout()):
+            async with asyncio.timeout(self._ai_timeout(_astrbot_tool_timeout)):
                 result = await search_manga_for_agent(
-                    self.client, self.config, query, source_hint
+                    self.client,
+                    self.config,
+                    query,
+                    source_hint,
+                    self._config_bool(search_all_sources),
                 )
             return self._tool_json(result)
         except TimeoutError:
@@ -216,11 +232,13 @@ class SuwayomiPlugin(Star):
         selector: str = "latest",
         refresh: bool = False,
         limit: int = 20,
+        *,
+        _astrbot_tool_timeout: int | float | None = None,
     ) -> str:
         if not self._config_bool(self.config.get("enable_ai_tools", True), True):
             return self._tool_json({"success": False, "error": "AI 漫画工具已关闭"})
         try:
-            async with asyncio.timeout(self._ai_timeout()):
+            async with asyncio.timeout(self._ai_timeout(_astrbot_tool_timeout)):
                 result = await get_chapters_for_agent(
                     self.client,
                     self.get_kv_data,
@@ -256,6 +274,8 @@ class SuwayomiPlugin(Star):
         chapter_id: int,
         confirmed_user_intent: bool,
         format: str = "pdf",
+        *,
+        _astrbot_tool_timeout: int | float | None = None,
     ) -> str:
         if not self._config_bool(self.config.get("enable_ai_tools", True), True):
             return self._tool_json({"success": False, "sent": False, "error": "AI 漫画工具已关闭"})
@@ -284,11 +304,10 @@ class SuwayomiPlugin(Star):
                 "sent": False,
                 "error": "format 仅支持 pdf、zip、cbz 或 image；默认应使用 pdf",
             })
-        send_timeout = self._ai_timeout()
-        if send_format != "image":
-            # AstrBot's default outer tool timeout is 120s. Leave a small margin
-            # while allowing full-chapter download and packaging more time.
-            send_timeout = max(send_timeout, 110)
+        send_timeout = self._ai_timeout(
+            _astrbot_tool_timeout,
+            preferred_minimum=110 if send_format != "image" else 0,
+        )
 
         scope_key = self._ai_scope_key(event)
         receipt_key = (scope_key, id(event), manga_id, chapter_id)

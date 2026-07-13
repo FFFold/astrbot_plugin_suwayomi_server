@@ -18,7 +18,7 @@
 
 ```bash
 # Unit tests (no network needed)
-uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_subscription.py tests/test_web_api.py tests/test_batch_subscribe.py tests/test_push.py -v
+uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_subscription.py tests/test_web_api.py tests/test_batch_subscribe.py tests/test_push.py tests/test_service.py tests/test_ai_service.py tests/test_ai_tools.py -v
 
 # Integration tests (requires live Suwayomi-Server)
 uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
@@ -38,6 +38,8 @@ main.py (SuwayomiPlugin — thin dispatch layer)
   ├── suwayomi/client.py (SuwayomiClient - async GraphQL HTTP)
   ├── suwayomi/models.py (Source, Manga, Chapter, SearchResult dataclasses)
   ├── suwayomi/service.py (resolve_manga, resolve_chapter, get_or_fetch_chapters, fmt helpers)
+  ├── suwayomi/ai_service.py (structured, side-effect-free Agent search/chapter service)
+  ├── suwayomi/ai_tools.py (FunctionTool schemas and registration factory)
   ├── suwayomi/updater.py (check_updates, run_update_loop)
   ├── utils/downloader.py (download_one, download_images, fetch_pages_local)
   ├── utils/pack.py (pack_zip, pack_cbz, pack_pdf — image packaging)
@@ -47,10 +49,12 @@ main.py (SuwayomiPlugin — thin dispatch layer)
   └── pages/dashboard/ (WebUI: 仪表盘 + 订阅管理 + 配置)
 ```
 
-- `main.py`: Plugin entry, all commands under `@filter.command_group("漫画")`, background update loop, WebUI API registration. Thin dispatch layer — all business logic delegated to service/updater/downloader/pusher modules.
+- `main.py`: Plugin entry, all commands under `@filter.command_group("漫画")`, three AstrBot Agent tools, background update loop, WebUI API registration. Thin dispatch layer — all business logic delegated to service/updater/downloader/pusher modules.
 - `suwayomi/client.py`: All Suwayomi interaction via `POST /api/graphql`; supports none/basic/jwt auth
 - `suwayomi/models.py`: Pure dataclasses with `from_dict()` factory methods
 - `suwayomi/service.py`: Business logic — manga/chapter resolution, chapter fetching/caching, text normalization, status emoji mapping. All functions are standalone with dependency-injected parameters (client, sub_mgr, get_kv_data, etc.)
+- `suwayomi/ai_service.py`: Structured AI-facing search and chapter lookup. Returns stable manga/chapter IDs and never sends messages.
+- `suwayomi/ai_tools.py`: Explicit JSON Schemas for `suwayomi_search_manga`, `suwayomi_get_chapters`, and `suwayomi_send_chapter`, registered through `context.add_llm_tools()`; custom `call()` dispatch keeps event binding stable during initial load and config-driven re-registration.
 - `suwayomi/updater.py`: Update engine — `check_updates()` scans all subscriptions for new chapters, pushes notifications, triggers auto-push. `run_update_loop()` is the background task wrapper. Imported by `main.py` with pre-bound push callbacks.
 - `utils/downloader.py`: Image download pipeline — `download_one()` with exponential backoff, `download_images()` parallel batch download, `fetch_pages_local()` downloads chapter pages to temp dir.
 - `utils/pack.py`: Pack images into ZIP, CBZ, or PDF files; `parse_download_args()` for command arg parsing
@@ -107,6 +111,9 @@ main.py (SuwayomiPlugin — thin dispatch layer)
 - `_push_chapter_images(umo, title, chapter)` — Push chapter as images (reuses read send logic, respects `send_mode` for forward mode). Used by auto-push. Chapter label uses `ch.name` automatically.
 - `_push_chapter_file(umo, title, chapter)` — Push chapter as packaged file (reuses download logic). Used by auto-push. Chapter label uses `ch.name` automatically.
 - `_search_best_match(name, source_filter)` — Search manga name across sources, return first match. Used by batch subscribe.
+- `_prepare_chapter_delivery(event, chapter)` — Build the chapter image result for `/漫画 阅读` and explicitly requested AI image sending.
+- `_prepare_chapter_file_delivery(event, manga, chapter, fmt)` — Download all pages and build the AI Tool's PDF-default file result (PDF/ZIP/CBZ).
+- AI tools keep recent chapter candidates isolated by `(unified_msg_origin, sender_id)` for 10 minutes. The send tool only accepts a previously exposed `(manga_id, chapter_id)` pair, defaults to PDF unless the user names another supported format, and de-duplicates repeated calls in one Agent turn.
 
 ## Config Options
 
@@ -129,7 +136,7 @@ main.py (SuwayomiPlugin — thin dispatch layer)
 - `_conf_schema.json`: AstrBot WebUI config form schema
 - `requirements.txt`: Runtime deps (currently `aiohttp>=3.9.0`, `img2pdf>=0.5.0`, and `opencc-python-reimplemented>=0.1.7`)
 - `pyproject.toml`: Dev deps (pytest, pytest-asyncio), gitignored
-- Tests in `tests/` - unit tests are synchronous or use `@pytest.mark.asyncio`
+- Tests in `tests/` - unit tests are synchronous or use `@pytest.mark.asyncio`; `test_ai_service.py` covers structured Agent search and chapter selection, while `test_ai_tools.py` guards `call()` dispatch across initial load and config re-sync
 - `test_live_api.py`: Integration tests for Suwayomi client, skipped by default, need live server
 - `test_live_web_api.py`: Integration tests for WebUI API handlers, skipped by default, need live server
 - Version is in `metadata.yaml`, not `pyproject.toml`

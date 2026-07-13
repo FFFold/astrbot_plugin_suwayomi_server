@@ -32,6 +32,7 @@
 | | 功能 | 说明 |
 |---|---|---|
 | 🔍 | **多源搜索** | 跨多个已安装漫画源全局搜索，智能合并结果 |
+| 🤖 | **AI 自然语言找漫画** | 注册 AstrBot Agent Tool，支持用简称、别名或剧情描述搜索并连续查询章节 |
 | 📖 | **在线阅读** | 直接在聊天中阅读漫画章节，支持逐页发送或合并转发 |
 | ⬇️ | **章节下载** | 下载章节页面并打包为 ZIP/PDF/CBZ 文件发送到聊天 |
 | 🔔 | **订阅更新** | 订阅漫画后自动推送新章节通知，支持自定义检查间隔 |
@@ -64,6 +65,22 @@
 ---
 
 ## 💬 使用示例
+
+### AI 自然语言模式
+
+使用支持 Function Calling 的模型，并在 AstrBot WebUI 中启用本插件的 Tool 后，可以直接说：
+
+```text
+用户: 帮我找一下主角叫琦玉的漫画，最好是中文源，直接看最新一话
+Bot:  找到《一拳超人 重制版》和《一拳超人 原作版》，你想看哪个？
+用户: 重制版
+Bot:  [发送《一拳超人 重制版》最新章节 PDF]
+```
+
+Agent 会依次调用搜索、章节查询和阅读发送 Tool。存在多个版本或同号章节时会先询问，
+并始终使用稳定的漫画 ID / 章节 ID，不依赖容易串会话的搜索结果编号。默认打包发送 PDF；
+当 AstrBot 成功执行 `/reset` 时，插件也会同步清除该会话的漫画搜索候选、章节候选和发送去重状态。
+用户明确指定 ZIP、CBZ 或图片时优先服从。只说“找一下”时不会主动发送。
 
 ### 基本流程
 
@@ -220,6 +237,22 @@ uv pip install -r astrbot_suwayomi_server/requirements.txt
 | `download_format` | string | `zip` | 下载打包格式：`zip` / `pdf` / `cbz` |
 | `temp_dir` | string | `""` | 临时文件目录。留空用系统默认，Docker 环境设置共享目录如 `/AstrBot/data/temp` |
 | `auto_push_mode` | string | `image` | 自动推送模式：`image`（图片）/ `file`（文件） |
+
+### AI Tool 设置
+
+| 配置项 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `enable_ai_tools` | bool | `true` | 注册搜索、章节查询和阅读发送 Tool；关闭后不影响传统 `/漫画` 命令 |
+| `allow_ai_send` | bool | `true` | 允许 Agent 在用户明确要求阅读时发送章节文件或图片 |
+| `ai_max_sources` | int | `5` | 单次 AI 搜索最多查询的漫画源数（1-10） |
+| `ai_results_per_source` | int | `5` | 每个漫画源最多返回的候选数（1-20） |
+| `ai_tool_timeout_sec` | int | `60` | 单次搜索、章节查询或发送 Tool 的超时（10-300 秒） |
+
+插件注册的 Tool：
+
+- `suwayomi_search_manga`：按标题、别名或推断关键词跨源搜索，返回稳定 `manga_id`。
+- `suwayomi_get_chapters`：查询详情与章节，返回稳定 `chapter_id`，支持 `latest`、`list`、章节号和 `ID:数字`。
+- `suwayomi_send_chapter`：仅在明确阅读意图下发送已经查询确认的章节；默认 PDF，支持用户指定 ZIP、CBZ 或图片，同一 Agent 回合自动去重。
 
 ### 认证模式说明
 

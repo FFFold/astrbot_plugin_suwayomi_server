@@ -93,5 +93,40 @@
     "options": ["image", "file"],
     "labels": ["图片（复用阅读）", "文件（复用下载）"],
     "hint": "发现更新时自动推送的模式：图片直接发到聊天，文件发送 ZIP/PDF/CBZ 包"
+  },
+  "enable_ai_tools": {
+    "description": "启用 AI 漫画工具",
+    "type": "bool",
+    "default": true,
+    "hint": "允许 AstrBot Agent 使用自然语言搜索漫画、查询章节；关闭后保留全部 /漫画 命令"
+  },
+  "allow_ai_send": {
+    "description": "允许 AI 直接发送漫画",
+    "type": "bool",
+    "default": true,
+    "hint": "仅当用户明确要求阅读或发送漫画时生效；默认发送 PDF，搜索和询问不会主动发送文件或图片"
+  },
+  "ai_max_sources": {
+    "description": "AI 单次搜索最多漫画源数",
+    "type": "int",
+    "default": 5,
+    "min": 1,
+    "max": 10,
+    "hint": "限制 Agent 单次搜索的漫画源数量，避免响应过慢"
+  },
+  "ai_results_per_source": {
+    "description": "AI 每个源最多候选数",
+    "type": "int",
+    "default": 5,
+    "min": 1,
+    "max": 20
+  },
+  "ai_tool_timeout_sec": {
+    "description": "AI Tool 超时（秒）",
+    "type": "int",
+    "default": 60,
+    "min": 10,
+    "max": 300,
+    "hint": "搜索、章节查询和阅读发送的单次 Tool 超时"
   }
 }

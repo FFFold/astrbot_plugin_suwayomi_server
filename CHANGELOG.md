@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
+The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
 ## [0.5.0] - 2026-07-14
@@ -10,11 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 ### Added
 
 - **AI Agent 漫画工具** — 注册三个 AstrBot Tool：`suwayomi_search_manga`（自然语言跨源搜索）、`suwayomi_get_chapters`（章节查询，支持 `latest`/`list`/章节号/`ID:数字`）、`suwayomi_send_chapter`（仅明确阅读意图时发送，默认 PDF，支持 ZIP/CBZ/图片；`asyncio.Lock` 防并发，允许失败重试）。新增 `suwayomi/ai_service.py`（无副作用服务层）和 `suwayomi/ai_tools.py`（`SuwayomiFunctionTool` 子类，`call()` 覆写保证配置重载后绑定稳定）。PR #9。
-- **AI 交互状态管理** — `AiInteractionState` 按 `(unified_msg_origin, sender_id)` 隔离章节候选；`asyncio.Lock` 防并发发送；`after_message_sent` 钩子联动 `/reset` 自动清除会话状态。
-- **AI 工具配置项** — `enable_ai_tools`、`allow_ai_send`、`ai_max_sources`、`ai_results_per_source`、`ai_tool_timeout_sec`，完整暴露于配置 Schema、WebUI 和文档。
-- **章节发送重构** — 提取 `_prepare_chapter_delivery`（图片模式）和 `_prepare_chapter_file_delivery`（文件模式）为 `/漫画 阅读` 和 AI Tool 共享。
-- **回归测试** — `tests/test_ai_service.py`（13 个）、`tests/test_ai_tools.py`（4 个）、Web API 配置边界测试。
-- **运行时依赖** — 新增 `pydantic>=2.12.5,<3`。
+  - **AI 交互状态管理** — `AiInteractionState` 按 `(unified_msg_origin, sender_id)` 隔离章节候选；`asyncio.Lock` 防并发发送；`after_message_sent` 钩子联动 `/reset` 自动清除会话状态。
+  - **AI 工具配置项** — `enable_ai_tools`、`allow_ai_send`、`ai_max_sources`、`ai_results_per_source`、`ai_tool_timeout_sec`，完整暴露于配置 Schema、WebUI 和文档。
+  - **章节发送重构** — 提取 `_prepare_chapter_delivery`（图片模式）和 `_prepare_chapter_file_delivery`（文件模式）为 `/漫画 阅读` 和 AI Tool 共享。
+  - **回归测试** — `tests/test_ai_service.py`（13 个）、`tests/test_ai_tools.py`（4 个）、Web API 配置边界测试。
+  - **运行时依赖** — 新增 `pydantic>=2.12.5,<3`。
 
 ### Changed
 

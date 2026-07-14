@@ -90,8 +90,8 @@ def build_ai_tools(plugin: Any) -> list[FunctionTool]:
         SuwayomiFunctionTool(
             name=AI_TOOL_NAMES[1],
             description=(
-                "根据稳定 manga_id 获取漫画详情和章节。selector 可为 latest、list、"
-                "章节号或 ID:数字。结果会返回稳定 chapter_id；同号章节有歧义时必须让用户确认。"
+                "根据稳定 manga_id 获取漫画详情和章节。selector 可为 list、latest、章节号或 ID:数字。"
+                "结果会返回稳定 chapter_id；同号章节有歧义时必须让用户确认。"
             ),
             parameters={
                 "type": "object",
@@ -102,7 +102,7 @@ def build_ai_tools(plugin: Any) -> list[FunctionTool]:
                     },
                     "selector": {
                         "type": "string",
-                        "description": "latest、list、章节号（如 38.5）或 ID:123。",
+                        "description": "取值：list（章节列表）、latest（最新一话）、章节号（如 38.5）或 ID:数字。",
                         "default": "latest",
                     },
                     "refresh": {

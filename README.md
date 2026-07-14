@@ -67,6 +67,18 @@
 
 ---
 
+## 🤖 工具
+
+启用 AstrBot Agent 后，以下 Tool 自动注册给 LLM 调用：
+
+| 工具 | 说明 |
+|---|---|
+| `suwayomi_search_manga` | 跨源搜索漫画，返回稳定 `manga_id`。支持按源名提示过滤，也可一次搜索全部已安装源 |
+| `suwayomi_get_chapters` | 查询漫画章节列表，支持 `latest`（最新章节）、`list`（最新 N 话）、章节号或 `ID:数字` 精确选择 |
+| `suwayomi_send_chapter` | 将已确认的章节发送到聊天。默认打包为 PDF，支持 ZIP/CBZ/图片；仅限用户明确要求阅读时调用 |
+
+---
+
 ## 💬 使用示例
 
 ### 基本流程

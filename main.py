@@ -310,17 +310,8 @@ class SuwayomiPlugin(Star):
         )
 
         scope_key = self._ai_scope_key(event)
-        receipt_key = (scope_key, id(event), manga_id, chapter_id)
         lock = self._ai_send_locks.setdefault(scope_key, asyncio.Lock())
         async with lock:
-            if self._ai_state.already_sent(receipt_key):
-                return self._tool_json({
-                    "success": True,
-                    "sent": False,
-                    "duplicate_prevented": True,
-                    "message": "本回合已经发送过该章节，禁止重复发送",
-                })
-
             tmp_dir: Path | None = None
             try:
                 async with asyncio.timeout(send_timeout):
@@ -353,7 +344,6 @@ class SuwayomiPlugin(Star):
                     if result is None:
                         return self._tool_json({"success": False, "sent": False, "error": "该章节没有成功下载的页面，无法发送"})
                     await event.send(result)
-                self._ai_state.mark_sent(receipt_key)
                 return self._tool_json({
                     "success": True,
                     "sent": True,
@@ -364,7 +354,7 @@ class SuwayomiPlugin(Star):
                     "filename": filename,
                     "total_pages": total_pages,
                     "pages_delivered": delivered_pages,
-                    "instruction": "章节已经直接发送给用户；不要再次调用发送工具，只需简短确认发送格式。",
+                    "instruction": "章节已成功发送给用户，请确认发送格式，请勿重复发送。",
                 })
             except TimeoutError:
                 return self._tool_json({"success": False, "sent": False, "error": "加载或发送章节超时"})

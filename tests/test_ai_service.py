@@ -82,18 +82,6 @@ def test_ai_interaction_state_isolates_group_senders_and_expires():
     assert state.was_chapter_exposed(sender_a, 10, 100, now=1601) is False
 
 
-def test_ai_interaction_state_deduplicates_only_same_turn_receipt():
-    state = AiInteractionState(ttl=600)
-    scope = ("qq:group:123", "user-a")
-    receipt = (scope, 12345, 10, 100)
-    other_turn = (scope, 67890, 10, 100)
-
-    assert state.already_sent(receipt, now=1000) is False
-    state.mark_sent(receipt, now=1000)
-    assert state.already_sent(receipt, now=1001) is True
-    assert state.already_sent(other_turn, now=1001) is False
-
-
 def test_ai_interaction_state_clear_origin_is_scoped():
     state = AiInteractionState(ttl=600)
     sender_a = ("qq:group:123", "user-a")
@@ -101,15 +89,12 @@ def test_ai_interaction_state_clear_origin_is_scoped():
     other_group = ("qq:group:456", "user-a")
     for scope in (sender_a, sender_b, other_group):
         state.remember_chapters(scope, 10, {100}, now=1000)
-        state.mark_sent((scope, 12345, 10, 100), now=1000)
 
     state.clear_origin("qq:group:123")
 
     assert state.was_chapter_exposed(sender_a, 10, 100, now=1001) is False
     assert state.was_chapter_exposed(sender_b, 10, 100, now=1001) is False
     assert state.was_chapter_exposed(other_group, 10, 100, now=1001) is True
-    assert state.already_sent((sender_a, 12345, 10, 100), now=1001) is False
-    assert state.already_sent((other_group, 12345, 10, 100), now=1001) is True
 
 
 def test_successful_conversation_reset_detection():

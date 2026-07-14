@@ -37,20 +37,16 @@ def is_successful_conversation_reset(event: Any) -> bool:
 
 
 class AiInteractionState:
-    """Short-lived per-sender candidates plus per-turn send receipts."""
+    """Short-lived per-sender chapter candidates."""
 
     def __init__(self, ttl: int = 600):
         self.ttl = max(1, int(ttl))
         self._chapters: dict[
             tuple[str, str], tuple[float, set[tuple[int, int]]]
         ] = {}
-        self._send_receipts: dict[
-            tuple[tuple[str, str], int, int, int], float
-        ] = {}
 
     def clear(self):
         self._chapters.clear()
-        self._send_receipts.clear()
 
     def clear_origin(self, unified_msg_origin: str):
         """Clear transient manga state for one AstrBot conversation origin."""
@@ -59,11 +55,6 @@ class AiInteractionState:
             scope: entry
             for scope, entry in self._chapters.items()
             if scope[0] != origin
-        }
-        self._send_receipts = {
-            receipt: sent_at
-            for receipt, sent_at in self._send_receipts.items()
-            if receipt[0][0] != origin
         }
 
     def remember_chapters(
@@ -98,26 +89,6 @@ class AiInteractionState:
             del self._chapters[scope]
             return False
         return (int(manga_id), int(chapter_id)) in entry[1]
-
-    def already_sent(
-        self,
-        receipt: tuple[tuple[str, str], int, int, int],
-        now: float | None = None,
-    ) -> bool:
-        timestamp = time.time() if now is None else now
-        self._send_receipts = {
-            key: sent_at
-            for key, sent_at in self._send_receipts.items()
-            if timestamp - sent_at <= self.ttl
-        }
-        return receipt in self._send_receipts
-
-    def mark_sent(
-        self,
-        receipt: tuple[tuple[str, str], int, int, int],
-        now: float | None = None,
-    ):
-        self._send_receipts[receipt] = time.time() if now is None else now
 
 
 def _bounded_int(value: Any, default: int, minimum: int, maximum: int) -> int:

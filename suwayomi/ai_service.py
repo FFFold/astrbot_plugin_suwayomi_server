@@ -308,7 +308,7 @@ def _select_chapter_candidates(
     ordered = sorted(chapters, key=lambda chapter: chapter.source_order)
 
     if normalized in _LATEST_SELECTORS:
-        return (ordered[0] if ordered else None), ordered[:1], None
+        return (ordered[-1] if ordered else None), ordered[-1:], None
 
     match = _CHAPTER_ID_RE.fullmatch(normalized)
     if match:
@@ -354,7 +354,7 @@ async def get_chapters_for_agent(
         return {"success": False, "error": "manga_id 必须是整数"}
 
     selector = str(selector or "latest").strip()
-    limit = _bounded_int(limit, 20, 1, 50)
+    limit = _bounded_int(limit, 20, 1, 100)
     manga = await client.get_manga(manga_id)
     chapters = await get_or_fetch_chapters(
         client,
@@ -376,7 +376,7 @@ async def get_chapters_for_agent(
         }
 
     if selector.casefold() in _LIST_SELECTORS:
-        candidates = ordered[:limit]
+        candidates = ordered[-limit:]
         selected = None
         selection_error = None
     else:

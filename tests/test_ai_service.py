@@ -240,7 +240,7 @@ async def test_agent_chapters_selects_latest_by_source_order():
     )
 
     assert result["success"] is True
-    assert result["selected_chapter"]["chapter_id"] == 200
+    assert result["selected_chapter"]["chapter_id"] == 100
     assert result["manga"]["manga_id"] == 10
 
 

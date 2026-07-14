@@ -112,9 +112,9 @@ def build_ai_tools(plugin: Any) -> list[FunctionTool]:
                     },
                     "limit": {
                         "type": "integer",
-                        "description": "selector=list 时最多返回的章节数，范围 1-50。",
+                        "description": "selector=list 时返回最新的章节数，范围 1-100。",
                         "minimum": 1,
-                        "maximum": 50,
+                        "maximum": 100,
                         "default": 20,
                     },
                 },

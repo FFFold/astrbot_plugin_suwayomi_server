@@ -377,6 +377,7 @@ async def get_chapters_for_agent(
 
     if selector.casefold() in _LIST_SELECTORS:
         candidates = ordered[-limit:]
+        candidates.reverse()
         selected = None
         selection_error = None
     else:

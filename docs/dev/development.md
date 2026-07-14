@@ -133,8 +133,8 @@ astrbot_suwayomi_server/
 - Tool 子类覆写 `call()` 并从 Agent `ContextWrapper` 取得当前事件，不依赖 `star_manager` 只执行一次的 handler partial 绑定，因此保存配置后重新注册仍可正常调用
 - `ai_service.py` 负责跨源并行搜索、漫画元数据序列化、章节选择和重复章节候选返回，不发送消息
 - 搜索与章节 Tool 返回稳定 `manga_id` / `chapter_id`，不依赖命令模式的数字编号缓存
-- 阅读发送候选按 `(unified_msg_origin, sender_id)` 隔离 10 分钟，并在同一 Agent 回合按事件与章节 ID 去重
-- AstrBot 成功执行 `/reset` 后，`after_message_sent` 钩子按 `unified_msg_origin` 清除搜索缓存、AI 章节候选、发送回执和发送锁；权限拒绝或重置失败不清理
+- 阅读发送候选按 `(unified_msg_origin, sender_id)` 隔离 10 分钟，同一时间仅允许一个发送任务（`asyncio.Lock` 防止并发）
+- AstrBot 成功执行 `/reset` 后，`after_message_sent` 钩子按 `unified_msg_origin` 清除搜索缓存、AI 章节候选和发送锁；权限拒绝或重置失败不清理
 - `suwayomi_send_chapter` 只有在 `allow_ai_send=true`、用户意图已确认且章节来自当前发送者最近查询结果时才发送；默认打包 PDF，用户可明确指定 ZIP、CBZ 或图片
 
 #### `suwayomi/updater.py` — 更新引擎

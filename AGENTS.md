@@ -113,7 +113,7 @@ main.py (SuwayomiPlugin — thin dispatch layer)
 - `_search_best_match(name, source_filter)` — Search manga name across sources, return first match. Used by batch subscribe.
 - `_prepare_chapter_delivery(event, chapter)` — Build the chapter image result for `/漫画 阅读` and explicitly requested AI image sending.
 - `_prepare_chapter_file_delivery(event, manga, chapter, fmt)` — Download all pages and build the AI Tool's PDF-default file result (PDF/ZIP/CBZ).
-- AI tools keep recent chapter candidates isolated by `(unified_msg_origin, sender_id)` for 10 minutes. The send tool only accepts a previously exposed `(manga_id, chapter_id)` pair, defaults to PDF unless the user names another supported format, and de-duplicates repeated calls in one Agent turn.
+- AI tools keep recent chapter candidates isolated by `(unified_msg_origin, sender_id)` for 10 minutes. The send tool only accepts a previously exposed `(manga_id, chapter_id)` pair, defaults to PDF unless the user names another supported format. The `asyncio.Lock` per scope prevents concurrent sends; failed sends can be retried.
 
 ## Config Options
 

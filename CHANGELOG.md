@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
-## [Unreleased]
+## [0.5.0] - 2026-07-14
 
 ### Added
 
@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 - **章节发送重构** — 提取 `_prepare_chapter_delivery`（图片模式）和 `_prepare_chapter_file_delivery`（文件模式）为 `/漫画 阅读` 和 AI Tool 共享。
 - **回归测试** — `tests/test_ai_service.py`（13 个）、`tests/test_ai_tools.py`（4 个）、Web API 配置边界测试。
 - **运行时依赖** — 新增 `pydantic>=2.12.5,<3`。
+
+### Changed
+
+- **下载默认格式改为 PDF** — `download_format` 默认值从 `zip` 改为 `pdf`，与 AI Tool 默认格式统一。同时 `parse_download_args()` 函数参数默认值、`pusher.py` 兜底默认值一并修改。
 
 ## [0.4.9] - 2026-07-12
 

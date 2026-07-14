@@ -1,16 +1,24 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 import time
 from pathlib import Path
 
 import astrbot.api.message_components as Comp
 from astrbot.api import AstrBotConfig, logger
-from astrbot.api.event import filter, AstrMessageEvent, MessageChain
+from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star
 
 from .suwayomi import PLUGIN_NAME
+from .suwayomi.ai_service import (
+    AiInteractionState,
+    get_chapters_for_agent,
+    is_successful_conversation_reset,
+    search_manga_for_agent,
+)
+from .suwayomi.ai_tools import AI_TOOL_NAMES, build_ai_tools, effective_tool_timeout
 from .suwayomi.client import SuwayomiClient, SuwayomiError
 from .suwayomi.models import Manga, SearchResult
 from .suwayomi.service import (
@@ -24,7 +32,7 @@ from .suwayomi.service import (
     search_best_match,
 )
 from .suwayomi.updater import check_updates as _check_updates, run_update_loop
-from .utils.downloader import download_images, download_one, fetch_pages_local
+from .utils.downloader import fetch_pages_local
 from .utils.pack import pack_cbz, pack_pdf, pack_zip, parse_download_args
 from .utils.pusher import push_chapter_file, push_chapter_images, schedule_cleanup
 from .utils.subscription import SubscriptionManager
@@ -40,6 +48,7 @@ from .web.api import (
 )
 
 _CACHE_TTL = 600
+_AI_TOOL_REPAIR_KEY = "suwayomi_ai_tool_activation_repaired_v1"
 
 
 class SuwayomiPlugin(Star):
@@ -54,6 +63,8 @@ class SuwayomiPlugin(Star):
         )
         self.sub_mgr = SubscriptionManager(self)
         self._search_cache: dict[str, tuple[float, dict[str, Manga]]] = {}
+        self._ai_state = AiInteractionState(ttl=_CACHE_TTL)
+        self._ai_send_locks: dict[tuple[str, str], asyncio.Lock] = {}
         self._update_lock = asyncio.Lock()
         self._bg_task: asyncio.Task | None = None
         self._check_updates_fn = None
@@ -86,6 +97,282 @@ class SuwayomiPlugin(Star):
         context.register_web_api(
             f"/{PLUGIN_NAME}/update", self._api_update, ["POST"], "手动更新",
         )
+        self._sync_ai_tools()
+
+    # ── AI tools ───────────────────────────────────────────────────
+
+    @staticmethod
+    def _config_bool(value, default: bool = False) -> bool:
+        if value is None:
+            return default
+        if isinstance(value, str):
+            return value.strip().lower() in {"1", "true", "yes", "on", "开启"}
+        return bool(value)
+
+    def _sync_ai_tools(self):
+        enabled = self._config_bool(self.config.get("enable_ai_tools", True), True)
+        previous_enabled = getattr(self, "_ai_tools_config_enabled", None)
+        if enabled:
+            self.context.add_llm_tools(*build_ai_tools(self))
+            if previous_enabled is False:
+                for name in AI_TOOL_NAMES:
+                    try:
+                        self.context.activate_llm_tool(name)
+                    except Exception as exc:
+                        logger.warning(f"[{PLUGIN_NAME}] 重新启用 AI Tool {name} 失败: {exc}")
+            self._ai_tools_config_enabled = True
+            logger.info(f"[{PLUGIN_NAME}] AI 漫画工具已注册: {', '.join(AI_TOOL_NAMES)}")
+            return
+
+        for name in AI_TOOL_NAMES:
+            try:
+                self.context.deactivate_llm_tool(name)
+            except Exception:
+                pass
+        self._ai_tools_config_enabled = False
+        logger.info(f"[{PLUGIN_NAME}] AI 漫画工具已关闭")
+
+    def _ai_timeout(
+        self,
+        astrbot_tool_timeout: int | float | None = None,
+        preferred_minimum: int | float = 0,
+    ) -> float:
+        try:
+            value = int(self.config.get("ai_tool_timeout_sec", 60))
+        except (TypeError, ValueError):
+            value = 60
+        configured_timeout = max(10, min(value, 300))
+        return effective_tool_timeout(
+            configured_timeout,
+            astrbot_tool_timeout,
+            preferred_minimum,
+        )
+
+    @staticmethod
+    def _ai_scope_key(event: AstrMessageEvent) -> tuple[str, str]:
+        try:
+            sender_id = str(event.get_sender_id() or "")
+        except Exception:
+            sender_id = ""
+        return event.unified_msg_origin, sender_id
+
+    def _remember_ai_chapters(
+        self,
+        event: AstrMessageEvent,
+        manga_id: int,
+        chapter_ids: set[int],
+    ):
+        if not chapter_ids:
+            return
+        key = self._ai_scope_key(event)
+        self._ai_state.remember_chapters(key, manga_id, chapter_ids)
+
+    def _was_ai_chapter_exposed(
+        self, event: AstrMessageEvent, manga_id: int, chapter_id: int
+    ) -> bool:
+        return self._ai_state.was_chapter_exposed(
+            self._ai_scope_key(event), manga_id, chapter_id
+        )
+
+    def _clear_manga_memory(self, unified_msg_origin: str):
+        """Clear only transient manga state belonging to one AstrBot session."""
+        origin = str(unified_msg_origin)
+        self._search_cache.pop(origin, None)
+        self._ai_state.clear_origin(origin)
+        for scope in tuple(self._ai_send_locks):
+            if scope[0] == origin:
+                self._ai_send_locks.pop(scope, None)
+
+    @filter.after_message_sent()
+    async def _clear_manga_memory_after_reset(self, event: AstrMessageEvent):
+        """Keep plugin-side manga context in sync with AstrBot's /reset."""
+        if not is_successful_conversation_reset(event):
+            return
+        origin = str(event.unified_msg_origin or "")
+        if not origin:
+            return
+        self._clear_manga_memory(origin)
+        logger.info(f"[{PLUGIN_NAME}] /reset 已清理漫画会话记忆: {origin}")
+
+    @staticmethod
+    def _tool_json(data: dict) -> str:
+        return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+
+    async def _ai_search_manga_tool(
+        self,
+        event: AstrMessageEvent,
+        query: str,
+        source_hint: str = "",
+        search_all_sources: bool = False,
+        *,
+        _astrbot_tool_timeout: int | float | None = None,
+    ) -> str:
+        if not self._config_bool(self.config.get("enable_ai_tools", True), True):
+            return self._tool_json({"success": False, "error": "AI 漫画工具已关闭"})
+        try:
+            async with asyncio.timeout(self._ai_timeout(_astrbot_tool_timeout)):
+                result = await search_manga_for_agent(
+                    self.client,
+                    self.config,
+                    query,
+                    source_hint,
+                    self._config_bool(search_all_sources),
+                )
+            return self._tool_json(result)
+        except TimeoutError:
+            return self._tool_json({"success": False, "error": "搜索漫画超时，请缩小漫画源范围或稍后重试"})
+        except Exception as exc:
+            logger.error(f"[{PLUGIN_NAME}] AI search tool error: {exc}")
+            return self._tool_json({"success": False, "error": "漫画搜索失败，服务暂时不可用"})
+
+    async def _ai_get_chapters_tool(
+        self,
+        event: AstrMessageEvent,
+        manga_id: int,
+        selector: str = "latest",
+        refresh: bool = False,
+        limit: int = 20,
+        *,
+        _astrbot_tool_timeout: int | float | None = None,
+    ) -> str:
+        if not self._config_bool(self.config.get("enable_ai_tools", True), True):
+            return self._tool_json({"success": False, "error": "AI 漫画工具已关闭"})
+        try:
+            async with asyncio.timeout(self._ai_timeout(_astrbot_tool_timeout)):
+                result = await get_chapters_for_agent(
+                    self.client,
+                    self.get_kv_data,
+                    self.put_kv_data,
+                    self.config,
+                    manga_id,
+                    selector,
+                    refresh,
+                    limit,
+                )
+            if result.get("success"):
+                resolved_manga_id = int(result["manga"]["manga_id"])
+                chapter_ids = {
+                    int(chapter["chapter_id"])
+                    for chapter in result.get("chapters", [])
+                    if chapter.get("chapter_id") is not None
+                }
+                selected = result.get("selected_chapter")
+                if selected and selected.get("chapter_id") is not None:
+                    chapter_ids.add(int(selected["chapter_id"]))
+                self._remember_ai_chapters(event, resolved_manga_id, chapter_ids)
+            return self._tool_json(result)
+        except TimeoutError:
+            return self._tool_json({"success": False, "error": "获取漫画章节超时，请稍后重试"})
+        except Exception as exc:
+            logger.error(f"[{PLUGIN_NAME}] AI chapters tool error: {exc}")
+            return self._tool_json({"success": False, "error": "获取漫画章节失败"})
+
+    async def _ai_send_chapter_tool(
+        self,
+        event: AstrMessageEvent,
+        manga_id: int,
+        chapter_id: int,
+        confirmed_user_intent: bool,
+        format: str = "pdf",
+        *,
+        _astrbot_tool_timeout: int | float | None = None,
+    ) -> str:
+        if not self._config_bool(self.config.get("enable_ai_tools", True), True):
+            return self._tool_json({"success": False, "sent": False, "error": "AI 漫画工具已关闭"})
+        if not self._config_bool(self.config.get("allow_ai_send", True), True):
+            return self._tool_json({"success": False, "sent": False, "error": "管理员已禁止 AI 直接发送漫画"})
+        if not self._config_bool(confirmed_user_intent):
+            return self._tool_json({"success": False, "sent": False, "error": "用户尚未明确要求阅读或发送漫画，不能主动发送"})
+
+        try:
+            manga_id = int(manga_id)
+            chapter_id = int(chapter_id)
+        except (TypeError, ValueError):
+            return self._tool_json({"success": False, "sent": False, "error": "manga_id 和 chapter_id 必须是整数"})
+
+        if not self._was_ai_chapter_exposed(event, manga_id, chapter_id):
+            return self._tool_json({
+                "success": False,
+                "sent": False,
+                "error": "该章节不在当前用户最近的章节查询结果中；请先调用 suwayomi_get_chapters 明确章节",
+            })
+
+        send_format = str(format or "pdf").strip().lower()
+        if send_format not in {"pdf", "zip", "cbz", "image"}:
+            return self._tool_json({
+                "success": False,
+                "sent": False,
+                "error": "format 仅支持 pdf、zip、cbz 或 image；默认应使用 pdf",
+            })
+        send_timeout = self._ai_timeout(
+            _astrbot_tool_timeout,
+            preferred_minimum=110 if send_format != "image" else 0,
+        )
+
+        scope_key = self._ai_scope_key(event)
+        receipt_key = (scope_key, id(event), manga_id, chapter_id)
+        lock = self._ai_send_locks.setdefault(scope_key, asyncio.Lock())
+        async with lock:
+            if self._ai_state.already_sent(receipt_key):
+                return self._tool_json({
+                    "success": True,
+                    "sent": False,
+                    "duplicate_prevented": True,
+                    "message": "本回合已经发送过该章节，禁止重复发送",
+                })
+
+            tmp_dir: Path | None = None
+            try:
+                async with asyncio.timeout(send_timeout):
+                    manga = await self.client.get_manga(manga_id)
+                    chapters = await get_or_fetch_chapters(
+                        self.client,
+                        self.get_kv_data,
+                        self.put_kv_data,
+                        self.config,
+                        manga_id,
+                    )
+                    target = next((ch for ch in chapters if ch.id == chapter_id), None)
+                    if target is None:
+                        return self._tool_json({"success": False, "sent": False, "error": "指定章节不属于该漫画或已经失效"})
+                    filename = None
+                    if send_format == "image":
+                        result, total_pages, delivered_pages, tmp_dir = (
+                            await self._prepare_chapter_delivery(event, target)
+                        )
+                    else:
+                        (
+                            result,
+                            total_pages,
+                            delivered_pages,
+                            tmp_dir,
+                            filename,
+                        ) = await self._prepare_chapter_file_delivery(
+                            event, manga, target, send_format
+                        )
+                    if result is None:
+                        return self._tool_json({"success": False, "sent": False, "error": "该章节没有成功下载的页面，无法发送"})
+                    await event.send(result)
+                self._ai_state.mark_sent(receipt_key)
+                return self._tool_json({
+                    "success": True,
+                    "sent": True,
+                    "title": manga.title,
+                    "chapter_id": target.id,
+                    "chapter": fmt_chapter_display(target),
+                    "format": send_format,
+                    "filename": filename,
+                    "total_pages": total_pages,
+                    "pages_delivered": delivered_pages,
+                    "instruction": "章节已经直接发送给用户；不要再次调用发送工具，只需简短确认发送格式。",
+                })
+            except TimeoutError:
+                return self._tool_json({"success": False, "sent": False, "error": "加载或发送章节超时"})
+            except Exception as exc:
+                logger.error(f"[{PLUGIN_NAME}] AI send chapter tool error: {exc}")
+                return self._tool_json({"success": False, "sent": False, "error": "发送漫画章节失败"})
+            finally:
+                schedule_cleanup(tmp_dir, delay=120 if send_format != "image" else 60)
 
     # ── Lifecycle ──────────────────────────────────────────────────
 
@@ -133,6 +420,20 @@ class SuwayomiPlugin(Star):
             await self.sub_mgr.run_migration()
         except Exception as e:
             logger.error(f"[{PLUGIN_NAME}] 订阅数据迁移失败: {e}")
+        if self._config_bool(self.config.get("enable_ai_tools", True), True):
+            repaired = await self.get_kv_data(_AI_TOOL_REPAIR_KEY, False)
+            if not repaired:
+                repair_ok = True
+                for name in AI_TOOL_NAMES:
+                    try:
+                        if not self.context.activate_llm_tool(name):
+                            repair_ok = False
+                    except Exception as exc:
+                        repair_ok = False
+                        logger.warning(f"[{PLUGIN_NAME}] 修复 AI Tool 激活状态失败 {name}: {exc}")
+                if repair_ok:
+                    await self.put_kv_data(_AI_TOOL_REPAIR_KEY, True)
+                    logger.info(f"[{PLUGIN_NAME}] 已完成 AI Tool 激活状态一次性修复")
         if self._bg_task is None:
             interval = float(self.config.get("check_interval", 60)) * 60
             self._start_bg_task(interval)
@@ -140,6 +441,8 @@ class SuwayomiPlugin(Star):
     async def terminate(self):
         if self._bg_task and not self._bg_task.done():
             self._bg_task.cancel()
+        self._ai_state.clear()
+        self._ai_send_locks.clear()
         await self.client.close()
         logger.info(f"[{PLUGIN_NAME}] 插件已卸载")
 
@@ -198,6 +501,108 @@ class SuwayomiPlugin(Star):
 
     def _set_search_cache(self, umo: str, cache: dict[str, Manga]):
         self._search_cache[umo] = (time.time(), cache)
+
+    async def _prepare_chapter_delivery(self, event: AstrMessageEvent, target):
+        """Build one chapter result for command yield or direct AI-tool sending."""
+        max_pages = self.config.get("max_pages", 30)
+        send_mode = self.config.get("send_mode", "image")
+        fetch_mode = self.config.get("image_fetch_mode", "url")
+        concurrency = self.config.get("download_concurrency", 6)
+        custom_tmp = self.config.get("temp_dir", "").strip()
+        retries = self.config.get("download_retries", 3)
+
+        local_paths: list[str] = []
+        tmp_dir: Path | None = None
+        if fetch_mode == "download":
+            total_pages, page_urls, local_paths, tmp_dir = await fetch_pages_local(
+                self.client, target.id, max_pages, concurrency, custom_tmp, retries
+            )
+        else:
+            pages = await self.client.fetch_chapter_pages(target.id)
+            if not pages:
+                return None, 0, 0, None
+            total_pages = len(pages)
+            page_urls = [self.client.build_image_url(page) for page in pages[:max_pages]]
+
+        if not page_urls:
+            return None, total_pages, 0, tmp_dir
+
+        def _img(idx: int) -> Comp.Image:
+            if fetch_mode == "download" and idx < len(local_paths) and local_paths[idx]:
+                return Comp.Image.fromFileSystem(local_paths[idx])
+            if fetch_mode == "download":
+                logger.warning(f"[{PLUGIN_NAME}] 图片 {idx + 1} 下载失败，回退为 URL 模式")
+            return Comp.Image.fromURL(page_urls[idx])
+
+        if send_mode == "forward" and event.get_platform_name() == "aiocqhttp":
+            nodes = []
+            for i in range(len(page_urls)):
+                nodes.append(Comp.Node(
+                    uin="0",
+                    name=f"{fmt_chapter_display(target)} - 第 {i + 1} 页",
+                    content=[_img(i)],
+                ))
+            if total_pages > max_pages:
+                nodes.append(Comp.Node(
+                    uin="0",
+                    name="提示",
+                    content=[Comp.Plain(f"... 还有 {total_pages - max_pages} 页，请到 WebUI 查看")],
+                ))
+            result = event.chain_result([Comp.Nodes(nodes)])
+        else:
+            chain = [_img(i) for i in range(len(page_urls))]
+            if total_pages > max_pages:
+                chain.append(Comp.Plain(f"... 还有 {total_pages - max_pages} 页，请到 WebUI 查看"))
+            result = event.chain_result(chain)
+
+        return result, total_pages, len(page_urls), tmp_dir
+
+    async def _prepare_chapter_file_delivery(
+        self,
+        event: AstrMessageEvent,
+        manga: Manga,
+        target,
+        fmt: str,
+    ):
+        """Download all chapter pages and build a PDF/ZIP/CBZ file result."""
+        concurrency = self.config.get("download_concurrency", 6)
+        custom_tmp = self.config.get("temp_dir", "").strip()
+        retries = self.config.get("download_retries", 3)
+        total_pages, page_urls, local_paths, tmp_dir = await fetch_pages_local(
+            self.client,
+            target.id,
+            concurrency=concurrency,
+            custom_tmp=custom_tmp,
+            retries=retries,
+        )
+        if not page_urls:
+            return None, total_pages, 0, tmp_dir, None
+
+        valid_paths = [path for path in local_paths if path]
+        if not valid_paths:
+            return None, total_pages, 0, tmp_dir, None
+        if len(valid_paths) < len(page_urls):
+            logger.warning(
+                f"[{PLUGIN_NAME}] {len(page_urls) - len(valid_paths)} 页下载失败，"
+                f"AI 将用已有页面打包 {fmt.upper()}"
+            )
+
+        label = fmt_chapter_display(target)
+        safe_title = "".join(char for char in manga.title if char not in r'<>:"/\|?*')[:50]
+        safe_label = "".join(char for char in str(label) if char not in r'<>:"/\|?*')
+        output_path = Path(valid_paths[0]).parent / f"{safe_title}_{safe_label}.{fmt}"
+
+        loop = asyncio.get_running_loop()
+        if fmt == "pdf":
+            await loop.run_in_executor(None, pack_pdf, valid_paths, output_path)
+        elif fmt == "cbz":
+            await loop.run_in_executor(None, pack_cbz, valid_paths, output_path)
+        else:
+            await loop.run_in_executor(None, pack_zip, valid_paths, output_path)
+
+        filename = output_path.name
+        result = event.chain_result([Comp.File(file=str(output_path), name=filename)])
+        return result, total_pages, len(valid_paths), tmp_dir, filename
 
     # ── Commands ───────────────────────────────────────────────────
 
@@ -599,7 +1004,7 @@ class SuwayomiPlugin(Star):
                 read_mark = "✅" if ch.is_read else "⬜"
                 dl_mark = " 📥" if ch.is_downloaded else ""
                 line = f"  {read_mark} {fmt_chapter_label(ch, num_count)}{dl_mark}"
-                current_len = sum(len(l) for l in chunks[-1]) + len(header)
+                current_len = sum(len(item) for item in chunks[-1]) + len(header)
                 if current_len + len(line) > 1500 and chunks[-1]:
                     chunks.append([])
                 chunks[-1].append(line)
@@ -650,59 +1055,13 @@ class SuwayomiPlugin(Star):
             except Exception:
                 pass
 
-            max_pages = self.config.get("max_pages", 30)
-            send_mode = self.config.get("send_mode", "image")
-            fetch_mode = self.config.get("image_fetch_mode", "url")
-            concurrency = self.config.get("download_concurrency", 6)
-            custom_tmp = self.config.get("temp_dir", "").strip()
-            retries = self.config.get("download_retries", 3)
-
-            local_paths: list[str] = []
             tmp_dir: Path | None = None
-            if fetch_mode == "download":
-                total_pages, page_urls, local_paths, tmp_dir = await fetch_pages_local(
-                    self.client, target.id, max_pages, concurrency, custom_tmp, retries
-                )
-            else:
-                pages = await self.client.fetch_chapter_pages(target.id)
-                if not pages:
+            try:
+                result, _, _, tmp_dir = await self._prepare_chapter_delivery(event, target)
+                if result is None:
                     yield event.plain_result(f"{fmt_chapter_display(target)}暂无可用页面。")
                     return
-                total_pages = len(pages)
-                page_urls = [self.client.build_image_url(p) for p in pages[:max_pages]]
-
-            if not page_urls:
-                yield event.plain_result(f"{fmt_chapter_display(target)}暂无可用页面。")
-                return
-
-            def _img(idx: int) -> Comp.Image:
-                if fetch_mode == "download" and idx < len(local_paths) and local_paths[idx]:
-                    return Comp.Image.fromFileSystem(local_paths[idx])
-                if fetch_mode == "download":
-                    logger.warning(f"[{PLUGIN_NAME}] 图片 {idx + 1} 下载失败，回退为 URL 模式")
-                return Comp.Image.fromURL(page_urls[idx])
-
-            try:
-                if send_mode == "forward" and event.get_platform_name() == "aiocqhttp":
-                    nodes = []
-                    for i in range(len(page_urls)):
-                        nodes.append(Comp.Node(
-                            uin="0",
-                            name=f"{fmt_chapter_display(target)} - 第 {i + 1} 页",
-                            content=[_img(i)],
-                        ))
-                    if total_pages > max_pages:
-                        nodes.append(Comp.Node(
-                            uin="0",
-                            name="提示",
-                            content=[Comp.Plain(f"... 还有 {total_pages - max_pages} 页，请到 WebUI 查看")],
-                        ))
-                    yield event.chain_result([Comp.Nodes(nodes)])
-                else:
-                    chain = [_img(i) for i in range(len(page_urls))]
-                    if total_pages > max_pages:
-                        chain.append(Comp.Plain(f"... 还有 {total_pages - max_pages} 页，请到 WebUI 查看"))
-                    yield event.chain_result(chain)
+                yield result
             finally:
                 schedule_cleanup(tmp_dir, delay=60)
 
@@ -879,6 +1238,9 @@ class SuwayomiPlugin(Star):
             )
             self._build_check_updates_fn()
             self._search_cache.clear()
+            self._ai_state.clear()
+            self._ai_send_locks.clear()
+            self._sync_ai_tools()
             if self._bg_task and not self._bg_task.done():
                 self._bg_task.cancel()
                 try:

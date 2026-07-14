@@ -22,6 +22,8 @@ ALLOWED_CONFIG_KEYS = {
     "check_interval", "max_pages", "send_mode", "image_fetch_mode",
     "download_concurrency", "download_retries", "default_source_id",
     "chapter_cache_hours", "download_format", "temp_dir", "auto_push_mode",
+    "enable_ai_tools", "allow_ai_send", "ai_max_sources",
+    "ai_results_per_source", "ai_tool_timeout_sec",
 }
 
 # Numeric config keys with their minimum allowed values
@@ -32,6 +34,25 @@ NUMERIC_CONFIG_KEYS = {
     "download_retries": 0,
     "default_source_id": 0,
     "chapter_cache_hours": -1,
+    "ai_max_sources": 1,
+    "ai_results_per_source": 1,
+    "ai_tool_timeout_sec": 10,
+}
+
+MAX_NUMERIC_CONFIG_KEYS = {
+    "ai_max_sources": 10,
+    "ai_results_per_source": 20,
+    "ai_tool_timeout_sec": 300,
+}
+
+BOOLEAN_CONFIG_KEYS = {"enable_ai_tools", "allow_ai_send"}
+
+AI_CONFIG_DEFAULTS = {
+    "enable_ai_tools": True,
+    "allow_ai_send": True,
+    "ai_max_sources": 5,
+    "ai_results_per_source": 5,
+    "ai_tool_timeout_sec": 60,
 }
 
 
@@ -171,6 +192,8 @@ async def api_subscription_push(
 def api_config_get(config: Any) -> dict:
     """GET /config — 读取当前插件配置，仅返回白名单字段，掩码敏感字段"""
     cfg = {k: config.get(k) for k in ALLOWED_CONFIG_KEYS if k in config}
+    for key, default in AI_CONFIG_DEFAULTS.items():
+        cfg.setdefault(key, config.get(key, default))
     if cfg.get("password"):
         cfg["password"] = "***"
     return cfg
@@ -204,8 +227,15 @@ async def api_config_post(
                 value = int(value)
                 if value < NUMERIC_CONFIG_KEYS[key]:
                     value = NUMERIC_CONFIG_KEYS[key]
+                if key in MAX_NUMERIC_CONFIG_KEYS:
+                    value = min(value, MAX_NUMERIC_CONFIG_KEYS[key])
             except (ValueError, TypeError):
                 continue
+        if key in BOOLEAN_CONFIG_KEYS:
+            if isinstance(value, str):
+                value = value.strip().lower() in {"1", "true", "yes", "on"}
+            else:
+                value = bool(value)
         config[key] = value
 
     try:

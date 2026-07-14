@@ -331,6 +331,27 @@ async def test_config_post_validates_numeric_string():
     assert cfg["max_pages"] == 50
 
 
+@pytest.mark.asyncio
+async def test_config_post_coerces_ai_tool_booleans_and_limits():
+    cfg = FakeConfig({"server_url": "http://old:4567"})
+
+    result = await api_config_post(cfg, {
+        "server_url": "http://new:4567",
+        "enable_ai_tools": "false",
+        "allow_ai_send": "true",
+        "ai_max_sources": 999,
+        "ai_results_per_source": 0,
+        "ai_tool_timeout_sec": 999,
+    }, AsyncMock())
+
+    assert result["success"] is True
+    assert cfg["enable_ai_tools"] is False
+    assert cfg["allow_ai_send"] is True
+    assert cfg["ai_max_sources"] == 10
+    assert cfg["ai_results_per_source"] == 1
+    assert cfg["ai_tool_timeout_sec"] == 300
+
+
 def test_config_get_only_returns_allowed_keys():
     """api_config_get should only return whitelisted keys."""
     cfg = {"server_url": "http://localhost:4567", "password": "pw", "internal_key": "secret"}
@@ -338,6 +359,9 @@ def test_config_get_only_returns_allowed_keys():
     assert "server_url" in result
     assert "password" in result
     assert "internal_key" not in result
+    assert result["enable_ai_tools"] is True
+    assert result["allow_ai_send"] is True
+    assert result["ai_max_sources"] == 5
 
 
 # ── api_sources ─────────────────────────────────────────

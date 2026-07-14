@@ -38,7 +38,7 @@ uv add --dev pytest pytest-asyncio
 
 ```bash
 # 单元测试（无需网络）
-uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_subscription.py tests/test_web_api.py tests/test_batch_subscribe.py tests/test_push.py -v
+uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_subscription.py tests/test_web_api.py tests/test_batch_subscribe.py tests/test_push.py tests/test_service.py tests/test_ai_service.py tests/test_ai_tools.py -v
 
 # 集成测试（需要 Suwayomi-Server）
 uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
@@ -70,6 +70,8 @@ astrbot_plugin_suwayomi_server/
 │   ├── client.py              # Suwayomi GraphQL 异步 HTTP 客户端
 │   ├── models.py              # 数据模型（Source, Manga, Chapter, SearchResult）
 │   ├── service.py             # 业务逻辑层（漫画/章节解析、缓存策略、格式化）
+│   ├── ai_service.py          # Agent 结构化搜索与章节查询（无发送副作用）
+│   ├── ai_tools.py            # AstrBot FunctionTool Schema 与注册工厂
 │   └── updater.py             # 更新引擎（check_updates + run_update_loop）
 ├── utils/
 │   ├── __init__.py
@@ -95,6 +97,8 @@ astrbot_plugin_suwayomi_server/
 │   ├── test_web_api.py        # WebUI API handler 单元测试
 │   ├── test_batch_subscribe.py # 批量订阅参数解析单元测试
 │   ├── test_push.py           # 自动推送单元测试
+│   ├── test_ai_service.py     # Agent Tool 服务层单元测试
+│   ├── test_ai_tools.py       # AstrBot Tool call() 调度回归测试
 │   ├── test_live_api.py       # Suwayomi 客户端集成测试
 │   └── test_live_web_api.py   # WebUI API handler 集成测试
 ├── docs/

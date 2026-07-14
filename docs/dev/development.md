@@ -15,6 +15,8 @@ astrbot_suwayomi_server/
 │   ├── client.py              # Suwayomi GraphQL 异步 HTTP 客户端
 │   ├── models.py              # 数据模型定义
 │   ├── service.py             # 业务逻辑层（漫画/章节解析、缓存策略、格式化）
+│   ├── ai_service.py          # Agent 结构化搜索与章节查询（无发送副作用）
+│   ├── ai_tools.py            # AstrBot FunctionTool Schema 与注册工厂
 │   └── updater.py             # 更新引擎（check_updates + run_update_loop）
 ├── utils/
 │   ├── __init__.py
@@ -40,6 +42,8 @@ astrbot_suwayomi_server/
 │   ├── test_web_api.py        # WebUI API handler 单元测试
 │   ├── test_batch_subscribe.py # 批量订阅参数解析单元测试
 │   ├── test_push.py           # 自动推送单元测试
+│   ├── test_ai_service.py     # Agent Tool 服务层单元测试
+│   ├── test_ai_tools.py       # AstrBot Tool call() 调度回归测试
 │   ├── test_live_api.py       # Suwayomi 客户端集成测试
 │   └── test_live_web_api.py   # WebUI API handler 集成测试
 ├── docs/
@@ -122,6 +126,16 @@ astrbot_suwayomi_server/
 - 格式化工具：`fmt_chapter_num`、`fmt_chapter_label`、`normalize_zh`
 - 缓存管理：`get_chapter_timestamp` / `set_chapter_timestamp`
 - 常量：`STATUS_EMOJI`、`KV_CHAPTER_TS`
+
+#### `suwayomi/ai_service.py` / `suwayomi/ai_tools.py` — Agent Tool 层
+
+- `ai_tools.py` 使用显式 JSON Schema 定义并注册 `suwayomi_search_manga`、`suwayomi_get_chapters`、`suwayomi_send_chapter`
+- Tool 子类覆写 `call()` 并从 Agent `ContextWrapper` 取得当前事件，不依赖 `star_manager` 只执行一次的 handler partial 绑定，因此保存配置后重新注册仍可正常调用
+- `ai_service.py` 负责跨源并行搜索、漫画元数据序列化、章节选择和重复章节候选返回，不发送消息
+- 搜索与章节 Tool 返回稳定 `manga_id` / `chapter_id`，不依赖命令模式的数字编号缓存
+- 阅读发送候选按 `(unified_msg_origin, sender_id)` 隔离 10 分钟，并在同一 Agent 回合按事件与章节 ID 去重
+- AstrBot 成功执行 `/reset` 后，`after_message_sent` 钩子按 `unified_msg_origin` 清除搜索缓存、AI 章节候选、发送回执和发送锁；权限拒绝或重置失败不清理
+- `suwayomi_send_chapter` 只有在 `allow_ai_send=true`、用户意图已确认且章节来自当前发送者最近查询结果时才发送；默认打包 PDF，用户可明确指定 ZIP、CBZ 或图片
 
 #### `suwayomi/updater.py` — 更新引擎
 
@@ -318,7 +332,7 @@ uv add --dev pytest pytest-asyncio
 
 ```bash
 # 全部单元测试（无需网络）
-uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_subscription.py tests/test_web_api.py tests/test_batch_subscribe.py tests/test_push.py -v
+uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_subscription.py tests/test_web_api.py tests/test_batch_subscribe.py tests/test_push.py tests/test_service.py tests/test_ai_service.py tests/test_ai_tools.py -v
 
 # 实时 API 集成测试（需要 Suwayomi-Server 可访问）
 uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s

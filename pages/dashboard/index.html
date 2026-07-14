@@ -193,6 +193,36 @@
         </fieldset>
 
         <fieldset>
+          <legend>AI 漫画工具</legend>
+          <div class="form-group">
+            <label for="cfg-enable_ai_tools">启用 AI 漫画工具</label>
+            <select id="cfg-enable_ai_tools" name="enable_ai_tools">
+              <option value="true">开启</option>
+              <option value="false">关闭</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="cfg-allow_ai_send">允许 AI 直接发送漫画</label>
+            <select id="cfg-allow_ai_send" name="allow_ai_send">
+              <option value="true">允许（仅限用户明确要求）</option>
+              <option value="false">禁止</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="cfg-ai_max_sources">单次搜索最多漫画源数</label>
+            <input type="number" id="cfg-ai_max_sources" name="ai_max_sources" min="1" max="10">
+          </div>
+          <div class="form-group">
+            <label for="cfg-ai_results_per_source">每个源最多候选数</label>
+            <input type="number" id="cfg-ai_results_per_source" name="ai_results_per_source" min="1" max="20">
+          </div>
+          <div class="form-group">
+            <label for="cfg-ai_tool_timeout_sec">Tool 超时（秒）</label>
+            <input type="number" id="cfg-ai_tool_timeout_sec" name="ai_tool_timeout_sec" min="10" max="300">
+          </div>
+        </fieldset>
+
+        <fieldset>
           <legend>高级</legend>
           <div class="form-group">
             <label for="cfg-check_interval">更新检查间隔（分钟）</label>

@@ -134,7 +134,7 @@ main.py (SuwayomiPlugin — thin dispatch layer)
 
 - `metadata.yaml`: AstrBot plugin metadata (name, version, platforms)
 - `_conf_schema.json`: AstrBot WebUI config form schema
-- `requirements.txt`: Runtime deps (currently `aiohttp>=3.9.0`, `img2pdf>=0.5.0`, and `opencc-python-reimplemented>=0.1.7`)
+- `requirements.txt`: Runtime deps (currently `aiohttp>=3.9.0`, `img2pdf>=0.5.0`, `opencc-python-reimplemented>=0.1.7`, and `pydantic>=2.12.5`)
 - `pyproject.toml`: Dev deps (pytest, pytest-asyncio), gitignored
 - Tests in `tests/` - unit tests are synchronous or use `@pytest.mark.asyncio`; `test_ai_service.py` covers structured Agent search and chapter selection, while `test_ai_tools.py` guards `call()` dispatch across initial load and config re-sync
 - `test_live_api.py`: Integration tests for Suwayomi client, skipped by default, need live server

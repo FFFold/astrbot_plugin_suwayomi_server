@@ -90,14 +90,14 @@ class TestPackPdf:
 class TestParseDownloadArgs:
     """Tests for parse_download_args function."""
 
-    def _parse(self, msg, default_fmt="zip"):
+    def _parse(self, msg, default_fmt="pdf"):
         return parse_download_args(msg, default_fmt)
 
     def test_basic(self):
         manga, chapter, fmt = self._parse("/漫画 下载 一拳超人 1")
         assert manga == "一拳超人"
         assert chapter == "1"
-        assert fmt == "zip"
+        assert fmt == "pdf"
 
     def test_with_format_zip(self):
         manga, chapter, fmt = self._parse("/漫画 下载 一拳超人 1 zip")
@@ -127,7 +127,7 @@ class TestParseDownloadArgs:
         manga, chapter, fmt = self._parse("/漫画 下载 151 ID:2531")
         assert manga == "151"
         assert chapter == "ID:2531"
-        assert fmt == "zip"
+        assert fmt == "pdf"
 
     def test_default_fmt_used(self):
         manga, chapter, fmt = self._parse("/漫画 下载 一拳超人 1", default_fmt="pdf")
@@ -141,7 +141,7 @@ class TestParseDownloadArgs:
         manga, chapter, fmt = self._parse("/漫画 下载 一拳超人")
         assert manga == "一拳超人"
         assert chapter == ""
-        assert fmt == "zip"
+        assert fmt == "pdf"
 
     def test_format_keyword_not_confused_with_chapter_name(self):
         """Chapter name containing 'zip' as substring should not be stripped."""

@@ -76,7 +76,7 @@
   "download_format": {
     "description": "默认下载打包格式",
     "type": "string",
-    "default": "zip",
+    "default": "pdf",
     "options": ["zip", "pdf", "cbz"],
     "labels": ["ZIP 压缩包", "PDF 文档", "CBZ 漫画"]
   },

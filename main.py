@@ -1076,7 +1076,7 @@ class SuwayomiPlugin(Star):
     @manga_group.command("下载")
     async def download_chapter(self, event: AstrMessageEvent, manga_name_or_id: str, chapter_num: str = ""):
         '''下载漫画章节并打包发送。用法: /漫画 下载 <漫画名或ID> <章节号或ID:数字> [zip/pdf/cbz]'''
-        default_fmt = self.config.get("download_format", "zip")
+        default_fmt = self.config.get("download_format", "pdf")
         manga_name_or_id, chapter_num, fmt = parse_download_args(event.message_str, default_fmt)
 
         if not manga_name_or_id or not chapter_num:

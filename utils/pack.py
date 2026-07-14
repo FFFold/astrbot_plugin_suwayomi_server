@@ -30,7 +30,7 @@ def pack_pdf(image_paths: list[str], output: Path):
         f.write(img2pdf.convert(valid))
 
 
-def parse_download_args(raw_message: str, default_fmt: str = "zip") -> tuple[str, str, str]:
+def parse_download_args(raw_message: str, default_fmt: str = "pdf") -> tuple[str, str, str]:
     """Parse download command arguments from raw message.
 
     Args:

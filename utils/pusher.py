@@ -148,7 +148,7 @@ async def push_chapter_file(
     fetch_pages_local_fn: Callable,
 ):
     ch_label = fmt_chapter_display(chapter)
-    fmt = config.get("download_format", "zip")
+    fmt = config.get("download_format", "pdf")
 
     _, page_urls, local_paths, tmp_dir = await fetch_pages_local_fn(chapter.id)
     if not page_urls:

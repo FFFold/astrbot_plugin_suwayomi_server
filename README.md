@@ -17,6 +17,9 @@
     <img src="https://img.shields.io/badge/version-0.4.9-8A2BE2?style=flat-square" alt="Version 0.4.9">
     <img src="https://img.shields.io/badge/support-8%20platforms-green?style=flat-square" alt="8 platforms">
   </p>
+  <p align="center">
+    <b>⭐ 如果这个项目对你有帮助，欢迎 <a href="https://github.com/FFFold/astrbot_plugin_suwayomi_server">Star</a> 支持！</b>
+  </p>
 </p>
 
 ---
@@ -32,7 +35,7 @@
 | | 功能 | 说明 |
 |---|---|---|
 | 🔍 | **多源搜索** | 跨多个已安装漫画源全局搜索，智能合并结果 |
-| 🤖 | **AI 自然语言找漫画** | 注册 AstrBot Agent Tool，支持用简称、别名或剧情描述搜索并连续查询章节 |
+| 🤖 | **Agent工具** | 注册 AstrBot Agent Tool，支持 LLM 调用，从而搜索、发送漫画 |
 | 📖 | **在线阅读** | 直接在聊天中阅读漫画章节，支持逐页发送或合并转发 |
 | ⬇️ | **章节下载** | 下载章节页面并打包为 ZIP/PDF/CBZ 文件发送到聊天 |
 | 🔔 | **订阅更新** | 订阅漫画后自动推送新章节通知，支持自定义检查间隔 |
@@ -65,22 +68,6 @@
 ---
 
 ## 💬 使用示例
-
-### AI 自然语言模式
-
-使用支持 Function Calling 的模型，并在 AstrBot WebUI 中启用本插件的 Tool 后，可以直接说：
-
-```text
-用户: 帮我找一下主角叫琦玉的漫画，最好是中文源，直接看最新一话
-Bot:  找到《一拳超人 重制版》和《一拳超人 原作版》，你想看哪个？
-用户: 重制版
-Bot:  [发送《一拳超人 重制版》最新章节 PDF]
-```
-
-Agent 会依次调用搜索、章节查询和阅读发送 Tool。存在多个版本或同号章节时会先询问，
-并始终使用稳定的漫画 ID / 章节 ID，不依赖容易串会话的搜索结果编号。默认打包发送 PDF；
-当 AstrBot 成功执行 `/reset` 时，插件也会同步清除该会话的漫画搜索候选、章节候选和发送去重状态。
-用户明确指定 ZIP、CBZ 或图片时优先服从。只说“找一下”时不会主动发送。
 
 ### 基本流程
 
@@ -127,28 +114,18 @@ Bot:  📚 开始批量订阅 3 部漫画...
 
 也可指定源：`/漫画 批量订阅 咒术回战, 鬼灭之刃 jm`
 
-### 强制刷新章节缓存
+### AI 自然语言搜索
 
-章节数据默认缓存 **6 小时**（可配置）。如需获取最新章节，添加 `--刷新` 参数：
+使用支持 Function Calling 的模型，并在 AstrBot WebUI 中启用本插件的 Tool 后，可以直接说：
 
+```text
+用户: 帮我找一下主角叫琦玉的漫画，最好是中文源，直接看最新一话
+Bot:  找到《一拳超人 重制版》和《一拳超人 原作版》，你想看哪个？
+用户: 重制版
+Bot:  [发送《一拳超人 重制版》最新章节 PDF]
 ```
-用户: /漫画 章节 一拳超人 --刷新
-Bot:  📖「一拳超人」章节列表（共 205 话）:
-        ✅ #205 第205话  ← 新章节
-        ...
-```
 
-### 重复章节选择
-
-部分漫画存在编号相同的章节（如附录、特别篇），可通过 **章节 ID** 精确选择：
-
-```
-用户: /漫画 阅读 安達與島村 7
-Bot:  找到多个第 7 话，请使用 ID 指定:
-        ID:456 - 07卷附录
-        ID:789 - 第7话
-      发送「漫画 阅读 安達與島村 ID:456」选择
-```
+Agent 会依次调用搜索、章节查询和阅读发送 Tool。存在多个版本或同号章节时会先询问，并始终使用稳定的漫画 ID / 章节 ID，不依赖容易串会话的搜索结果编号。默认打包发送 PDF。
 
 ---
 
@@ -238,7 +215,7 @@ uv pip install -r astrbot_suwayomi_server/requirements.txt
 | `temp_dir` | string | `""` | 临时文件目录。留空用系统默认，Docker 环境设置共享目录如 `/AstrBot/data/temp` |
 | `auto_push_mode` | string | `image` | 自动推送模式：`image`（图片）/ `file`（文件） |
 
-### AI Tool 设置
+### Agent Tool 设置
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
@@ -247,12 +224,6 @@ uv pip install -r astrbot_suwayomi_server/requirements.txt
 | `ai_max_sources` | int | `5` | 单次 AI 搜索最多查询的漫画源数（1-10） |
 | `ai_results_per_source` | int | `5` | 每个漫画源最多返回的候选数（1-20） |
 | `ai_tool_timeout_sec` | int | `60` | 插件内部的搜索、章节查询或发送超时（10-300 秒）；运行时会自动限制在 AstrBot 工具调用超时以内并预留回传时间 |
-
-插件注册的 Tool：
-
-- `suwayomi_search_manga`：按标题、别名或推断关键词跨源搜索，返回稳定 `manga_id` 和完整的已安装来源列表；单个来源超过 15 秒会独立跳过，不影响其他来源的结果。用户明确要求扫描全部来源时，Agent 通过一次 `search_all_sources=true` 调用完成，不需要逐源重复调用。
-- `suwayomi_get_chapters`：查询详情与章节，返回稳定 `chapter_id`，支持 `latest`、`list`、章节号和 `ID:数字`。
-- `suwayomi_send_chapter`：仅在明确阅读意图下发送已经查询确认的章节；默认 PDF，支持用户指定 ZIP、CBZ 或图片，同一 Agent 回合自动去重。
 
 ### 认证模式说明
 

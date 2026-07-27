@@ -19,6 +19,7 @@ from .suwayomi.ai_service import (
     is_successful_conversation_reset,
     search_manga_for_agent,
     subscribe_manga_for_agent,
+    unsubscribe_manga_for_agent,
 )
 from .suwayomi.ai_tools import AI_TOOL_NAMES, build_ai_tools, effective_tool_timeout
 from .suwayomi.client import SuwayomiClient, SuwayomiError
@@ -418,6 +419,32 @@ class SuwayomiPlugin(Star):
         except Exception as exc:
             logger.error(f"[{PLUGIN_NAME}] AI get subscriptions tool error: {exc}")
             return self._tool_json({"success": False, "error": "获取订阅列表失败"})
+
+    async def _ai_unsubscribe_manga_tool(
+        self,
+        event: AstrMessageEvent,
+        manga_id: int,
+        confirmed_user_intent: bool,
+        *,
+        _astrbot_tool_timeout: int | float | None = None,
+    ) -> str:
+        if not self._config_bool(self.config.get("enable_ai_tools", True), True):
+            return self._tool_json({"success": False, "error": "AI 漫画工具已关闭"})
+        if not self._config_bool(confirmed_user_intent):
+            return self._tool_json({"success": False, "error": "用户尚未明确要求取消订阅，不能自动取消"})
+        try:
+            async with asyncio.timeout(self._ai_timeout(_astrbot_tool_timeout)):
+                result = await unsubscribe_manga_for_agent(
+                    self.sub_mgr,
+                    event.unified_msg_origin,
+                    manga_id,
+                )
+            return self._tool_json(result)
+        except TimeoutError:
+            return self._tool_json({"success": False, "error": "取消订阅超时，请稍后重试"})
+        except Exception as exc:
+            logger.error(f"[{PLUGIN_NAME}] AI unsubscribe tool error: {exc}")
+            return self._tool_json({"success": False, "error": "取消订阅失败，服务暂时不可用"})
 
     # ── Lifecycle ──────────────────────────────────────────────────
 

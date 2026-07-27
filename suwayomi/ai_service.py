@@ -443,3 +443,35 @@ async def get_subscriptions_for_agent(
         "subscription_count": len(subs),
         "subscriptions": subs,
     }
+
+
+async def unsubscribe_manga_for_agent(
+    sub_mgr: Any,
+    umo: str,
+    manga_id: int,
+) -> dict:
+    try:
+        manga_id = int(manga_id)
+    except (TypeError, ValueError):
+        return {"success": False, "error": "manga_id 必须是整数"}
+
+    existing = await sub_mgr.get_subscriptions(umo)
+    sub_entry = next(
+        (s for s in existing if s["manga_id"] == manga_id), None
+    )
+    if sub_entry is None:
+        return {
+            "success": True,
+            "was_subscribed": False,
+            "message": f"未订阅漫画 ID {manga_id}，无需取消。",
+        }
+
+    title = sub_entry.get("title", str(manga_id))
+    await sub_mgr.unsubscribe(manga_id, umo)
+    return {
+        "success": True,
+        "was_subscribed": True,
+        "manga_id": manga_id,
+        "title": title,
+        "message": f"✅ 已取消订阅「{title}」。",
+    }

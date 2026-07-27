@@ -98,6 +98,17 @@ class _Plugin:
         self.last_outer_timeout = _astrbot_tool_timeout
         return event, {"subscriptions": []}
 
+    async def _ai_unsubscribe_manga_tool(
+        self,
+        event,
+        manga_id,
+        confirmed_user_intent,
+        *,
+        _astrbot_tool_timeout=None,
+    ):
+        self.last_outer_timeout = _astrbot_tool_timeout
+        return event, manga_id, confirmed_user_intent
+
 
 @pytest.mark.asyncio
 async def test_tool_call_dispatches_without_astrbot_handler_binding():
@@ -111,6 +122,7 @@ async def test_tool_call_dispatches_without_astrbot_handler_binding():
     assert tools[2].method_name == "_ai_send_chapter_tool"
     assert tools[3].method_name == "_ai_subscribe_manga_tool"
     assert tools[4].method_name == "_ai_get_subscriptions_tool"
+    assert tools[5].method_name == "_ai_unsubscribe_manga_tool"
     assert (
         tools[0].parameters["properties"]["search_all_sources"]["default"]
         is False
@@ -198,4 +210,15 @@ async def test_get_subscriptions_tool_dispatches():
 async def test_tool_count():
     plugin = _Plugin()
     tools = build_ai_tools(plugin)
-    assert len(tools) == 5
+    assert len(tools) == 6
+
+
+@pytest.mark.asyncio
+async def test_unsubscribe_tool_dispatches():
+    plugin = _Plugin()
+    tools = build_ai_tools(plugin)
+    event = object()
+    context = SimpleNamespace(context=SimpleNamespace(event=event))
+
+    result = await tools[5].call(context, manga_id=53, confirmed_user_intent=True)
+    assert result == (event, 53, True)

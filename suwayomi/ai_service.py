@@ -463,6 +463,7 @@ async def unsubscribe_manga_for_agent(
         return {
             "success": True,
             "was_subscribed": False,
+            "manga_id": manga_id,
             "message": f"未订阅漫画 ID {manga_id}，无需取消。",
         }
 

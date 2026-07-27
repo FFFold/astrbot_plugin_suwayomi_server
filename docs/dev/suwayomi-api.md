@@ -107,8 +107,7 @@ query($id: Int!) {
     chapters {
       nodes {
         id url name chapterNumber uploadDate
-        isRead isDownloaded isBookmarked
-        lastPageRead sourceOrder mangaId pageCount
+        isDownloaded sourceOrder mangaId pageCount
       }
     }
   }
@@ -201,9 +200,7 @@ mutation($r: String!) {
 | `name` | String | 章节名称 |
 | `chapterNumber` | Float | 章节编号（可能有小数，如 38.2） |
 | `uploadDate` | Long | 上传时间戳 |
-| `isRead` | Boolean | 已读 |
 | `isDownloaded` | Boolean | 已下载 |
-| `isBookmarked` | Boolean | 已收藏 |
 | `mangaId` | Int | 所属漫画 ID |
 | `pageCount` | Int | 页数 |
 

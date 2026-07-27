@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [Unreleased]
+
+### Changed
+
+- **移除无效的章节已读/收藏字段** — `Chapter` 模型中移除 `is_read`、`last_page_read`、`is_bookmarked`（Suwayomi 后端标记对 Bot 用户无意义），同步清理 GraphQL 查询、章节列表显示、AI agent 输出和所有测试。
+
 ## [0.5.0] - 2026-07-14
 
 ### Added

@@ -24,7 +24,7 @@
 
 ---
 
-将 [Suwayomi-Server](https://github.com/Suwayomi/Suwayomi-Server) 作为漫画后端，为聊天平台（QQ / Telegram / Discord 等）提供漫画搜索、在线阅读、批量下载和订阅更新推送服务。
+基于强大的 [Suwayomi-Server](https://github.com/Suwayomi/Suwayomi-Server) 后端，为聊天平台（QQ / Telegram / Discord 等）提供漫画搜索、在线阅读、批量下载和订阅更新推送服务。
 
 > 🚀 **首次使用？** 查看 [Suwayomi-Server 部署教程](docs/setup.md) 快速上手。
 

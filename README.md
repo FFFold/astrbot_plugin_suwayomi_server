@@ -76,6 +76,9 @@
 | `suwayomi_search_manga` | 跨源搜索漫画，返回稳定 `manga_id`。支持按源名提示过滤，也可一次搜索全部已安装源 |
 | `suwayomi_get_chapters` | 查询漫画章节列表，支持 `latest`（最新章节）、`list`（最新 N 话）、章节号或 `ID:数字` 精确选择 |
 | `suwayomi_send_chapter` | 将已确认的章节发送到聊天。默认打包为 PDF，支持 ZIP/CBZ/图片；仅限用户明确要求阅读时调用 |
+| `suwayomi_subscribe_manga` | 订阅漫画更新通知，可选开启自动推送（`push_enabled`）。已订阅时仍可补充开启推送 |
+| `suwayomi_get_subscriptions` | 获取当前会话的订阅列表，含标题和 `push_enabled` 状态 |
+| `suwayomi_unsubscribe_manga` | 取消订阅指定漫画，已取消时返回友好提示 |
 
 ---
 

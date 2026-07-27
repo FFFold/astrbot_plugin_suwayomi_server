@@ -70,7 +70,7 @@ astrbot_plugin_suwayomi_server/
 │   ├── client.py              # Suwayomi GraphQL 异步 HTTP 客户端
 │   ├── models.py              # 数据模型（Source, Manga, Chapter, SearchResult）
 │   ├── service.py             # 业务逻辑层（漫画/章节解析、缓存策略、格式化）
-│   ├── ai_service.py          # Agent 结构化搜索与章节查询（无发送副作用）
+│   ├── ai_service.py          # Agent 结构化搜索、章节查询与订阅管理（无发送副作用）
 │   ├── ai_tools.py            # AstrBot FunctionTool Schema 与注册工厂
 │   └── updater.py             # 更新引擎（check_updates + run_update_loop）
 ├── utils/

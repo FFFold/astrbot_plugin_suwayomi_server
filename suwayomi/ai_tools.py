@@ -10,6 +10,9 @@ AI_TOOL_NAMES = (
     "suwayomi_search_manga",
     "suwayomi_get_chapters",
     "suwayomi_send_chapter",
+    "suwayomi_subscribe_manga",
+    "suwayomi_get_subscriptions",
+    "suwayomi_unsubscribe_manga",
 )
 
 
@@ -159,5 +162,73 @@ def build_ai_tools(plugin: Any) -> list[FunctionTool]:
             handler=None,
             plugin=plugin,
             method_name="_ai_send_chapter_tool",
+        ),
+        SuwayomiFunctionTool(
+            name=AI_TOOL_NAMES[3],
+            description=(
+                "为当前会话订阅指定漫画更新通知。需先通过 suwayomi_search_manga 获取 manga_id。"
+                "订阅后，该漫画有新章节时本会话会收到推送通知。"
+                "如果已经是订阅的，返回已订阅状态而不是报错。"
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "manga_id": {
+                        "type": "integer",
+                        "description": "suwayomi_search_manga 返回的漫画 ID。",
+                    },
+                    "confirmed_user_intent": {
+                        "type": "boolean",
+                        "description": "仅当用户明确要求订阅该漫画时为 true。",
+                    },
+                    "push_enabled": {
+                        "type": "boolean",
+                        "description": "是否同时开启自动推送（新章节到达时自动发送内容到当前会话）。默认 false（仅文字通知）。",
+                        "default": False,
+                    },
+                },
+                "required": ["manga_id", "confirmed_user_intent"],
+            },
+            handler=None,
+            plugin=plugin,
+            method_name="_ai_subscribe_manga_tool",
+        ),
+        SuwayomiFunctionTool(
+            name=AI_TOOL_NAMES[4],
+            description=(
+                "获取当前会话的漫画订阅列表。返回已订阅的 manga_id、标题、push_enabled 等。"
+                "无需参数；结果按会话范围自动确定。"
+            ),
+            parameters={
+                "type": "object",
+                "properties": {},
+            },
+            handler=None,
+            plugin=plugin,
+            method_name="_ai_get_subscriptions_tool",
+        ),
+        SuwayomiFunctionTool(
+            name=AI_TOOL_NAMES[5],
+            description=(
+                "取消当前会话对指定漫画的订阅。manga_id 可通过 suwayomi_get_subscriptions 获取。"
+                "如果当前未订阅，返回友好提示而不是报错。"
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "manga_id": {
+                        "type": "integer",
+                        "description": "要取消订阅的漫画 ID，来自 suwayomi_get_subscriptions 或 suwayomi_search_manga。",
+                    },
+                    "confirmed_user_intent": {
+                        "type": "boolean",
+                        "description": "仅当用户明确要求取消订阅时为 true。",
+                    },
+                },
+                "required": ["manga_id", "confirmed_user_intent"],
+            },
+            handler=None,
+            plugin=plugin,
+            method_name="_ai_unsubscribe_manga_tool",
         ),
     ]

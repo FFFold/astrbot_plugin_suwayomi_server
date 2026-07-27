@@ -8,6 +8,8 @@ from typing import Any
 from .models import Chapter, Manga, Source
 from .service import fmt_chapter_display, get_or_fetch_chapters
 
+from astrbot.api import logger
+
 
 _LATEST_SELECTORS = {"latest", "newest", "最新", "最新一话", "最新一話"}
 _LIST_SELECTORS = {"", "list", "all", "列表", "全部"}
@@ -370,4 +372,107 @@ async def get_chapters_for_agent(
             if selection_error is None
             else "先让用户根据候选 chapter_id 确认具体章节。"
         ),
+    }
+
+
+async def subscribe_manga_for_agent(
+    client: Any,
+    sub_mgr: Any,
+    get_kv_data: Any,
+    put_kv_data: Any,
+    config: Any,
+    umo: str,
+    manga_id: int,
+    push_enabled: bool = False,
+) -> dict:
+    try:
+        manga_id = int(manga_id)
+    except (TypeError, ValueError):
+        return {"success": False, "error": "manga_id 必须是整数"}
+
+    try:
+        manga = await client.get_manga(manga_id)
+    except Exception as exc:
+        return {"success": False, "error": f"获取漫画信息失败: {exc}"}
+
+    existing = await sub_mgr.get_subscriptions(umo)
+    sub_entry = next(
+        (s for s in existing if s["manga_id"] == manga_id), None
+    )
+    if sub_entry is not None:
+        enabled_before = sub_entry.get("push_enabled", False)
+        if push_enabled and not enabled_before:
+            await sub_mgr.set_auto_push(manga_id, umo, True)
+        return {
+            "success": True,
+            "already_subscribed": True,
+            "push_enabled": push_enabled or enabled_before,
+            "manga": manga_to_agent_dict(manga),
+            "message": f"已经订阅了「{manga.title}」{'，已开启自动推送' if push_enabled and not enabled_before else ''}。",
+        }
+
+    await sub_mgr.subscribe(manga_id, manga.title, manga.source_id, umo)
+    if push_enabled:
+        await sub_mgr.set_auto_push(manga_id, umo, True)
+    try:
+        chapters = await get_or_fetch_chapters(
+            client, get_kv_data, put_kv_data, config, manga_id
+        )
+        if chapters:
+            max_id = max(ch.id for ch in chapters)
+            await sub_mgr.update_latest_chapter(manga_id, max_id)
+    except Exception as e:
+        logger.warning(f"[suwayomi] AI subscribe 拉取「{manga.title}」章节失败: {e}")
+
+    return {
+        "success": True,
+        "already_subscribed": False,
+        "manga": manga_to_agent_dict(manga),
+        "push_enabled": bool(push_enabled),
+        "message": f"✅ 已订阅「{manga.title}」{'，开启自动推送' if push_enabled else ''}。有新章节时会推送通知。",
+    }
+
+
+async def get_subscriptions_for_agent(
+    sub_mgr: Any,
+    umo: str,
+) -> dict:
+    subs = await sub_mgr.get_subscriptions(umo)
+    return {
+        "success": True,
+        "subscription_count": len(subs),
+        "subscriptions": subs,
+    }
+
+
+async def unsubscribe_manga_for_agent(
+    sub_mgr: Any,
+    umo: str,
+    manga_id: int,
+) -> dict:
+    try:
+        manga_id = int(manga_id)
+    except (TypeError, ValueError):
+        return {"success": False, "error": "manga_id 必须是整数"}
+
+    existing = await sub_mgr.get_subscriptions(umo)
+    sub_entry = next(
+        (s for s in existing if s["manga_id"] == manga_id), None
+    )
+    if sub_entry is None:
+        return {
+            "success": True,
+            "was_subscribed": False,
+            "manga_id": manga_id,
+            "message": f"未订阅漫画 ID {manga_id}，无需取消。",
+        }
+
+    title = sub_entry.get("title", str(manga_id))
+    await sub_mgr.unsubscribe(manga_id, umo)
+    return {
+        "success": True,
+        "was_subscribed": True,
+        "manga_id": manga_id,
+        "title": title,
+        "message": f"✅ 已取消订阅「{title}」。",
     }

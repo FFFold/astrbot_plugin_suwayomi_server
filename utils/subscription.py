@@ -83,6 +83,7 @@ class SubscriptionManager:
                     "title": info["title"],
                     "source_id": info.get("source_id", 0),
                     "latest_chapter_id": info.get("latest_chapter_id", 0),
+                    "push_enabled": info.get("subscribers", {}).get(umo, {}).get("push_enabled", False),
                 })
         return result
 

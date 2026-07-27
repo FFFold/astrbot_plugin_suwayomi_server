@@ -35,6 +35,7 @@ from suwayomi.ai_tools import build_ai_tools, effective_tool_timeout  # noqa: E4
 class _Plugin:
     last_outer_timeout = None
     last_search_all_sources = False
+    last_subscribe_manga_id = None
 
     async def _ai_search_manga_tool(
         self,
@@ -75,6 +76,39 @@ class _Plugin:
         self.last_outer_timeout = _astrbot_tool_timeout
         return event, manga_id, chapter_id, confirmed_user_intent, format
 
+    async def _ai_subscribe_manga_tool(
+        self,
+        event,
+        manga_id,
+        confirmed_user_intent,
+        push_enabled=False,
+        *,
+        _astrbot_tool_timeout=None,
+    ):
+        self.last_outer_timeout = _astrbot_tool_timeout
+        self.last_subscribe_manga_id = manga_id
+        return event, manga_id, confirmed_user_intent, push_enabled
+
+    async def _ai_get_subscriptions_tool(
+        self,
+        event,
+        *,
+        _astrbot_tool_timeout=None,
+    ):
+        self.last_outer_timeout = _astrbot_tool_timeout
+        return event, {"subscriptions": []}
+
+    async def _ai_unsubscribe_manga_tool(
+        self,
+        event,
+        manga_id,
+        confirmed_user_intent,
+        *,
+        _astrbot_tool_timeout=None,
+    ):
+        self.last_outer_timeout = _astrbot_tool_timeout
+        return event, manga_id, confirmed_user_intent
+
 
 @pytest.mark.asyncio
 async def test_tool_call_dispatches_without_astrbot_handler_binding():
@@ -86,11 +120,17 @@ async def test_tool_call_dispatches_without_astrbot_handler_binding():
     assert tools[0].method_name == "_ai_search_manga_tool"
     assert tools[1].method_name == "_ai_get_chapters_tool"
     assert tools[2].method_name == "_ai_send_chapter_tool"
+    assert tools[3].method_name == "_ai_subscribe_manga_tool"
+    assert tools[4].method_name == "_ai_get_subscriptions_tool"
+    assert tools[5].method_name == "_ai_unsubscribe_manga_tool"
     assert (
         tools[0].parameters["properties"]["search_all_sources"]["default"]
         is False
     )
     assert tools[2].parameters["properties"]["format"]["default"] == "pdf"
+    assert "confirmed_user_intent" in tools[3].parameters["required"]
+    assert tools[3].parameters["properties"]["push_enabled"]["default"] is False
+    assert tools[4].parameters.get("required", []) == []
 
     event = object()
     context = SimpleNamespace(context=SimpleNamespace(event=event))
@@ -134,3 +174,51 @@ async def test_search_tool_dispatches_single_all_source_request():
     await tool.call(context, query="碧蓝之海", search_all_sources=True)
 
     assert plugin.last_search_all_sources is True
+
+
+@pytest.mark.asyncio
+async def test_subscribe_tool_dispatches():
+    plugin = _Plugin()
+    tools = build_ai_tools(plugin)
+    event = object()
+    context = SimpleNamespace(context=SimpleNamespace(event=event))
+
+    result = await tools[3].call(context, manga_id=53, confirmed_user_intent=True)
+
+    assert result == (event, 53, True, False)
+    assert plugin.last_subscribe_manga_id == 53
+
+    result = await tools[3].call(
+        context, manga_id=99, confirmed_user_intent=True, push_enabled=True
+    )
+    assert result == (event, 99, True, True)
+
+
+@pytest.mark.asyncio
+async def test_get_subscriptions_tool_dispatches():
+    plugin = _Plugin()
+    tools = build_ai_tools(plugin)
+    event = object()
+    context = SimpleNamespace(context=SimpleNamespace(event=event))
+
+    result = await tools[4].call(context)
+
+    assert result == (event, {"subscriptions": []})
+
+
+@pytest.mark.asyncio
+async def test_tool_count():
+    plugin = _Plugin()
+    tools = build_ai_tools(plugin)
+    assert len(tools) == 6
+
+
+@pytest.mark.asyncio
+async def test_unsubscribe_tool_dispatches():
+    plugin = _Plugin()
+    tools = build_ai_tools(plugin)
+    event = object()
+    context = SimpleNamespace(context=SimpleNamespace(event=event))
+
+    result = await tools[5].call(context, manga_id=53, confirmed_user_intent=True)
+    assert result == (event, 53, True)

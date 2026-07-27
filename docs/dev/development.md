@@ -15,7 +15,7 @@ astrbot_suwayomi_server/
 │   ├── client.py              # Suwayomi GraphQL 异步 HTTP 客户端
 │   ├── models.py              # 数据模型定义
 │   ├── service.py             # 业务逻辑层（漫画/章节解析、缓存策略、格式化）
-│   ├── ai_service.py          # Agent 结构化搜索与章节查询（无发送副作用）
+│   ├── ai_service.py          # Agent 结构化搜索、章节查询与订阅管理（无发送副作用）
 │   ├── ai_tools.py            # AstrBot FunctionTool Schema 与注册工厂
 │   └── updater.py             # 更新引擎（check_updates + run_update_loop）
 ├── utils/
@@ -129,13 +129,14 @@ astrbot_suwayomi_server/
 
 #### `suwayomi/ai_service.py` / `suwayomi/ai_tools.py` — Agent Tool 层
 
-- `ai_tools.py` 使用显式 JSON Schema 定义并注册 `suwayomi_search_manga`、`suwayomi_get_chapters`、`suwayomi_send_chapter`
+- `ai_tools.py` 使用显式 JSON Schema 定义并注册六个 Tool：`suwayomi_search_manga`、`suwayomi_get_chapters`、`suwayomi_send_chapter`、`suwayomi_subscribe_manga`、`suwayomi_get_subscriptions`、`suwayomi_unsubscribe_manga`
 - Tool 子类覆写 `call()` 并从 Agent `ContextWrapper` 取得当前事件，不依赖 `star_manager` 只执行一次的 handler partial 绑定，因此保存配置后重新注册仍可正常调用
-- `ai_service.py` 负责跨源并行搜索、漫画元数据序列化、章节选择和重复章节候选返回，不发送消息
+- `ai_service.py` 负责跨源并行搜索、漫画元数据序列化、章节选择和重复章节候选返回、订阅/取消订阅/订阅列表查询，不发送消息
 - 搜索与章节 Tool 返回稳定 `manga_id` / `chapter_id`，不依赖命令模式的数字编号缓存
 - 阅读发送候选按 `(unified_msg_origin, sender_id)` 隔离 10 分钟，同一时间仅允许一个发送任务（`asyncio.Lock` 防止并发）
 - AstrBot 成功执行 `/reset` 后，`after_message_sent` 钩子按 `unified_msg_origin` 清除搜索缓存、AI 章节候选和发送锁；权限拒绝或重置失败不清理
 - `suwayomi_send_chapter` 只有在 `allow_ai_send=true`、用户意图已确认且章节来自当前发送者最近查询结果时才发送；默认打包 PDF，用户可明确指定 ZIP、CBZ 或图片
+- 订阅 Tool 均含 `confirmed_user_intent` 守卫，防止 Agent 未确认即执行有副作用的 KV 写入；`suwayomi_subscribe_manga` 支持可选 `push_enabled` 参数同时开启自动推送，已订阅时仍可补充开启推送
 
 #### `suwayomi/updater.py` — 更新引擎
 

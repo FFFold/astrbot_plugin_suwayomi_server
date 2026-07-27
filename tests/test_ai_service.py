@@ -12,9 +12,12 @@ import suwayomi.ai_service as ai_service
 from suwayomi.ai_service import (
     AiInteractionState,
     get_chapters_for_agent,
+    get_subscriptions_for_agent,
     is_successful_conversation_reset,
     search_manga_for_agent,
     select_search_sources,
+    subscribe_manga_for_agent,
+    unsubscribe_manga_for_agent,
 )
 from suwayomi.models import Chapter, Manga, SearchResult, Source
 
@@ -273,3 +276,173 @@ async def test_agent_chapters_supports_explicit_chapter_id():
 
     assert result["success"] is True
     assert result["selected_chapter"]["chapter_id"] == 200
+
+
+# ── subscribe_manga_for_agent ──────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_subscribe_manga_validates_manga_id():
+    sub_mgr = SimpleNamespace()
+    client = SimpleNamespace()
+    result = await subscribe_manga_for_agent(
+        client, sub_mgr, AsyncMock(), AsyncMock(), {}, "test:123", "not_int"
+    )
+    assert result["success"] is False
+    assert "整数" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_subscribe_manga_handles_manga_not_found():
+    client = SimpleNamespace(
+        get_manga=AsyncMock(side_effect=RuntimeError("manga not found"))
+    )
+    sub_mgr = SimpleNamespace()
+    result = await subscribe_manga_for_agent(
+        client, sub_mgr, AsyncMock(), AsyncMock(), {}, "test:123", 999
+    )
+    assert result["success"] is False
+    assert "获取漫画信息失败" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_subscribe_manga_already_subscribed():
+    manga = _manga(10, "一拳超人")
+    client = SimpleNamespace(get_manga=AsyncMock(return_value=manga))
+    sub_mgr = SimpleNamespace(
+        get_subscriptions=AsyncMock(return_value=[
+            {"manga_id": 10, "title": "一拳超人", "source_id": 1, "push_enabled": False}
+        ])
+    )
+    result = await subscribe_manga_for_agent(
+        client, sub_mgr, AsyncMock(), AsyncMock(), {}, "test:123", 10
+    )
+    assert result["success"] is True
+    assert result["already_subscribed"] is True
+    assert result["push_enabled"] is False
+
+
+@pytest.mark.asyncio
+async def test_subscribe_manga_already_subscribed_enables_push():
+    manga = _manga(10, "一拳超人")
+    client = SimpleNamespace(get_manga=AsyncMock(return_value=manga))
+    sub_mgr = SimpleNamespace(
+        get_subscriptions=AsyncMock(return_value=[
+            {"manga_id": 10, "title": "一拳超人", "source_id": 1, "push_enabled": False}
+        ]),
+        subscribe=AsyncMock(),
+        set_auto_push=AsyncMock(),
+    )
+    result = await subscribe_manga_for_agent(
+        client, sub_mgr, AsyncMock(), AsyncMock(), {}, "test:123", 10, push_enabled=True
+    )
+    assert result["push_enabled"] is True
+    sub_mgr.set_auto_push.assert_awaited_once_with(10, "test:123", True)
+
+
+@pytest.mark.asyncio
+async def test_subscribe_manga_new_subscription():
+    manga = _manga(10, "一拳超人")
+    client = SimpleNamespace(get_manga=AsyncMock(return_value=manga))
+    sub_mgr = SimpleNamespace(
+        get_subscriptions=AsyncMock(return_value=[]),
+        subscribe=AsyncMock(),
+        update_latest_chapter=AsyncMock(),
+    )
+    get_kv = AsyncMock(return_value={})
+    put_kv = AsyncMock()
+    result = await subscribe_manga_for_agent(
+        client, sub_mgr, get_kv, put_kv, {}, "test:123", 10
+    )
+    assert result["success"] is True
+    assert result["already_subscribed"] is False
+    assert result["push_enabled"] is False
+    sub_mgr.subscribe.assert_awaited_once_with(10, "一拳超人", 1, "test:123")
+
+
+@pytest.mark.asyncio
+async def test_subscribe_manga_new_subscription_with_push():
+    manga = _manga(10, "一拳超人")
+    client = SimpleNamespace(get_manga=AsyncMock(return_value=manga))
+    sub_mgr = SimpleNamespace(
+        get_subscriptions=AsyncMock(return_value=[]),
+        subscribe=AsyncMock(),
+        set_auto_push=AsyncMock(),
+        update_latest_chapter=AsyncMock(),
+    )
+    get_kv = AsyncMock(return_value={})
+    put_kv = AsyncMock()
+    result = await subscribe_manga_for_agent(
+        client, sub_mgr, get_kv, put_kv, {}, "test:123", 10, push_enabled=True
+    )
+    assert result["success"] is True
+    assert result["push_enabled"] is True
+    sub_mgr.subscribe.assert_awaited_once()
+    sub_mgr.set_auto_push.assert_awaited_once_with(10, "test:123", True)
+
+
+# ── get_subscriptions_for_agent ────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_get_subscriptions_for_agent_empty():
+    sub_mgr = SimpleNamespace(
+        get_subscriptions=AsyncMock(return_value=[])
+    )
+    result = await get_subscriptions_for_agent(sub_mgr, "test:123")
+    assert result["success"] is True
+    assert result["subscription_count"] == 0
+    assert result["subscriptions"] == []
+
+
+@pytest.mark.asyncio
+async def test_get_subscriptions_for_agent_with_data():
+    subs_data = [
+        {"manga_id": 10, "title": "一拳超人", "source_id": 1, "push_enabled": True},
+        {"manga_id": 20, "title": "碧蓝之海", "source_id": 2, "push_enabled": False},
+    ]
+    sub_mgr = SimpleNamespace(
+        get_subscriptions=AsyncMock(return_value=subs_data)
+    )
+    result = await get_subscriptions_for_agent(sub_mgr, "test:123")
+    assert result["success"] is True
+    assert result["subscription_count"] == 2
+    assert result["subscriptions"] == subs_data
+
+
+# ── unsubscribe_manga_for_agent ────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_unsubscribe_manga_validates_manga_id():
+    sub_mgr = SimpleNamespace()
+    result = await unsubscribe_manga_for_agent(sub_mgr, "test:123", "invalid")
+    assert result["success"] is False
+    assert "整数" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_unsubscribe_manga_not_subscribed():
+    sub_mgr = SimpleNamespace(
+        get_subscriptions=AsyncMock(return_value=[])
+    )
+    result = await unsubscribe_manga_for_agent(sub_mgr, "test:123", 99)
+    assert result["success"] is True
+    assert result["was_subscribed"] is False
+    assert result["manga_id"] == 99
+
+
+@pytest.mark.asyncio
+async def test_unsubscribe_manga_success():
+    sub_mgr = SimpleNamespace(
+        get_subscriptions=AsyncMock(return_value=[
+            {"manga_id": 10, "title": "一拳超人", "source_id": 1, "push_enabled": True}
+        ]),
+        unsubscribe=AsyncMock(),
+    )
+    result = await unsubscribe_manga_for_agent(sub_mgr, "test:123", 10)
+    assert result["success"] is True
+    assert result["was_subscribed"] is True
+    assert result["manga_id"] == 10
+    assert result["title"] == "一拳超人"
+    sub_mgr.unsubscribe.assert_awaited_once_with(10, "test:123")

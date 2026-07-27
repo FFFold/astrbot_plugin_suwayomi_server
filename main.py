@@ -15,8 +15,10 @@ from .suwayomi import PLUGIN_NAME
 from .suwayomi.ai_service import (
     AiInteractionState,
     get_chapters_for_agent,
+    get_subscriptions_for_agent,
     is_successful_conversation_reset,
     search_manga_for_agent,
+    subscribe_manga_for_agent,
 )
 from .suwayomi.ai_tools import AI_TOOL_NAMES, build_ai_tools, effective_tool_timeout
 from .suwayomi.client import SuwayomiClient, SuwayomiError
@@ -363,6 +365,57 @@ class SuwayomiPlugin(Star):
                 return self._tool_json({"success": False, "sent": False, "error": "发送漫画章节失败"})
             finally:
                 schedule_cleanup(tmp_dir, delay=120 if send_format != "image" else 60)
+
+    async def _ai_subscribe_manga_tool(
+        self,
+        event: AstrMessageEvent,
+        manga_id: int,
+        confirmed_user_intent: bool,
+        *,
+        _astrbot_tool_timeout: int | float | None = None,
+    ) -> str:
+        if not self._config_bool(self.config.get("enable_ai_tools", True), True):
+            return self._tool_json({"success": False, "error": "AI 漫画工具已关闭"})
+        if not self._config_bool(confirmed_user_intent):
+            return self._tool_json({"success": False, "error": "用户尚未明确要求订阅，不能自动订阅"})
+        try:
+            async with asyncio.timeout(self._ai_timeout(_astrbot_tool_timeout)):
+                result = await subscribe_manga_for_agent(
+                    self.client,
+                    self.sub_mgr,
+                    self.get_kv_data,
+                    self.put_kv_data,
+                    self.config,
+                    event.unified_msg_origin,
+                    manga_id,
+                )
+            return self._tool_json(result)
+        except TimeoutError:
+            return self._tool_json({"success": False, "error": "订阅漫画超时，请稍后重试"})
+        except Exception as exc:
+            logger.error(f"[{PLUGIN_NAME}] AI subscribe tool error: {exc}")
+            return self._tool_json({"success": False, "error": "订阅漫画失败，服务暂时不可用"})
+
+    async def _ai_get_subscriptions_tool(
+        self,
+        event: AstrMessageEvent,
+        *,
+        _astrbot_tool_timeout: int | float | None = None,
+    ) -> str:
+        if not self._config_bool(self.config.get("enable_ai_tools", True), True):
+            return self._tool_json({"success": False, "error": "AI 漫画工具已关闭"})
+        try:
+            async with asyncio.timeout(self._ai_timeout(_astrbot_tool_timeout)):
+                result = await get_subscriptions_for_agent(
+                    self.sub_mgr,
+                    event.unified_msg_origin,
+                )
+            return self._tool_json(result)
+        except TimeoutError:
+            return self._tool_json({"success": False, "error": "获取订阅列表超时"})
+        except Exception as exc:
+            logger.error(f"[{PLUGIN_NAME}] AI get subscriptions tool error: {exc}")
+            return self._tool_json({"success": False, "error": "获取订阅列表失败"})
 
     # ── Lifecycle ──────────────────────────────────────────────────
 

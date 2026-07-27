@@ -8,6 +8,8 @@ from typing import Any
 from .models import Chapter, Manga, Source
 from .service import fmt_chapter_display, get_or_fetch_chapters
 
+from astrbot.api import logger
+
 
 _LATEST_SELECTORS = {"latest", "newest", "最新", "最新一话", "最新一話"}
 _LIST_SELECTORS = {"", "list", "all", "列表", "全部"}
@@ -370,4 +372,63 @@ async def get_chapters_for_agent(
             if selection_error is None
             else "先让用户根据候选 chapter_id 确认具体章节。"
         ),
+    }
+
+
+async def subscribe_manga_for_agent(
+    client: Any,
+    sub_mgr: Any,
+    get_kv_data: Any,
+    put_kv_data: Any,
+    config: Any,
+    umo: str,
+    manga_id: int,
+) -> dict:
+    try:
+        manga_id = int(manga_id)
+    except (TypeError, ValueError):
+        return {"success": False, "error": "manga_id 必须是整数"}
+
+    try:
+        manga = await client.get_manga(manga_id)
+    except Exception as exc:
+        return {"success": False, "error": f"获取漫画信息失败: {exc}"}
+
+    existing = await sub_mgr.get_subscriptions(umo)
+    if any(s["manga_id"] == manga_id for s in existing):
+        return {
+            "success": True,
+            "already_subscribed": True,
+            "manga": manga_to_agent_dict(manga),
+            "message": f"已经订阅了「{manga.title}」",
+        }
+
+    await sub_mgr.subscribe(manga_id, manga.title, manga.source_id, umo)
+    try:
+        chapters = await get_or_fetch_chapters(
+            client, get_kv_data, put_kv_data, config, manga_id
+        )
+        if chapters:
+            max_id = max(ch.id for ch in chapters)
+            await sub_mgr.update_latest_chapter(manga_id, max_id)
+    except Exception as e:
+        logger.warning(f"[suwayomi] AI subscribe 拉取「{manga.title}」章节失败: {e}")
+
+    return {
+        "success": True,
+        "already_subscribed": False,
+        "manga": manga_to_agent_dict(manga),
+        "message": f"✅ 已订阅「{manga.title}」，有新章节时会推送通知。",
+    }
+
+
+async def get_subscriptions_for_agent(
+    sub_mgr: Any,
+    umo: str,
+) -> dict:
+    subs = await sub_mgr.get_subscriptions(umo)
+    return {
+        "success": True,
+        "subscription_count": len(subs),
+        "subscriptions": subs,
     }

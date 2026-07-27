@@ -11,11 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 ### Added
 
-- **AI 订阅管理工具** — 新增三个 AstrBot Tool：`suwayomi_subscribe_manga`（订阅漫画并可选开启自动推送，已订阅时支持补充开启 `push_enabled`）、`suwayomi_get_subscriptions`（查询当前会话订阅列表，含 `push_enabled` 状态）、`suwayomi_unsubscribe_manga`（取消订阅，已取消时返回友好提示）。新增 `subscribe_manga_for_agent()`、`get_subscriptions_for_agent()`、`unsubscribe_manga_for_agent()` 至 `suwayomi/ai_service.py`。`SubscriptionManager.get_subscriptions()` 返回值新增 `push_enabled` 字段。
+- **AI 订阅管理工具** — 新增三个 AstrBot Tool
+  - `suwayomi_subscribe_manga`：订阅漫画并可选开启自动推送，已订阅时支持补充开启 `push_enabled`
+  - `suwayomi_get_subscriptions`：查询当前会话订阅列表，含 `push_enabled` 状态
+  - `suwayomi_unsubscribe_manga`：取消订阅，已取消时返回友好提示
+- 新增 `subscribe_manga_for_agent()`、`get_subscriptions_for_agent()`、`unsubscribe_manga_for_agent()` 至 `suwayomi/ai_service.py`
+- `SubscriptionManager.get_subscriptions()` 返回值新增 `push_enabled` 字段
 
 ### Changed
 
-- **移除无效的章节已读/收藏字段** — `Chapter` 模型中移除 `is_read`、`last_page_read`、`is_bookmarked`（Suwayomi 后端标记对 Bot 用户无意义），同步清理 GraphQL 查询、章节列表显示、AI agent 输出和所有测试。
+- **移除无效的章节已读/收藏字段** — `Chapter` 模型中移除 `is_read`、`last_page_read`、`is_bookmarked`，同步清理 GraphQL 查询、章节列表显示、AI agent 输出和所有测试
 
 ## [0.5.0] - 2026-07-14
 

@@ -180,6 +180,11 @@ def build_ai_tools(plugin: Any) -> list[FunctionTool]:
                         "type": "boolean",
                         "description": "仅当用户明确要求订阅该漫画时为 true。",
                     },
+                    "push_enabled": {
+                        "type": "boolean",
+                        "description": "是否同时开启自动推送（新章节到达时自动发送内容到当前会话）。默认 false（仅文字通知）。",
+                        "default": False,
+                    },
                 },
                 "required": ["manga_id", "confirmed_user_intent"],
             },
@@ -190,7 +195,7 @@ def build_ai_tools(plugin: Any) -> list[FunctionTool]:
         SuwayomiFunctionTool(
             name=AI_TOOL_NAMES[4],
             description=(
-                "获取当前会话的漫画订阅列表。返回已订阅的 manga_id、标题、来源等信息。"
+                "获取当前会话的漫画订阅列表。返回已订阅的 manga_id、标题、push_enabled 等。"
                 "无需参数；结果按会话范围自动确定。"
             ),
             parameters={

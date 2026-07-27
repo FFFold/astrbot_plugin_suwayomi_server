@@ -81,12 +81,13 @@ class _Plugin:
         event,
         manga_id,
         confirmed_user_intent,
+        push_enabled=False,
         *,
         _astrbot_tool_timeout=None,
     ):
         self.last_outer_timeout = _astrbot_tool_timeout
         self.last_subscribe_manga_id = manga_id
-        return event, manga_id, confirmed_user_intent
+        return event, manga_id, confirmed_user_intent, push_enabled
 
     async def _ai_get_subscriptions_tool(
         self,
@@ -116,6 +117,7 @@ async def test_tool_call_dispatches_without_astrbot_handler_binding():
     )
     assert tools[2].parameters["properties"]["format"]["default"] == "pdf"
     assert "confirmed_user_intent" in tools[3].parameters["required"]
+    assert tools[3].parameters["properties"]["push_enabled"]["default"] is False
     assert tools[4].parameters.get("required", []) == []
 
     event = object()
@@ -171,8 +173,13 @@ async def test_subscribe_tool_dispatches():
 
     result = await tools[3].call(context, manga_id=53, confirmed_user_intent=True)
 
-    assert result == (event, 53, True)
+    assert result == (event, 53, True, False)
     assert plugin.last_subscribe_manga_id == 53
+
+    result = await tools[3].call(
+        context, manga_id=99, confirmed_user_intent=True, push_enabled=True
+    )
+    assert result == (event, 99, True, True)
 
 
 @pytest.mark.asyncio

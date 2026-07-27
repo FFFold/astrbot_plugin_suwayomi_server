@@ -371,6 +371,7 @@ class SuwayomiPlugin(Star):
         event: AstrMessageEvent,
         manga_id: int,
         confirmed_user_intent: bool,
+        push_enabled: bool = False,
         *,
         _astrbot_tool_timeout: int | float | None = None,
     ) -> str:
@@ -388,6 +389,7 @@ class SuwayomiPlugin(Star):
                     self.config,
                     event.unified_msg_origin,
                     manga_id,
+                    self._config_bool(push_enabled),
                 )
             return self._tool_json(result)
         except TimeoutError:

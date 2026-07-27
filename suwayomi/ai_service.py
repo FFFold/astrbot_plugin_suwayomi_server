@@ -383,6 +383,7 @@ async def subscribe_manga_for_agent(
     config: Any,
     umo: str,
     manga_id: int,
+    push_enabled: bool = False,
 ) -> dict:
     try:
         manga_id = int(manga_id)
@@ -395,15 +396,24 @@ async def subscribe_manga_for_agent(
         return {"success": False, "error": f"获取漫画信息失败: {exc}"}
 
     existing = await sub_mgr.get_subscriptions(umo)
-    if any(s["manga_id"] == manga_id for s in existing):
+    sub_entry = next(
+        (s for s in existing if s["manga_id"] == manga_id), None
+    )
+    if sub_entry is not None:
+        enabled_before = sub_entry.get("push_enabled", False)
+        if push_enabled and not enabled_before:
+            await sub_mgr.set_auto_push(manga_id, umo, True)
         return {
             "success": True,
             "already_subscribed": True,
+            "push_enabled": push_enabled or enabled_before,
             "manga": manga_to_agent_dict(manga),
-            "message": f"已经订阅了「{manga.title}」",
+            "message": f"已经订阅了「{manga.title}」{'，已开启自动推送' if push_enabled and not enabled_before else ''}。",
         }
 
     await sub_mgr.subscribe(manga_id, manga.title, manga.source_id, umo)
+    if push_enabled:
+        await sub_mgr.set_auto_push(manga_id, umo, True)
     try:
         chapters = await get_or_fetch_chapters(
             client, get_kv_data, put_kv_data, config, manga_id
@@ -418,7 +428,8 @@ async def subscribe_manga_for_agent(
         "success": True,
         "already_subscribed": False,
         "manga": manga_to_agent_dict(manga),
-        "message": f"✅ 已订阅「{manga.title}」，有新章节时会推送通知。",
+        "push_enabled": bool(push_enabled),
+        "message": f"✅ 已订阅「{manga.title}」{'，开启自动推送' if push_enabled else ''}。有新章节时会推送通知。",
     }
 
 

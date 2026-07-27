@@ -136,8 +136,8 @@ def chapter():
     return Chapter(
         id=42, url="", name="第1话", chapter_number=1.0,
         source_order=1, upload_date=0,
-        is_read=False, is_downloaded=False, is_bookmarked=False,
-        last_page_read=0, manga_id=1, page_count=0,
+        is_downloaded=False,
+        manga_id=1, page_count=0,
     )
 
 

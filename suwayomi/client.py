@@ -215,7 +215,7 @@ class SuwayomiClient:
 
     async def get_chapters(self, manga_id: int) -> list[Chapter]:
         data = await self._raw_query(
-            'query($id:Int!){manga(id:$id){chapters{nodes{id url name chapterNumber uploadDate isRead isDownloaded isBookmarked lastPageRead sourceOrder mangaId pageCount}}}}',
+            'query($id:Int!){manga(id:$id){chapters{nodes{id url name chapterNumber uploadDate isDownloaded sourceOrder mangaId pageCount}}}}',
             {"id": manga_id},
         )
         return [Chapter.from_dict(c) for c in data["manga"]["chapters"]["nodes"]]
@@ -230,7 +230,7 @@ class SuwayomiClient:
     async def fetch_chapters(self, manga_id: int) -> list[Chapter]:
         """Fetch chapters from source (triggers network request to manga source)."""
         data = await self._raw_query(
-            'mutation($mid:Int!){fetchChapters(input:{mangaId:$mid}){chapters{id url name chapterNumber uploadDate isRead isDownloaded isBookmarked lastPageRead sourceOrder mangaId pageCount}}}',
+            'mutation($mid:Int!){fetchChapters(input:{mangaId:$mid}){chapters{id url name chapterNumber uploadDate isDownloaded sourceOrder mangaId pageCount}}}',
             {"mid": manga_id},
         )
         return [Chapter.from_dict(c) for c in data["fetchChapters"]["chapters"]]

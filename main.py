@@ -991,9 +991,8 @@ class SuwayomiPlugin(Star):
             header = f"📖「{manga.title}」{src_tag} 章节列表（共 {len(chapters)} 话）:"
             chunks: list[list[str]] = [[]]
             for ch in chapters:
-                read_mark = "✅" if ch.is_read else "⬜"
                 dl_mark = " 📥" if ch.is_downloaded else ""
-                line = f"  {read_mark} {fmt_chapter_label(ch, num_count)}{dl_mark}"
+                line = f"  {fmt_chapter_label(ch, num_count)}{dl_mark}"
                 current_len = sum(len(item) for item in chunks[-1]) + len(header)
                 if current_len + len(line) > 1500 and chunks[-1]:
                     chunks.append([])

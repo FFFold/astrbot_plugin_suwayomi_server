@@ -123,7 +123,6 @@ def chapter_to_agent_dict(chapter: Chapter) -> dict:
         "upload_date": chapter.upload_date,
         "page_count": chapter.page_count,
         "source_order": chapter.source_order,
-        "is_read": chapter.is_read,
         "is_downloaded": chapter.is_downloaded,
     }
 

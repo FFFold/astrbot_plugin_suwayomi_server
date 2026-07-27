@@ -41,10 +41,7 @@ def test_chapter_from_dict():
         "name": "Chapter 1",
         "chapterNumber": 1.0,
         "uploadDate": 1700000000,
-        "isRead": False,
         "isDownloaded": True,
-        "isBookmarked": False,
-        "lastPageRead": 0,
         "sourceOrder": 1,
         "mangaId": 42,
     }
@@ -52,7 +49,6 @@ def test_chapter_from_dict():
     assert ch.id == 101
     assert ch.name == "Chapter 1"
     assert ch.chapter_number == 1.0
-    assert ch.is_read is False
     assert ch.is_downloaded is True
 
 
@@ -99,7 +95,6 @@ def test_chapter_minimal_fields():
     assert ch.id == 1
     assert ch.name == ""
     assert ch.chapter_number == 0.0
-    assert ch.is_read is False
 
 
 def test_source_minimal_fields():

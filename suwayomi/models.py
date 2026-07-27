@@ -60,10 +60,7 @@ class Chapter:
     name: str
     chapter_number: float
     upload_date: int = 0
-    is_read: bool = False
     is_downloaded: bool = False
-    is_bookmarked: bool = False
-    last_page_read: int = 0
     source_order: int = 0
     manga_id: int = 0
     page_count: int = 0
@@ -76,10 +73,7 @@ class Chapter:
             name=d.get("name", ""),
             chapter_number=float(d.get("chapterNumber", 0.0)),
             upload_date=int(d.get("uploadDate", 0)),
-            is_read=d.get("isRead", False),
             is_downloaded=d.get("isDownloaded", False),
-            is_bookmarked=d.get("isBookmarked", False),
-            last_page_read=int(d.get("lastPageRead", 0)),
             source_order=int(d.get("sourceOrder", 0)),
             manga_id=int(d.get("mangaId", 0)),
             page_count=int(d.get("pageCount", 0)),

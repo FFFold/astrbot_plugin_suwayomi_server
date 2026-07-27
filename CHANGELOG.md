@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-07-27
+
 ### Added
 
 - **AI 订阅管理工具** — 新增三个 AstrBot Tool：`suwayomi_subscribe_manga`（订阅漫画并可选开启自动推送，已订阅时支持补充开启 `push_enabled`）、`suwayomi_get_subscriptions`（查询当前会话订阅列表，含 `push_enabled` 状态）、`suwayomi_unsubscribe_manga`（取消订阅，已取消时返回友好提示）。新增 `subscribe_manga_for_agent()`、`get_subscriptions_for_agent()`、`unsubscribe_manga_for_agent()` 至 `suwayomi/ai_service.py`。`SubscriptionManager.get_subscriptions()` 返回值新增 `push_enabled` 字段。

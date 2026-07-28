@@ -65,6 +65,13 @@ async def push_chapter_images(
             total_pages, page_urls, local_paths, tmp_dir = await fetch_pages_local_fn(
                 chapter.id, max_pages
             )
+            if page_urls and not any(local_paths):
+                logger.error(
+                    f"[{_PLUGIN_NAME}] 自动推送 {ch_label} 时所有图片下载均失败，"
+                    "请检查 Suwayomi 认证配置"
+                )
+                schedule_cleanup(tmp_dir, delay=60)
+                return
         else:
             pages = await client.fetch_chapter_pages(chapter.id)
             if not pages:
@@ -78,6 +85,11 @@ async def push_chapter_images(
         def _img(idx: int) -> Comp.Image:
             if fetch_mode == "download" and idx < len(local_paths) and local_paths[idx]:
                 return Comp.Image.fromFileSystem(local_paths[idx])
+            if fetch_mode == "download":
+                logger.warning(
+                    f"[{_PLUGIN_NAME}] 自动推送图片 {idx + 1} 下载失败，"
+                    "请检查 Suwayomi 认证配置"
+                )
             return Comp.Image.fromURL(page_urls[idx])
 
         try:

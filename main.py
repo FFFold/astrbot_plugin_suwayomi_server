@@ -592,6 +592,12 @@ class SuwayomiPlugin(Star):
                 self.client, target.id, max_pages, concurrency, custom_tmp, retries,
                 headers=self.client.auth_headers,
             )
+            if page_urls and not any(local_paths):
+                logger.error(
+                    f"[{PLUGIN_NAME}] 所有 {len(page_urls)} 张图片下载均失败，"
+                    "请检查 Suwayomi 是否开启了认证，以及插件的认证配置是否正确"
+                )
+                return None, total_pages, 0, tmp_dir
         else:
             pages = await self.client.fetch_chapter_pages(target.id)
             if not pages:
@@ -606,7 +612,10 @@ class SuwayomiPlugin(Star):
             if fetch_mode == "download" and idx < len(local_paths) and local_paths[idx]:
                 return Comp.Image.fromFileSystem(local_paths[idx])
             if fetch_mode == "download":
-                logger.warning(f"[{PLUGIN_NAME}] 图片 {idx + 1} 下载失败，回退为 URL 模式")
+                logger.warning(
+                    f"[{PLUGIN_NAME}] 图片 {idx + 1} 下载失败，"
+                    "请检查 Suwayomi 认证配置（URL 模式不兼容带认证的服务器）"
+                )
             return Comp.Image.fromURL(page_urls[idx])
 
         if send_mode == "forward" and event.get_platform_name() == "aiocqhttp":
@@ -1136,7 +1145,13 @@ class SuwayomiPlugin(Star):
             try:
                 result, _, _, tmp_dir = await self._prepare_chapter_delivery(event, target)
                 if result is None:
-                    yield event.plain_result(f"{fmt_chapter_display(target)}暂无可用页面。")
+                    if self.config.get("image_fetch_mode") == "download" and self.client.auth_mode != "none":
+                        yield event.plain_result(
+                            f"图片下载失败——当前 Suwayomi 开启了 {self.client.auth_mode} 认证，"
+                            "但图片未能成功下载。请检查认证用户名/密码是否正确。"
+                        )
+                    else:
+                        yield event.plain_result(f"{fmt_chapter_display(target)}暂无可用页面。")
                     return
                 yield result
             finally:

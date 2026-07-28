@@ -58,11 +58,15 @@ async def download_images(
     concurrency: int = 6,
     custom_tmp: str = "",
     retries: int = 3,
+    headers: dict[str, str] | None = None,
 ) -> tuple[list[str], Path]:
     tmp_dir = Path(tempfile.mkdtemp(prefix="suwayomi_", dir=custom_tmp or None))
     try:
         connector = aiohttp.TCPConnector(limit=concurrency)
-        async with aiohttp.ClientSession(connector=connector) as session:
+        session_kwargs: dict = {"connector": connector}
+        if headers:
+            session_kwargs["headers"] = headers
+        async with aiohttp.ClientSession(**session_kwargs) as session:
             tasks = [
                 download_one(session, url, tmp_dir / f"{i:04d}.jpg", retries)
                 for i, url in enumerate(urls)
@@ -94,6 +98,7 @@ async def fetch_pages_local(
     concurrency: int = 6,
     custom_tmp: str = "",
     retries: int = 3,
+    headers: dict[str, str] | None = None,
 ) -> tuple[int, list[str], list[str], Path | None]:
     pages = await client.fetch_chapter_pages(chapter_id)
     if not pages:
@@ -103,6 +108,6 @@ async def fetch_pages_local(
         pages = pages[:max_pages]
     page_urls = [client.build_image_url(p) for p in pages]
     local_paths, tmp_dir = await download_images(
-        page_urls, concurrency, custom_tmp, retries
+        page_urls, concurrency, custom_tmp, retries, headers
     )
     return total_pages, page_urls, local_paths, tmp_dir

@@ -534,6 +534,7 @@ class SuwayomiPlugin(Star):
                     concurrency=config.get("download_concurrency", 6),
                     custom_tmp=config.get("temp_dir", "").strip(),
                     retries=config.get("download_retries", 3),
+                    headers=client.auth_headers,
                 ),
             )
 
@@ -546,6 +547,7 @@ class SuwayomiPlugin(Star):
                     concurrency=config.get("download_concurrency", 6),
                     custom_tmp=config.get("temp_dir", "").strip(),
                     retries=config.get("download_retries", 3),
+                    headers=client.auth_headers,
                 ),
             )
 
@@ -587,7 +589,8 @@ class SuwayomiPlugin(Star):
         tmp_dir: Path | None = None
         if fetch_mode == "download":
             total_pages, page_urls, local_paths, tmp_dir = await fetch_pages_local(
-                self.client, target.id, max_pages, concurrency, custom_tmp, retries
+                self.client, target.id, max_pages, concurrency, custom_tmp, retries,
+                headers=self.client.auth_headers,
             )
         else:
             pages = await self.client.fetch_chapter_pages(target.id)
@@ -646,6 +649,7 @@ class SuwayomiPlugin(Star):
             concurrency=concurrency,
             custom_tmp=custom_tmp,
             retries=retries,
+            headers=self.client.auth_headers,
         )
         if not page_urls:
             return None, total_pages, 0, tmp_dir, None
@@ -1187,7 +1191,8 @@ class SuwayomiPlugin(Star):
             custom_tmp = self.config.get("temp_dir", "").strip()
             retries = self.config.get("download_retries", 3)
             _, page_urls, local_paths, tmp_dir = await fetch_pages_local(
-                self.client, target.id, concurrency=concurrency, custom_tmp=custom_tmp, retries=retries
+                self.client, target.id, concurrency=concurrency, custom_tmp=custom_tmp, retries=retries,
+                headers=self.client.auth_headers,
             )
 
             if not page_urls:

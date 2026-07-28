@@ -43,10 +43,10 @@
   "image_fetch_mode": {
     "description": "图片获取方式",
     "type": "string",
-    "default": "url",
+    "default": "download",
     "options": ["url", "download"],
     "labels": ["URL 直接引用", "先下载到本地"],
-    "hint": "URL 方式更快但网络不稳定时容易失败；下载方式更可靠但占用临时磁盘空间"
+    "hint": "URL 方式更快，但不兼容带认证的 Suwayomi 服务器；下载方式更可靠但占用临时磁盘空间"
   },
   "download_concurrency": {
     "description": "并行下载数",

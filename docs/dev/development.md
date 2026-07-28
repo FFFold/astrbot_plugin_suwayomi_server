@@ -147,8 +147,8 @@ astrbot_suwayomi_server/
 #### `utils/downloader.py` — 图片下载管道
 
 - `download_one(session, url, dest, retries)` — 单图下载，指数退避重试
-- `download_images(urls, concurrency, custom_tmp, retries)` — 并行批量下载，返回 `(paths, tmp_dir)`
-- `fetch_pages_local(client, chapter_id, max_pages, concurrency, custom_tmp, retries)` — 获取页面列表并下载到临时目录，返回 `(total_pages, page_urls, local_paths, tmp_dir)`
+- `download_images(urls, concurrency, custom_tmp, retries, headers)` — 并行批量下载，返回 `(paths, tmp_dir)`。`headers` 参数用于注入认证头（`client.auth_headers`），确保认证服务器下的图片下载正常
+- `fetch_pages_local(client, chapter_id, max_pages, concurrency, custom_tmp, retries, headers)` — 获取页面列表并下载到临时目录，返回 `(total_pages, page_urls, local_paths, tmp_dir)`。透传 `headers` 到 `download_images`
 
 #### `utils/pusher.py` — 推送投递
 
@@ -162,6 +162,7 @@ astrbot_suwayomi_server/
 - 基于 `aiohttp.ClientSession` 的异步 HTTP 客户端
 - 所有 Suwayomi 交互通过 `POST /api/graphql` 发送 GraphQL 查询/变更
 - 支持三种认证模式：无认证、Basic、JWT（自动刷新）
+- 提供 `auth_headers` 属性，暴露认证头供图片下载时复用（Basic 返回 `Basic ...`，JWT 返回缓存的 `Bearer ...` token）
 - `_post_graphql()` — 底层 HTTP POST，处理 JSON 解析、错误归一化、网络异常捕获
 - `_raw_query()` — 上层认证查询，调用 `_ensure_jwt()`，通过 `_response_data()` 统一校验响应
 - JWT 认证使用 `asyncio.Lock` 保护，`_is_unauthorized()` 检测 HTTP 401 / GraphQL Unauthorized 两种失效，`_renew_jwt()` 自动执行 refresh → re-login 降级续期
@@ -340,6 +341,9 @@ uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
 
 # 指定自定义服务器地址（推荐：先设置环境变量避免连接默认 :4567 失败）
 $env:SUWAYOMI_URL="http://your-server:9330"; uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
+
+# 带认证的服务器
+$env:SUWAYOMI_URL="http://your-server:9330"; $env:SUWAYOMI_AUTH_MODE="basic"; $env:SUWAYOMI_USERNAME="user"; $env:SUWAYOMI_PASSWORD="pass"; uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
 
 # 全部测试
 uv run pytest -v

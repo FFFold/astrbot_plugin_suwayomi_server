@@ -221,7 +221,7 @@ uv pip install -r astrbot_suwayomi_server/requirements.txt
 | 配置项 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
 | `send_mode` | string | `image` | 发图模式：`image`（逐张发送）/ `forward`（合并转发，仅 QQ） |
-| `image_fetch_mode` | string | `url` | 图源获取：`url`（直接引用）/ `download`（先下载到本地） |
+| `image_fetch_mode` | string | `download` | 图源获取：`url`（直接引用，不兼容认证服务器）/ `download`（先下载到本地） |
 | `max_pages` | int | `30` | 单次阅读最大发送页数 |
 | `download_concurrency` | int | `6` | 并行下载图片数（仅 `download` 模式） |
 | `download_retries` | int | `3` | 图片下载失败重试次数（指数退避） |
@@ -259,8 +259,10 @@ uv pip install -r astrbot_suwayomi_server/requirements.txt
 
 | 方式 | 说明 |
 |---|---|
-| `url` | 直接引用 Suwayomi 图片 URL，速度快但网络不稳定时易失败 |
-| `download` | 先下载到本地临时文件再发送，更可靠，发送后 60 秒自动清理 |
+| `download` | 先下载到本地临时文件再发送，更可靠，发送后 60 秒自动清理（**推荐**） |
+| `url` | 直接引用 Suwayomi 图片 URL，速度快但**不兼容**带认证的 Suwayomi 服务器 |
+
+> 当 Suwayomi 开启了 Basic 或 JWT 认证时，**必须使用 `download` 模式**，否则 AstrBot Core 下载图片时会因无认证信息而失败（HTTP 401）。
 
 ## 📚 文档
 

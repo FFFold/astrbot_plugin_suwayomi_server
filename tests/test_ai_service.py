@@ -319,7 +319,8 @@ async def test_subscribe_manga_already_subscribed():
     )
     assert result["success"] is True
     assert result["already_subscribed"] is True
-    assert result["push_enabled"] is False
+    assert result["push_enabled"] is False  # not specified → inherit existing
+    assert "已经订阅了" in result["message"]
 
 
 @pytest.mark.asyncio
@@ -338,6 +339,47 @@ async def test_subscribe_manga_already_subscribed_enables_push():
     )
     assert result["push_enabled"] is True
     sub_mgr.set_auto_push.assert_awaited_once_with(10, "test:123", True)
+    assert "已开启自动推送" in result["message"]
+
+
+@pytest.mark.asyncio
+async def test_subscribe_manga_already_subscribed_disables_push():
+    """LLM can downgrade push_enabled for an already-subscribed manga."""
+    manga = _manga(10, "一拳超人")
+    client = SimpleNamespace(get_manga=AsyncMock(return_value=manga))
+    sub_mgr = SimpleNamespace(
+        get_subscriptions=AsyncMock(return_value=[
+            {"manga_id": 10, "title": "一拳超人", "source_id": 1, "push_enabled": True}
+        ]),
+        set_auto_push=AsyncMock(),
+    )
+    result = await subscribe_manga_for_agent(
+        client, sub_mgr, AsyncMock(), AsyncMock(), {}, "test:123", 10, push_enabled=False
+    )
+    assert result["success"] is True
+    assert result["push_enabled"] is False
+    sub_mgr.set_auto_push.assert_awaited_once_with(10, "test:123", False)
+    assert "已关闭自动推送" in result["message"]
+
+
+@pytest.mark.asyncio
+async def test_subscribe_manga_already_subscribed_no_change():
+    """Passing None should not alter existing push_enabled."""
+    manga = _manga(10, "一拳超人")
+    client = SimpleNamespace(get_manga=AsyncMock(return_value=manga))
+    sub_mgr = SimpleNamespace(
+        get_subscriptions=AsyncMock(return_value=[
+            {"manga_id": 10, "title": "一拳超人", "source_id": 1, "push_enabled": True}
+        ]),
+        set_auto_push=AsyncMock(),
+    )
+    result = await subscribe_manga_for_agent(
+        client, sub_mgr, AsyncMock(), AsyncMock(), {}, "test:123", 10, push_enabled=None
+    )
+    assert result["success"] is True
+    assert result["push_enabled"] is True
+    sub_mgr.set_auto_push.assert_not_awaited()
+    assert "已经订阅了" in result["message"]
 
 
 @pytest.mark.asyncio
@@ -347,6 +389,7 @@ async def test_subscribe_manga_new_subscription():
     sub_mgr = SimpleNamespace(
         get_subscriptions=AsyncMock(return_value=[]),
         subscribe=AsyncMock(),
+        get_auto_push=AsyncMock(return_value=False),
         update_latest_chapter=AsyncMock(),
     )
     get_kv = AsyncMock(return_value={})
@@ -368,6 +411,7 @@ async def test_subscribe_manga_new_subscription_with_push():
         get_subscriptions=AsyncMock(return_value=[]),
         subscribe=AsyncMock(),
         set_auto_push=AsyncMock(),
+        get_auto_push=AsyncMock(return_value=True),
         update_latest_chapter=AsyncMock(),
     )
     get_kv = AsyncMock(return_value={})
@@ -379,6 +423,29 @@ async def test_subscribe_manga_new_subscription_with_push():
     assert result["push_enabled"] is True
     sub_mgr.subscribe.assert_awaited_once()
     sub_mgr.set_auto_push.assert_awaited_once_with(10, "test:123", True)
+    assert "开启自动推送" in result["message"]
+
+
+@pytest.mark.asyncio
+async def test_subscribe_manga_new_explicitly_disables_push():
+    """When LLM explicitly sets push_enabled=False, override any preference."""
+    manga = _manga(10, "一拳超人")
+    client = SimpleNamespace(get_manga=AsyncMock(return_value=manga))
+    sub_mgr = SimpleNamespace(
+        get_subscriptions=AsyncMock(return_value=[]),
+        subscribe=AsyncMock(),
+        set_auto_push=AsyncMock(),
+        get_auto_push=AsyncMock(return_value=False),
+        update_latest_chapter=AsyncMock(),
+    )
+    get_kv = AsyncMock(return_value={})
+    put_kv = AsyncMock()
+    result = await subscribe_manga_for_agent(
+        client, sub_mgr, get_kv, put_kv, {}, "test:123", 10, push_enabled=False
+    )
+    assert result["success"] is True
+    assert result["push_enabled"] is False
+    sub_mgr.set_auto_push.assert_awaited_once_with(10, "test:123", False)
 
 
 # ── get_subscriptions_for_agent ────────────────────────────

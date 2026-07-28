@@ -372,7 +372,7 @@ class SuwayomiPlugin(Star):
         event: AstrMessageEvent,
         manga_id: int,
         confirmed_user_intent: bool,
-        push_enabled: bool = False,
+        push_enabled: bool | None = None,
         *,
         _astrbot_tool_timeout: int | float | None = None,
     ) -> str:
@@ -390,7 +390,7 @@ class SuwayomiPlugin(Star):
                     self.config,
                     event.unified_msg_origin,
                     manga_id,
-                    self._config_bool(push_enabled),
+                    push_enabled,
                 )
             return self._tool_json(result)
         except TimeoutError:
@@ -988,6 +988,7 @@ class SuwayomiPlugin(Star):
                 yield event.plain_result("📭 你还没有订阅任何漫画，请先使用「漫画 搜索」订阅。")
                 return
             await self.sub_mgr.set_auto_push_all(umo, True)
+            await self.sub_mgr.set_push_default(umo, True)
             yield event.plain_result(f"✅ 已开启自动推送，共 {len(subs)} 部漫画。有更新时将自动推送内容。")
         except Exception as e:
             logger.error(f"[{PLUGIN_NAME}] push_enable error: {e}")
@@ -1003,6 +1004,7 @@ class SuwayomiPlugin(Star):
                 yield event.plain_result("📭 你还没有订阅任何漫画。")
                 return
             await self.sub_mgr.set_auto_push_all(umo, False)
+            await self.sub_mgr.clear_push_default(umo)
             yield event.plain_result("✅ 已关闭自动推送。有更新时将只发送文本通知。")
         except Exception as e:
             logger.error(f"[{PLUGIN_NAME}] push_disable error: {e}")

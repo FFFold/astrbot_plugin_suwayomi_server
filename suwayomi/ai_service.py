@@ -383,7 +383,7 @@ async def subscribe_manga_for_agent(
     config: Any,
     umo: str,
     manga_id: int,
-    push_enabled: bool = False,
+    push_enabled: bool | None = None,
 ) -> dict:
     try:
         manga_id = int(manga_id)
@@ -401,19 +401,28 @@ async def subscribe_manga_for_agent(
     )
     if sub_entry is not None:
         enabled_before = sub_entry.get("push_enabled", False)
-        if push_enabled and not enabled_before:
-            await sub_mgr.set_auto_push(manga_id, umo, True)
+        if push_enabled is not None and push_enabled != enabled_before:
+            await sub_mgr.set_auto_push(manga_id, umo, push_enabled)
+        new_enabled = enabled_before if push_enabled is None else push_enabled
+        if push_enabled is True and not enabled_before:
+            status_note = "，已开启自动推送"
+        elif push_enabled is False and enabled_before:
+            status_note = "，已关闭自动推送"
+        else:
+            status_note = ""
         return {
             "success": True,
             "already_subscribed": True,
-            "push_enabled": push_enabled or enabled_before,
+            "push_enabled": new_enabled,
             "manga": manga_to_agent_dict(manga),
-            "message": f"已经订阅了「{manga.title}」{'，已开启自动推送' if push_enabled and not enabled_before else ''}。",
+            "message": f"已经订阅了「{manga.title}」{status_note}。",
         }
 
     await sub_mgr.subscribe(manga_id, manga.title, manga.source_id, umo)
-    if push_enabled:
+    if push_enabled is True:
         await sub_mgr.set_auto_push(manga_id, umo, True)
+    elif push_enabled is False:
+        await sub_mgr.set_auto_push(manga_id, umo, False)
     try:
         chapters = await get_or_fetch_chapters(
             client, get_kv_data, put_kv_data, config, manga_id
@@ -424,12 +433,14 @@ async def subscribe_manga_for_agent(
     except Exception as e:
         logger.warning(f"[suwayomi] AI subscribe 拉取「{manga.title}」章节失败: {e}")
 
+    effective_push = await sub_mgr.get_auto_push(manga_id, umo)
+    push_note = "，开启自动推送" if effective_push else ""
     return {
         "success": True,
         "already_subscribed": False,
         "manga": manga_to_agent_dict(manga),
-        "push_enabled": bool(push_enabled),
-        "message": f"✅ 已订阅「{manga.title}」{'，开启自动推送' if push_enabled else ''}。有新章节时会推送通知。",
+        "push_enabled": effective_push,
+        "message": f"✅ 已订阅「{manga.title}」{push_note}。有新章节时会推送通知。",
     }
 
 

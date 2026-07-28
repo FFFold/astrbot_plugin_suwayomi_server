@@ -81,7 +81,7 @@ class _Plugin:
         event,
         manga_id,
         confirmed_user_intent,
-        push_enabled=False,
+        push_enabled=None,
         *,
         _astrbot_tool_timeout=None,
     ):
@@ -185,7 +185,7 @@ async def test_subscribe_tool_dispatches():
 
     result = await tools[3].call(context, manga_id=53, confirmed_user_intent=True)
 
-    assert result == (event, 53, True, False)
+    assert result == (event, 53, True, None)
     assert plugin.last_subscribe_manga_id == 53
 
     result = await tools[3].call(

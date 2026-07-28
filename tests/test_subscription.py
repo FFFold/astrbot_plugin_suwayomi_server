@@ -33,6 +33,53 @@ async def test_subscribe_new(mgr):
     assert len(subs) == 1
     assert subs[0]["manga_id"] == 42
     assert subs[0]["title"] == "One Piece"
+    assert subs[0]["push_enabled"] is False  # default: no preference set
+
+
+@pytest.mark.asyncio
+async def test_subscribe_inherits_push_preference(mgr):
+    await mgr.set_push_default("user1", True)
+    await mgr.subscribe(42, "One Piece", 100, "user1")
+    subs = await mgr.get_subscriptions("user1")
+    assert subs[0]["push_enabled"] is True
+
+
+@pytest.mark.asyncio
+async def test_set_push_default_returns_correct_value(mgr):
+    assert await mgr.get_push_default("user1") is False
+    await mgr.set_push_default("user1", True)
+    assert await mgr.get_push_default("user1") is True
+
+
+@pytest.mark.asyncio
+async def test_clear_push_default(mgr):
+    await mgr.set_push_default("user1", True)
+    await mgr.clear_push_default("user1")
+    assert await mgr.get_push_default("user1") is False
+
+
+@pytest.mark.asyncio
+async def test_push_preference_isolated_by_session(mgr):
+    await mgr.set_push_default("user1", True)
+    await mgr.subscribe(42, "A", 100, "user1")
+    await mgr.subscribe(42, "A", 100, "user2")
+    assert await mgr.get_auto_push(42, "user1") is True
+    assert await mgr.get_auto_push(42, "user2") is False
+
+
+@pytest.mark.asyncio
+async def test_push_preference_not_retroactive(mgr):
+    await mgr.subscribe(42, "One Piece", 100, "user1")
+    await mgr.set_push_default("user1", True)
+    assert await mgr.get_auto_push(42, "user1") is False  # already subscribed, not affected
+
+
+@pytest.mark.asyncio
+async def test_push_preference_persisted_across_loads(mgr):
+    await mgr.set_push_default("user1", True)
+    # Simulate re-loading by reading from underlying store
+    raw = await mgr._load_prefs()
+    assert raw["user1"] is True
 
 
 @pytest.mark.asyncio

@@ -5,6 +5,7 @@ from typing import Any
 from astrbot.api import logger
 
 KV_KEY = "suwayomi_subscriptions"
+PREF_KV_KEY = "suwayomi_push_defaults"
 
 
 class SubscriptionManager:
@@ -50,6 +51,30 @@ class SubscriptionManager:
     async def _save(self, data: dict[str, Any]):
         await self._plugin.put_kv_data(KV_KEY, data)
 
+    async def _load_prefs(self) -> dict[str, bool]:
+        data = await self._plugin.get_kv_data(PREF_KV_KEY, {})
+        return data if isinstance(data, dict) else {}
+
+    async def _save_prefs(self, data: dict[str, bool]):
+        await self._plugin.put_kv_data(PREF_KV_KEY, data)
+
+    async def set_push_default(self, umo: str, enabled: bool):
+        """Remember the session's push preference for future subscriptions."""
+        prefs = await self._load_prefs()
+        prefs[umo] = enabled
+        await self._save_prefs(prefs)
+
+    async def get_push_default(self, umo: str) -> bool:
+        """Return the session's saved push preference (default: False)."""
+        prefs = await self._load_prefs()
+        return prefs.get(umo, False)
+
+    async def clear_push_default(self, umo: str):
+        """Remove the session's push preference, reverting to default (False)."""
+        prefs = await self._load_prefs()
+        prefs.pop(umo, None)
+        await self._save_prefs(prefs)
+
     async def subscribe(self, manga_id: int, title: str, source_id: int, umo: str):
         data = await self._load()
         key = str(manga_id)
@@ -61,7 +86,7 @@ class SubscriptionManager:
                 "subscribers": {},
             }
         if umo not in data[key]["subscribers"]:
-            data[key]["subscribers"][umo] = {"push_enabled": False}
+            data[key]["subscribers"][umo] = {"push_enabled": await self.get_push_default(umo)}
         await self._save(data)
 
     async def unsubscribe(self, manga_id: int, umo: str):

@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [Unreleased]
+
+### Fixed
+
+- **认证服务器下图片下载 401** — 当 Suwayomi-Server 开启认证（Basic 或 JWT）时，`download_images()` 创建的裸 `aiohttp.ClientSession` 不携带认证头，导致图片下载全部失败并回退到 `Comp.Image.fromURL()` 后再次 401。修复方案：
+  - `SuwayomiClient` 新增 `auth_headers` 属性，暴露 Basic 和 JWT 认证头供图片下载复用
+  - `download_images()` 和 `fetch_pages_local()` 新增 `headers` 参数，注入到下载会话
+  - 所有调用点传入 `client.auth_headers`，确保图片下载携带正确的认证信息
+- **下载失败静默吞错** — 当图片全部下载失败时，不再静默回退到 URL 模式并让 AstrBot Core 报 401。下载模式检测到所有图片下载均失败后直接返回错误，并向用户显示含认证排查建议的提示（如"图片下载失败——当前 Suwayomi 开启了 basic 认证，但图片未能成功下载。请检查认证用户名/密码是否正确。"）
+
+### Changed
+
+- **`image_fetch_mode` 默认值改为 `download`** — 原默认值 `url` 在认证服务器下彻底不可用（AstrBot Core 的 HTTP 客户端无法注入认证头），改为先下载到本地再发送。配置 hint 同步更新说明 URL 模式不兼容带认证的服务器。
+
+### Dev
+
+- 集成测试 fixture 支持通过 `SUWAYOMI_AUTH_MODE` / `SUWAYOMI_USERNAME` / `SUWAYOMI_PASSWORD` 环境变量配置认证参数
+
 ## [0.5.2] - 2026-07-28
 
 ### Added

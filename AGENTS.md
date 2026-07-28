@@ -50,13 +50,13 @@ main.py (SuwayomiPlugin — thin dispatch layer)
 ```
 
 - `main.py`: Plugin entry, all commands under `@filter.command_group("漫画")`, six AstrBot Agent tools, background update loop, WebUI API registration. Thin dispatch layer — all business logic delegated to service/updater/downloader/pusher modules.
-- `suwayomi/client.py`: All Suwayomi interaction via `POST /api/graphql`; supports none/basic/jwt auth
+  - `suwayomi/client.py`: All Suwayomi interaction via `POST /api/graphql`; supports none/basic/jwt auth. Exposes `auth_headers` property for image download auth.
 - `suwayomi/models.py`: Pure dataclasses with `from_dict()` factory methods
 - `suwayomi/service.py`: Business logic — manga/chapter resolution, chapter fetching/caching, text normalization, status emoji mapping. All functions are standalone with dependency-injected parameters (client, sub_mgr, get_kv_data, etc.)
 - `suwayomi/ai_service.py`: Structured AI-facing search, chapter lookup, subscribe/unsubscribe, and subscription listing. Returns stable manga/chapter IDs and never sends messages.
 - `suwayomi/ai_tools.py`: Explicit JSON Schemas for six tools — `suwayomi_search_manga`, `suwayomi_get_chapters`, `suwayomi_send_chapter`, `suwayomi_subscribe_manga`, `suwayomi_get_subscriptions`, `suwayomi_unsubscribe_manga` — registered through `context.add_llm_tools()`; custom `call()` dispatch keeps event binding stable during initial load and config-driven re-registration.
 - `suwayomi/updater.py`: Update engine — `check_updates()` scans all subscriptions for new chapters, pushes notifications, triggers auto-push. `run_update_loop()` is the background task wrapper. Imported by `main.py` with pre-bound push callbacks.
-- `utils/downloader.py`: Image download pipeline — `download_one()` with exponential backoff, `download_images()` parallel batch download, `fetch_pages_local()` downloads chapter pages to temp dir.
+- `utils/downloader.py`: Image download pipeline — `download_one()` with exponential backoff, `download_images()` parallel batch download (accepts `headers` for auth), `fetch_pages_local()` downloads chapter pages to temp dir (passes `client.auth_headers`).
 - `utils/pack.py`: Pack images into ZIP, CBZ, or PDF files; `parse_download_args()` for command arg parsing
 - `utils/pusher.py`: Push delivery — `push_chapter_images()` sends images inline or via forward, `push_chapter_file()` sends packaged file. Also exports `schedule_cleanup()` for delayed temp dir cleanup (replaces 4 duplicated asyncio tasks) and `is_aiocqhttp_target()` for platform detection.
 - `utils/subscription.py`: Persists subscriptions via AstrBot's `get_kv_data()`/`put_kv_data()`. Also manages per-session push preferences (`set_push_default`/`get_push_default`/`clear_push_default`) stored under the `suwayomi_push_defaults` KV key.
@@ -95,6 +95,8 @@ main.py (SuwayomiPlugin — thin dispatch layer)
 
 15. **`LibraryUpdateStatus` has no `state` or `isRunning` field directly**: The `updateLibrary` mutation's `updateStatus` field returns a `LibraryUpdateStatus` type with fields `categoryUpdates`, `jobsInfo`, and `mangaUpdates`. To check if the updater is running, use `updateStatus { jobsInfo { isRunning } }`. Both `{updateStatus{state}}` and `{updateStatus{isRunning}}` will fail with `FieldUndefined` validation errors.
 
+16. **Image downloads must carry auth headers**: When Suwayomi-Server has auth enabled, image downloads via `/api/v1/manga/.../page/...` REST endpoint require authentication. `download_images()` creates a new `aiohttp.ClientSession` — always pass `headers=client.auth_headers` to carry the auth. Use `SuwayomiClient.auth_headers` property (returns Basic or cached JWT token). The `image_fetch_mode="url"` path is **irreparably broken** for authenticated servers because AstrBot Core's HTTP client has no way to inject auth headers.
+
 ## Key Helper Methods
 
 - `_check_updates(force=False)` — Check all subscriptions for new chapters. `force=True` bypasses chapter cache and syncs title from source. Used by both manual `/漫画 更新` and background update loop (both always force). Pushes notifications to all subscribers.
@@ -105,13 +107,13 @@ main.py (SuwayomiPlugin — thin dispatch layer)
 - `_fmt_chapter_num(num)` — Format chapter number as `int | float | "?"`. Still used internally by `fmt_chapter_display` and for command hint numbers.
 - `_resolve_manga(event, name_or_id, cmd)` — Resolve manga by ID or fuzzy name. Returns `(Manga, None)` or `(None, error_msg)`. `cmd` is used in disambiguation hints (e.g., "章节", "阅读", "下载").
 - `_resolve_chapter(chapters, chapter_num, manga_name_or_id, cmd)` — Resolve chapter by ID or number string. Returns `(Chapter, None)` or `(None, error_msg)`. Shared by read and download.
-- `_fetch_pages_local(chapter_id, max_pages)` — Fetch page URLs and download images to temp dir. Returns `(total_pages, page_urls, local_paths)`. Shared by read and download.
-- `_download_images(urls)` — Parallel download with retry. Returns local file paths.
+- `_fetch_pages_local(chapter_id, max_pages)` — Fetch page URLs and download images to temp dir. Returns `(total_pages, page_urls, local_paths)`. Shared by read and download. Passes `client.auth_headers` for authorized servers.
+- `_download_images(urls)` — Parallel download with retry. Returns local file paths. Accepts optional `headers` dict for auth.
 - `_download_one(session, url, dest)` — Single image download with exponential backoff retry.
 - `_push_chapter_images(umo, title, chapter)` — Push chapter as images (reuses read send logic, respects `send_mode` for forward mode). Used by auto-push. Chapter label uses `ch.name` automatically.
 - `_push_chapter_file(umo, title, chapter)` — Push chapter as packaged file (reuses download logic). Used by auto-push. Chapter label uses `ch.name` automatically.
 - `_search_best_match(name, source_filter)` — Search manga name across sources, return first match. Used by batch subscribe.
-- `_prepare_chapter_delivery(event, chapter)` — Build the chapter image result for `/漫画 阅读` and explicitly requested AI image sending.
+- `_prepare_chapter_delivery(event, chapter)` — Build the chapter image result for `/漫画 阅读` and explicitly requested AI image sending. Returns `(result, total_pages, delivered_pages, tmp_dir)`. Returns `None` as result when all images fail to download (e.g. auth misconfiguration), so callers can surface a meaningful error.
 - `_prepare_chapter_file_delivery(event, manga, chapter, fmt)` — Download all pages and build the AI Tool's PDF-default file result (PDF/ZIP/CBZ).
 - AI tools keep recent chapter candidates isolated by `(unified_msg_origin, sender_id)` for 10 minutes. The send tool only accepts a previously exposed `(manga_id, chapter_id)` pair, defaults to PDF unless the user names another supported format. The `asyncio.Lock` per scope prevents concurrent sends; failed sends can be retried.
 - `_ai_subscribe_manga_tool(event, manga_id, confirmed_user_intent, push_enabled=None)` — AI Tool: subscribe manga to current session, optionally set auto-push. `push_enabled=None` inherits session preference (set via `/漫画 推送 开`), `True`/`False` overrides explicitly. Already-subscribed case supports both upgrade and downgrade. Delegates to `subscribe_manga_for_agent()`.

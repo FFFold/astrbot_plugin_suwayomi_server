@@ -4,6 +4,7 @@ Usage:
     uv run pytest tests/test_live_api.py -v -s
 
 Set SUWAYOMI_URL env var or it defaults to http://100.87.49.15:4567
+Set SUWAYOMI_AUTH_MODE / SUWAYOMI_USERNAME / SUWAYOMI_PASSWORD for auth.
 """
 import os
 
@@ -19,11 +20,14 @@ from suwayomi.ai_service import (
 )
 
 SERVER_URL = os.environ.get("SUWAYOMI_URL", "http://100.87.49.15:4567")
+AUTH_MODE = os.environ.get("SUWAYOMI_AUTH_MODE", "none")
+AUTH_USER = os.environ.get("SUWAYOMI_USERNAME", "")
+AUTH_PASS = os.environ.get("SUWAYOMI_PASSWORD", "")
 
 
 @pytest_asyncio.fixture
 async def client():
-    c = SuwayomiClient(SERVER_URL, "none", "", "")
+    c = SuwayomiClient(SERVER_URL, AUTH_MODE, AUTH_USER, AUTH_PASS)
     yield c
     await c.close()
 

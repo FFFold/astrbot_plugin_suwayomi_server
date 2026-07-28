@@ -43,6 +43,15 @@ class SuwayomiClient:
         if self._session and not self._session.closed:
             await self._session.close()
 
+    @property
+    def auth_headers(self) -> dict[str, str]:
+        h = {}
+        if "Authorization" in self._headers:
+            h["Authorization"] = self._headers["Authorization"]
+        elif self.auth_mode == "jwt" and self._jwt_access_token:
+            h["Authorization"] = f"Bearer {self._jwt_access_token}"
+        return h
+
     def build_image_url(self, relative_path: str) -> str:
         return f"{self.server_url}{relative_path}"
 

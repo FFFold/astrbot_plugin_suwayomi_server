@@ -580,7 +580,7 @@ class SuwayomiPlugin(Star):
         """Build one chapter result for command yield or direct AI-tool sending."""
         max_pages = self.config.get("max_pages", 30)
         send_mode = self.config.get("send_mode", "image")
-        fetch_mode = self.config.get("image_fetch_mode", "url")
+        fetch_mode = self.config.get("image_fetch_mode", "download")
         concurrency = self.config.get("download_concurrency", 6)
         custom_tmp = self.config.get("temp_dir", "").strip()
         retries = self.config.get("download_retries", 3)

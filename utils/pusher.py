@@ -55,7 +55,7 @@ async def push_chapter_images(
 ):
     ch_label = fmt_chapter_display(chapter)
     max_pages = config.get("max_pages", 30)
-    fetch_mode = config.get("image_fetch_mode", "url")
+    fetch_mode = config.get("image_fetch_mode", "download")
     send_mode = config.get("send_mode", "image")
 
     local_paths: list[str] = []

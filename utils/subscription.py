@@ -53,7 +53,9 @@ class SubscriptionManager:
 
     async def _load_prefs(self) -> dict[str, bool]:
         data = await self._plugin.get_kv_data(PREF_KV_KEY, {})
-        return data if isinstance(data, dict) else {}
+        if not isinstance(data, dict):
+            return {}
+        return data
 
     async def _save_prefs(self, data: dict[str, bool]):
         await self._plugin.put_kv_data(PREF_KV_KEY, data)

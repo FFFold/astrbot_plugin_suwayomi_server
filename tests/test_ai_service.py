@@ -401,6 +401,7 @@ async def test_subscribe_manga_new_subscription():
     assert result["already_subscribed"] is False
     assert result["push_enabled"] is False
     sub_mgr.subscribe.assert_awaited_once_with(10, "一拳超人", 1, "test:123")
+    sub_mgr.get_auto_push.assert_awaited_once_with(10, "test:123")
 
 
 @pytest.mark.asyncio

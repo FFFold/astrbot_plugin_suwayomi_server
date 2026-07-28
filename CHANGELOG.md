@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
   - `SuwayomiClient` 新增 `auth_headers` 属性，暴露 Basic 和 JWT 认证头供图片下载复用
   - `download_images()` 和 `fetch_pages_local()` 新增 `headers` 参数，注入到下载会话
   - 所有调用点传入 `client.auth_headers`，确保图片下载携带正确的认证信息
+- **下载失败静默吞错** — 当图片全部下载失败时，不再静默回退到 URL 模式并让 AstrBot Core 报 401。下载模式检测到所有图片下载均失败后直接返回错误，并向用户显示含认证排查建议的提示（如"图片下载失败——当前 Suwayomi 开启了 basic 认证，但图片未能成功下载。请检查认证用户名/密码是否正确。"）
 
 ### Changed
 

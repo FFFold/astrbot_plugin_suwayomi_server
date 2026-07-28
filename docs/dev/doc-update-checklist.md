@@ -7,7 +7,7 @@
 | 文件 | 更新内容 |
 |------|---------|
 | `metadata.yaml` | `version` 字段 |
-| `pyproject.toml` | `version` 字段（保持同步） |
+| `pyproject.toml` | `version` 字段（注意该文件无需提交到Git，已被gitignore） |
 | `README.md` | 版本 badge URL 和 alt 文本中的版本号 |
 | `CHANGELOG.md` | 在顶部新增版本条目 |
 | `CONTRIBUTING.md` | 版本发布说明（如流程有变） |

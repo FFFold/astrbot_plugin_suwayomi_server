@@ -183,7 +183,7 @@ def build_ai_tools(plugin: Any) -> list[FunctionTool]:
                     },
                     "push_enabled": {
                         "type": "boolean",
-                        "description": "是否同时开启自动推送。不传时继承当前会话的推送偏好（通过「漫画 推送 开」设置）。",
+                        "description": "是否同时开启自动推送（新章节到达时自动发送内容到当前会话）。不传时继承当前会话的推送偏好（通过「漫画 推送 开」设置）。",
                         "default": False,
                     },
                 },

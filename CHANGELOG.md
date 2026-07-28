@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 ## [Unreleased]
 
+### Added
+
+- **会话推送偏好** — `/漫画 推送 开` 记住会话偏好，之后通过指令新订阅的漫画自动开启推送；`/漫画 推送 关` 清除偏好。偏好独立存储于 KV 键 `suwayomi_push_defaults`，不需要数据迁移。
+- `SubscriptionManager` 新增 `set_push_default()`、`get_push_default()`、`clear_push_default()` 方法
+
+### Changed
+
+- `subscribe()` 新建订阅时自动继承会话推送偏好（原硬编码 `False`）
+- `subscribe_manga_for_agent()` 的 `push_enabled` 参数改为 `bool | None`：`None` 时继承偏好，`True`/`False` 显式覆盖；已订阅路径支持降级（`push_enabled=False` 可关闭已开启的推送）
+- AI tool `suwayomi_subscribe_manga` 的 `push_enabled` 描述更新为"不传时继承当前会话的推送偏好"
+
 ## [0.5.1] - 2026-07-27
 
 ### Added

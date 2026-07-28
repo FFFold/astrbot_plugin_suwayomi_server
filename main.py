@@ -1145,7 +1145,7 @@ class SuwayomiPlugin(Star):
             try:
                 result, _, _, tmp_dir = await self._prepare_chapter_delivery(event, target)
                 if result is None:
-                    if self.config.get("image_fetch_mode") == "download" and self.client.auth_mode != "none":
+                    if self.config.get("image_fetch_mode", "download") == "download" and self.client.auth_mode != "none":
                         yield event.plain_result(
                             f"图片下载失败——当前 Suwayomi 开启了 {self.client.auth_mode} 认证，"
                             "但图片未能成功下载。请检查认证用户名/密码是否正确。"

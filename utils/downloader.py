@@ -4,7 +4,7 @@ import asyncio
 import shutil
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import aiohttp
 
@@ -63,7 +63,7 @@ async def download_images(
     tmp_dir = Path(tempfile.mkdtemp(prefix="suwayomi_", dir=custom_tmp or None))
     try:
         connector = aiohttp.TCPConnector(limit=concurrency)
-        session_kwargs: dict = {"connector": connector}
+        session_kwargs: dict[str, Any] = {"connector": connector}
         if headers:
             session_kwargs["headers"] = headers
         async with aiohttp.ClientSession(**session_kwargs) as session:

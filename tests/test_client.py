@@ -161,4 +161,27 @@ async def test_jwt_refresh_rejects_missing_refresh_payload():
 
 def test_unauthorized_detection_ignores_malformed_errors():
     assert not SuwayomiClient._is_unauthorized(200, {"errors": ["Unauthorized"]})
+
+
+_SOURCE_NODE = {"id": "1", "name": "src", "lang": "zh", "displayName": "源", "supportsLatest": True}
+
+
+@pytest.mark.asyncio
+async def test_get_sources_cached_within_ttl(client):
+    client._post_graphql = AsyncMock(return_value=(200, {"data": {"sources": {"nodes": [_SOURCE_NODE]}}}))
+    s1 = await client.get_sources()
+    s2 = await client.get_sources()
+    assert s1 == s2
+    assert client._post_graphql.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_get_sources_refetches_after_ttl(client, monkeypatch):
+    clock = {"now": 1000.0}
+    monkeypatch.setattr("suwayomi.client.time.time", lambda: clock["now"])
+    client._post_graphql = AsyncMock(return_value=(200, {"data": {"sources": {"nodes": [_SOURCE_NODE]}}}))
+    await client.get_sources()
+    clock["now"] += 61
+    await client.get_sources()
+    assert client._post_graphql.await_count == 2
     assert not SuwayomiClient._is_unauthorized(200, {"errors": None})

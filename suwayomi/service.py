@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import math
+import re
 import time
 from typing import TYPE_CHECKING, Callable
 
@@ -34,6 +35,22 @@ STATUS_EMOJI: dict[str, str] = {
 KV_CHAPTER_TS = "suwayomi_chapter_timestamps"
 
 _ts_lock = asyncio.Lock()
+
+_CHAPTER_NUM_SUFFIX_RE = re.compile(r"(?:话|話|章)$")
+
+
+def parse_chapter_number_text(text: str) -> float | None:
+    """Parse user input like '5', '第5话', '第38.5話' into a chapter number."""
+    cleaned = str(text or "").strip()
+    if cleaned.startswith("第"):
+        cleaned = cleaned[1:]
+    cleaned = _CHAPTER_NUM_SUFFIX_RE.sub("", cleaned).strip()
+    if not cleaned:
+        return None
+    try:
+        return float(cleaned)
+    except ValueError:
+        return None
 
 
 def normalize_zh(text: str) -> str:
@@ -91,10 +108,9 @@ def resolve_chapter(
         if target:
             return target, None
         return None, f"未找到 ID 为 {cid} 的章节。"
-    try:
-        chapter_num_f = float(chapter_num)
-    except ValueError:
-        return None, "章节号无效。示例: 1, 38.5 或 ID:123"
+    chapter_num_f = parse_chapter_number_text(chapter_num)
+    if chapter_num_f is None:
+        return None, "章节号无效。示例: 1, 38.5, 第5话 或 ID:123"
     matches = find_chapters_by_num(chapters, chapter_num_f)
     if len(matches) == 0:
         return None, f"未找到第 {chapter_num} 话。"

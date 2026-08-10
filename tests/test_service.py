@@ -119,6 +119,18 @@ class TestResolveChapter:
         _, err = resolve_chapter([], "abc", "test", "阅读")
         assert err is not None and "章节号无效" in err
 
+    def test_by_number_with_prefix_suffix(self):
+        chapters = [_chapter(100, "第5话", 5)]
+        target, err = resolve_chapter(chapters, "第5话", "test", "阅读")
+        assert err is None
+        assert target is not None and target.id == 100
+
+    def test_by_number_decimal_with_traditional_suffix(self):
+        chapters = [_chapter(100, "第38.5话", 38.5)]
+        target, err = resolve_chapter(chapters, "第38.5話", "test", "阅读")
+        assert err is None
+        assert target is not None and target.id == 100
+
 
 class TestChapterTimestampConcurrency:
 

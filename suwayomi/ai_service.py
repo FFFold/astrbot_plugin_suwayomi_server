@@ -6,7 +6,7 @@ import time
 from typing import Any
 
 from .models import Chapter, Manga, Source
-from .service import fmt_chapter_display, get_or_fetch_chapters
+from .service import fmt_chapter_display, get_or_fetch_chapters, parse_chapter_number_text
 
 from astrbot.api import logger
 
@@ -290,13 +290,8 @@ def _select_chapter_candidates(
             return None, [], f"未找到章节 ID {chapter_id}"
         return candidates[0], candidates, None
 
-    cleaned = normalized
-    if cleaned.startswith("第"):
-        cleaned = cleaned[1:]
-    cleaned = re.sub(r"(?:话|話|章)$", "", cleaned).strip()
-    try:
-        number = float(cleaned)
-    except ValueError:
+    number = parse_chapter_number_text(normalized)
+    if number is None:
         return None, [], (
             "selector 应为 latest、list、章节号或 ID:数字；"
             f"当前值为 {selector!r}"

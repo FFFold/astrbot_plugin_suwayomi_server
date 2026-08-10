@@ -184,6 +184,7 @@ async def test_get_sources_refetches_after_ttl(client, monkeypatch):
     clock["now"] += 61
     await client.get_sources()
     assert client._post_graphql.await_count == 2
+    assert not SuwayomiClient._is_unauthorized(200, {"errors": None})
 
 
 @pytest.mark.asyncio
@@ -196,4 +197,3 @@ async def test_search_manga_converts_plus_to_space():
 
     variables = client._post_graphql.await_args.args[1]
     assert variables["q"] == "香格里拉 再"
-    assert not SuwayomiClient._is_unauthorized(200, {"errors": None})

@@ -155,3 +155,25 @@ class TestChapterTimestampConcurrency:
         )
         data = store["suwayomi_chapter_timestamps"]
         assert "1" in data and "2" in data
+
+
+class TestFmtDeliveryFailureMessage:
+
+    def test_no_pages(self):
+        from suwayomi.service import fmt_delivery_failure_message
+        assert "暂无可用页面" in fmt_delivery_failure_message(0, "download", "none")
+
+    def test_download_failed_with_auth(self):
+        from suwayomi.service import fmt_delivery_failure_message
+        msg = fmt_delivery_failure_message(30, "download", "jwt")
+        assert "30" in msg and "jwt" in msg and "认证" in msg
+
+    def test_download_failed_without_auth(self):
+        from suwayomi.service import fmt_delivery_failure_message
+        msg = fmt_delivery_failure_message(10, "download", "none")
+        assert "10" in msg and "认证" not in msg
+
+    def test_url_mode_with_auth(self):
+        from suwayomi.service import fmt_delivery_failure_message
+        msg = fmt_delivery_failure_message(5, "url", "basic")
+        assert "URL 模式" in msg and "下载模式" in msg

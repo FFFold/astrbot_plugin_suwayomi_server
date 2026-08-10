@@ -28,6 +28,7 @@ from .suwayomi.service import (
     STATUS_EMOJI,
     fmt_chapter_display,
     fmt_chapter_label,
+    fmt_delivery_failure_message,
     get_or_fetch_chapters,
     normalize_zh,
     resolve_chapter,
@@ -1132,15 +1133,14 @@ class SuwayomiPlugin(Star):
 
             tmp_dir: Path | None = None
             try:
-                result, _, _, tmp_dir = await self._prepare_chapter_delivery(event, target)
+                result, total_pages, _, tmp_dir = await self._prepare_chapter_delivery(event, target)
                 if result is None:
-                    if self.config.get("image_fetch_mode", "download") == "download" and self.client.auth_mode != "none":
-                        yield event.plain_result(
-                            f"图片下载失败——当前 Suwayomi 开启了 {self.client.auth_mode} 认证，"
-                            "但图片未能成功下载。请检查认证用户名/密码是否正确。"
+                    fetch_mode = self.config.get("image_fetch_mode", "download")
+                    yield event.plain_result(
+                        fmt_delivery_failure_message(
+                            total_pages, fetch_mode, self.client.auth_mode
                         )
-                    else:
-                        yield event.plain_result(f"{fmt_chapter_display(target)}暂无可用页面。")
+                    )
                     return
                 yield result
             finally:

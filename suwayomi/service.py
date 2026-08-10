@@ -84,6 +84,25 @@ def fmt_chapter_label(ch: Chapter, num_counts: dict[float, int]) -> str:
     return f"#{num}{dup_tag}"
 
 
+def fmt_delivery_failure_message(total_pages: int, fetch_mode: str, auth_mode: str) -> str:
+    """Explain why chapter delivery failed, distinguishing real causes."""
+    if total_pages <= 0:
+        return "该章节暂无可用页面。"
+    if fetch_mode == "download":
+        if auth_mode and auth_mode != "none":
+            return (
+                f"所有 {total_pages} 页图片下载失败。当前 Suwayomi 开启了 "
+                f"{auth_mode} 认证，请检查认证用户名/密码是否正确。"
+            )
+        return (
+            f"所有 {total_pages} 页图片下载失败，"
+            "请检查 Suwayomi 服务是否正常运行，或尝试更换图片获取方式。"
+        )
+    if auth_mode and auth_mode != "none":
+        return "图片 URL 模式不兼容带认证的 Suwayomi 服务器，请改用下载模式。"
+    return "图片加载失败，请稍后重试。"
+
+
 def find_chapters_by_num(chapters: list[Chapter], chapter_num_f: float) -> list[Chapter]:
     return [ch for ch in chapters if abs(ch.chapter_number - chapter_num_f) < 0.01]
 

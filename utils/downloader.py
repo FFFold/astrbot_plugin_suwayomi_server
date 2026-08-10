@@ -60,6 +60,8 @@ async def download_images(
     retries: int = 3,
     headers: dict[str, str] | None = None,
 ) -> tuple[list[str], Path]:
+    if custom_tmp:
+        Path(custom_tmp).mkdir(parents=True, exist_ok=True)
     tmp_dir = Path(tempfile.mkdtemp(prefix="suwayomi_", dir=custom_tmp or None))
     try:
         connector = aiohttp.TCPConnector(limit=concurrency)

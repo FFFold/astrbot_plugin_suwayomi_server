@@ -30,6 +30,29 @@ def pack_pdf(image_paths: list[str], output: Path):
         f.write(img2pdf.convert(valid))
 
 
+def sanitize_filename(name: str, max_len: int = 50) -> str:
+    """Sanitize a name for safe use in filenames."""
+    cleaned = "".join(c for c in str(name) if c not in r'<>:"/\|?*').strip()
+    return cleaned[:max_len] or "untitled"
+
+
+def normalize_pack_format(fmt: str) -> str:
+    return fmt if fmt in ("pdf", "cbz", "zip") else "zip"
+
+
+def build_chapter_output_path(directory: Path, title: str, label: str, fmt: str) -> Path:
+    return directory / f"{sanitize_filename(title)}_{sanitize_filename(label)}.{fmt}"
+
+
+def pack_images(image_paths: list[str], output: Path, fmt: str):
+    if fmt == "pdf":
+        pack_pdf(image_paths, output)
+    elif fmt == "cbz":
+        pack_cbz(image_paths, output)
+    else:
+        pack_zip(image_paths, output)
+
+
 def parse_download_args(raw_message: str, default_fmt: str = "pdf") -> tuple[str, str, str]:
     """Parse download command arguments from raw message.
 

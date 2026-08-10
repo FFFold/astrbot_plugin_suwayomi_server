@@ -100,6 +100,26 @@ def test_ai_interaction_state_clear_origin_is_scoped():
     assert state.was_chapter_exposed(other_group, 10, 100, now=1001) is True
 
 
+def test_ai_interaction_state_evicts_oldest_beyond_max():
+    state = AiInteractionState(ttl=600, max_entries=2)
+    state.remember_chapters(("o", "u1"), 1, {10}, now=100.0)
+    state.remember_chapters(("o", "u2"), 2, {20}, now=200.0)
+    state.remember_chapters(("o", "u3"), 3, {30}, now=300.0)
+    assert state.was_chapter_exposed(("o", "u1"), 1, 10, now=301.0) is False
+    assert state.was_chapter_exposed(("o", "u2"), 2, 20, now=301.0) is True
+    assert state.was_chapter_exposed(("o", "u3"), 3, 30, now=301.0) is True
+
+
+def test_select_chapter_candidates_missing_number_returns_friendly_error():
+    from suwayomi.ai_service import _select_chapter_candidates
+
+    chapters = [_chapter(100, 1.0, 1)]
+    selected, candidates, err = _select_chapter_candidates(chapters, "第5话")
+    assert selected is None
+    assert candidates == []
+    assert err is not None and "未找到第 5 话" in err
+
+
 def test_successful_conversation_reset_detection():
     marked_event = SimpleNamespace(
         get_extra=lambda key, default=False: key == "_clean_group_context_session",

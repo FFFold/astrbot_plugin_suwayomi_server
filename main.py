@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-import time
 from pathlib import Path
 
 import astrbot.api.message_components as Comp
@@ -28,16 +27,30 @@ from .suwayomi.service import (
     STATUS_EMOJI,
     fmt_chapter_display,
     fmt_chapter_label,
+    fmt_delivery_failure_message,
     get_or_fetch_chapters,
     normalize_zh,
     resolve_chapter,
     resolve_manga,
     search_best_match,
+    ttl_cache_lookup,
+    ttl_cache_store,
 )
 from .suwayomi.updater import check_updates as _check_updates, run_update_loop
 from .utils.downloader import fetch_pages_local
-from .utils.pack import pack_cbz, pack_pdf, pack_zip, parse_download_args
-from .utils.pusher import push_chapter_file, push_chapter_images, schedule_cleanup
+from .utils.pack import (
+    build_chapter_output_path,
+    normalize_pack_format,
+    pack_images,
+    parse_download_args,
+)
+from .utils.pusher import (
+    build_image_chain,
+    cancel_pending_cleanups,
+    push_chapter_file,
+    push_chapter_images,
+    schedule_cleanup,
+)
 from .utils.subscription import SubscriptionManager
 from .web.api import (
     api_config_get,
@@ -51,6 +64,7 @@ from .web.api import (
 )
 
 _CACHE_TTL = 600
+_SEARCH_CACHE_MAX_ENTRIES = 64
 _AI_TOOL_REPAIR_KEY = "suwayomi_ai_tool_activation_repaired_v1"
 
 
@@ -513,6 +527,7 @@ class SuwayomiPlugin(Star):
     async def terminate(self):
         if self._bg_task and not self._bg_task.done():
             self._bg_task.cancel()
+        cancel_pending_cleanups()
         self._ai_state.clear()
         self._ai_send_locks.clear()
         await self.client.close()
@@ -564,17 +579,15 @@ class SuwayomiPlugin(Star):
     # ── Search cache ───────────────────────────────────────────────
 
     def _get_cached_manga(self, umo: str, key: str) -> Manga | None:
-        entry = self._search_cache.get(umo)
-        if entry is None:
-            return None
-        ts, cache = entry
-        if time.time() - ts > _CACHE_TTL:
-            del self._search_cache[umo]
+        cache = ttl_cache_lookup(self._search_cache, umo, _CACHE_TTL)
+        if cache is None:
             return None
         return cache.get(key)
 
     def _set_search_cache(self, umo: str, cache: dict[str, Manga]):
-        self._search_cache[umo] = (time.time(), cache)
+        ttl_cache_store(
+            self._search_cache, umo, cache, _SEARCH_CACHE_MAX_ENTRIES
+        )
 
     async def _prepare_chapter_delivery(self, event: AstrMessageEvent, target):
         """Build one chapter result for command yield or direct AI-tool sending."""
@@ -604,40 +617,26 @@ class SuwayomiPlugin(Star):
                 return None, 0, 0, None
             total_pages = len(pages)
             page_urls = [self.client.build_image_url(page) for page in pages[:max_pages]]
+            if self.client.auth_mode != "none":
+                logger.warning(
+                    f"[{PLUGIN_NAME}] 图片获取方式为 URL 模式，但 Suwayomi 开启了 "
+                    f"{self.client.auth_mode} 认证，图片可能无法加载，请在配置中改用下载模式"
+                )
 
         if not page_urls:
             return None, total_pages, 0, tmp_dir
 
-        def _img(idx: int) -> Comp.Image:
-            if fetch_mode == "download" and idx < len(local_paths) and local_paths[idx]:
-                return Comp.Image.fromFileSystem(local_paths[idx])
-            if fetch_mode == "download":
-                logger.warning(
-                    f"[{PLUGIN_NAME}] 图片 {idx + 1} 下载失败，"
-                    "请检查 Suwayomi 认证配置（URL 模式不兼容带认证的服务器）"
-                )
-            return Comp.Image.fromURL(page_urls[idx])
-
-        if send_mode == "forward" and event.get_platform_name() == "aiocqhttp":
-            nodes = []
-            for i in range(len(page_urls)):
-                nodes.append(Comp.Node(
-                    uin="0",
-                    name=f"{fmt_chapter_display(target)} - 第 {i + 1} 页",
-                    content=[_img(i)],
-                ))
-            if total_pages > max_pages:
-                nodes.append(Comp.Node(
-                    uin="0",
-                    name="提示",
-                    content=[Comp.Plain(f"... 还有 {total_pages - max_pages} 页，请到 WebUI 查看")],
-                ))
-            result = event.chain_result([Comp.Nodes(nodes)])
-        else:
-            chain = [_img(i) for i in range(len(page_urls))]
-            if total_pages > max_pages:
-                chain.append(Comp.Plain(f"... 还有 {total_pages - max_pages} 页，请到 WebUI 查看"))
-            result = event.chain_result(chain)
+        chain = build_image_chain(
+            page_urls, local_paths, fetch_mode,
+            send_mode=send_mode,
+            forward_platform=event.get_platform_name() == "aiocqhttp",
+            page_label=fmt_chapter_display(target),
+            header=None,
+            total_pages=total_pages,
+            max_pages=max_pages,
+            tail_text=f"... 还有 {total_pages - max_pages} 页，请到 WebUI 查看",
+        )
+        result = event.chain_result(chain)
 
         return result, total_pages, len(page_urls), tmp_dir
 
@@ -673,17 +672,13 @@ class SuwayomiPlugin(Star):
             )
 
         label = fmt_chapter_display(target)
-        safe_title = "".join(char for char in manga.title if char not in r'<>:"/\|?*')[:50]
-        safe_label = "".join(char for char in str(label) if char not in r'<>:"/\|?*')
-        output_path = Path(valid_paths[0]).parent / f"{safe_title}_{safe_label}.{fmt}"
+        file_ext = normalize_pack_format(fmt)
+        output_path = build_chapter_output_path(
+            Path(valid_paths[0]).parent, manga.title, str(label), file_ext
+        )
 
         loop = asyncio.get_running_loop()
-        if fmt == "pdf":
-            await loop.run_in_executor(None, pack_pdf, valid_paths, output_path)
-        elif fmt == "cbz":
-            await loop.run_in_executor(None, pack_cbz, valid_paths, output_path)
-        else:
-            await loop.run_in_executor(None, pack_zip, valid_paths, output_path)
+        await loop.run_in_executor(None, pack_images, valid_paths, output_path, fmt)
 
         filename = output_path.name
         result = event.chain_result([Comp.File(file=str(output_path), name=filename)])
@@ -1143,15 +1138,14 @@ class SuwayomiPlugin(Star):
 
             tmp_dir: Path | None = None
             try:
-                result, _, _, tmp_dir = await self._prepare_chapter_delivery(event, target)
+                result, total_pages, _, tmp_dir = await self._prepare_chapter_delivery(event, target)
                 if result is None:
-                    if self.config.get("image_fetch_mode", "download") == "download" and self.client.auth_mode != "none":
-                        yield event.plain_result(
-                            f"图片下载失败——当前 Suwayomi 开启了 {self.client.auth_mode} 认证，"
-                            "但图片未能成功下载。请检查认证用户名/密码是否正确。"
+                    fetch_mode = self.config.get("image_fetch_mode", "download")
+                    yield event.plain_result(
+                        fmt_delivery_failure_message(
+                            total_pages, fetch_mode, self.client.auth_mode
                         )
-                    else:
-                        yield event.plain_result(f"{fmt_chapter_display(target)}暂无可用页面。")
+                    )
                     return
                 yield result
             finally:
@@ -1222,26 +1216,20 @@ class SuwayomiPlugin(Star):
             if len(valid_paths) < len(page_urls):
                 logger.warning(f"[{PLUGIN_NAME}] {len(page_urls) - len(valid_paths)} 页下载失败，将用已有页面打包")
 
-            safe_title = "".join(c for c in manga.title if c not in r'<>:"/\|?*')[:50]
-            safe_label = "".join(c for c in str(num_label) if c not in r'<>:"/\|?*')
-            ext_map = {"zip": "zip", "pdf": "pdf", "cbz": "cbz"}
-            file_ext = ext_map.get(fmt, "zip")
-            output_path = Path(valid_paths[0]).parent / f"{safe_title}_{safe_label}.{file_ext}"
+            file_ext = normalize_pack_format(fmt)
+            output_path = build_chapter_output_path(
+                Path(valid_paths[0]).parent, manga.title, str(num_label), file_ext
+            )
 
             try:
                 loop = asyncio.get_running_loop()
-                if fmt == "pdf":
-                    await loop.run_in_executor(None, pack_pdf, valid_paths, output_path)
-                elif fmt == "cbz":
-                    await loop.run_in_executor(None, pack_cbz, valid_paths, output_path)
-                else:
-                    await loop.run_in_executor(None, pack_zip, valid_paths, output_path)
+                await loop.run_in_executor(None, pack_images, valid_paths, output_path, fmt)
             except Exception as e:
                 logger.error(f"[{PLUGIN_NAME}] 打包失败: {e}")
                 yield event.plain_result(f"打包失败: {e}")
                 return
 
-            filename = f"{safe_title}_{safe_label}.{file_ext}"
+            filename = output_path.name
             try:
                 chain = [Comp.File(file=str(output_path), name=filename)]
                 yield event.chain_result(chain)

@@ -1,5 +1,10 @@
 """Tests for suwayomi/service.py helpers (no network)."""
 
+import asyncio
+import copy
+
+import pytest
+
 from suwayomi.models import Chapter
 from suwayomi.service import (
     fmt_chapter_display,
@@ -113,3 +118,89 @@ class TestResolveChapter:
     def test_invalid_number(self):
         _, err = resolve_chapter([], "abc", "test", "阅读")
         assert err is not None and "章节号无效" in err
+
+    def test_by_number_with_prefix_suffix(self):
+        chapters = [_chapter(100, "第5话", 5)]
+        target, err = resolve_chapter(chapters, "第5话", "test", "阅读")
+        assert err is None
+        assert target is not None and target.id == 100
+
+    def test_by_number_decimal_with_traditional_suffix(self):
+        chapters = [_chapter(100, "第38.5话", 38.5)]
+        target, err = resolve_chapter(chapters, "第38.5話", "test", "阅读")
+        assert err is None
+        assert target is not None and target.id == 100
+
+    def test_missing_number_with_suffix_has_clean_message(self):
+        chapters = [_chapter(100, "第5话", 5)]
+        _, err = resolve_chapter(chapters, "第9话", "test", "阅读")
+        assert err is not None
+        assert "未找到第 9 话" in err
+        assert "第第" not in err
+
+
+class TestChapterTimestampConcurrency:
+
+    @pytest.mark.asyncio
+    async def test_concurrent_set_chapter_timestamp_preserves_all(self):
+        from suwayomi.service import set_chapter_timestamp
+
+        store: dict = {}
+
+        async def get_kv(key, default=None):
+            await asyncio.sleep(0.02)
+            value = store.get(key, default)
+            return copy.deepcopy(value)
+
+        async def put_kv(key, value):
+            await asyncio.sleep(0.02)
+            store[key] = value
+
+        await asyncio.gather(
+            set_chapter_timestamp(get_kv, put_kv, 1),
+            set_chapter_timestamp(get_kv, put_kv, 2),
+        )
+        data = store["suwayomi_chapter_timestamps"]
+        assert "1" in data and "2" in data
+
+
+class TestFmtDeliveryFailureMessage:
+
+    def test_no_pages(self):
+        from suwayomi.service import fmt_delivery_failure_message
+        assert "暂无可用页面" in fmt_delivery_failure_message(0, "download", "none")
+
+    def test_download_failed_with_auth(self):
+        from suwayomi.service import fmt_delivery_failure_message
+        msg = fmt_delivery_failure_message(30, "download", "jwt")
+        assert "30" in msg and "jwt" in msg and "认证" in msg
+
+    def test_download_failed_without_auth(self):
+        from suwayomi.service import fmt_delivery_failure_message
+        msg = fmt_delivery_failure_message(10, "download", "none")
+        assert "10" in msg and "认证" not in msg
+
+    def test_url_mode_with_auth(self):
+        from suwayomi.service import fmt_delivery_failure_message
+        msg = fmt_delivery_failure_message(5, "url", "basic")
+        assert "URL 模式" in msg and "下载模式" in msg
+
+
+class TestTtlCacheHelpers:
+
+    def test_lookup_expires(self):
+        from suwayomi.service import ttl_cache_lookup, ttl_cache_store
+        cache = {}
+        ttl_cache_store(cache, "a", 1, max_entries=4, now=100.0)
+        assert ttl_cache_lookup(cache, "a", 10, now=105.0) == 1
+        assert ttl_cache_lookup(cache, "a", 10, now=115.0) is None
+
+    def test_store_evicts_oldest(self):
+        from suwayomi.service import ttl_cache_lookup, ttl_cache_store
+        cache = {}
+        ttl_cache_store(cache, "a", 1, max_entries=2, now=1.0)
+        ttl_cache_store(cache, "b", 2, max_entries=2, now=2.0)
+        ttl_cache_store(cache, "c", 3, max_entries=2, now=3.0)
+        assert ttl_cache_lookup(cache, "a", 10, now=4.0) is None
+        assert ttl_cache_lookup(cache, "b", 10, now=4.0) == 2
+        assert ttl_cache_lookup(cache, "c", 10, now=4.0) == 3

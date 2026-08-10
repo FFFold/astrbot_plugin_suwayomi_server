@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [Unreleased]
+
+### Fixed
+
+- **live 集成测试自动跳过** — `test_live_api.py` / `test_live_web_api.py` 在 Suwayomi-Server 不可达时自动跳过（3s 探活），不再使全量 `pytest` 失败；本地调试仍可用 `SUWAYOMI_URL` 指向真实服务器
+- **订阅数据并发丢失更新** — `SubscriptionManager` 全部写操作（订阅/取消/推送开关/章节进度/标题同步）加 `asyncio.Lock` 串行化读-改-写，避免后台更新循环与用户命令并发时互相覆盖
+- **章节时间戳并发覆盖** — `get_chapter_timestamp` / `set_chapter_timestamp` 加锁，配合更新检查并行化后不会互相覆盖
+- **更新检查并行化** — `check_updates` 改为按订阅并行检查（并发上限 5，`asyncio.Semaphore`），订阅多时一轮检查耗时显著下降；单部漫画失败不再拖累全部
+- **`last_update_check` 时间戳失真** — 后台更新循环与「漫画 更新」命令完成后统一写入 `suwayomi_last_update_check`，WebUI 仪表盘时间戳不再只随手动 API 更新；全部订阅检查均出错时返回失败提示且不写入时间戳，避免掩盖服务故障
+- **URL 模式 + 认证告警** — 图片获取方式为 URL 模式且 Suwayomi 开启认证时记录告警日志，提示改用下载模式（URL 模式不兼容带认证的服务器）
+- **WebUI 配置枚举校验** — `send_mode` / `image_fetch_mode` / `auto_push_mode` / `download_format` 白名单校验，非法值不再写入配置
+- **命令支持「第X话」格式** — `resolve_chapter` 与 AI 路径共用 `parse_chapter_number_text`，`/漫画 阅读/下载 xxx 第5话` 不再报"章节号无效"
+- **temp_dir 自动创建** — 配置的临时目录不存在时自动 `mkdir`，不再直接抛异常
+- **临时目录泄漏** — 延迟清理任务集中跟踪，插件卸载（`terminate`）时取消未执行的清理，避免目录残留
+- **投递失败提示区分原因** — 阅读失败时按真实原因提示：无页面 / 认证配置（下载模式）/ URL 模式不兼容认证 / 服务异常，不再一律归因认证
+
+### Changed
+
+- **统一图片消息链构建** — 阅读、自动推送、AI 发送共用 `build_image_chain()`（`utils/pusher.py`），消除三处重复的 forward/inline 分支
+- **统一文件打包助手** — 新增 `sanitize_filename` / `normalize_pack_format` / `build_chapter_output_path` / `pack_images`（`utils/pack.py`），下载命令、AI 文件发送、自动推送文件共用
+- **源列表 TTL 缓存** — `SuwayomiClient.get_sources()` 60s 内复用结果，减少命令与更新循环中的重复请求
+
+### Performance
+
+- **内存上限** — `AiInteractionState` 与搜索缓存增加条目上限（512 / 64），淘汰最旧条目，避免长期运行内存缓慢增长
+
+### Dev
+
+- 新增 `.github/workflows/ci.yml`，push/PR 自动运行单元测试（live 测试在 CI 中自动跳过）
+- 新增 `tests/helpers.py`（`server_reachable` 探活助手）、`tests/test_live_skip.py`、`tests/test_updater.py`、`tests/test_downloader.py`
+- live 集成测试增强：新增真实命令主路径覆盖（`test_download_and_pack_chapter` 下载→打包 zip/pdf/cbz、`test_check_updates_detects_new_chapters_live` 真实更新扫描→推送→水位线→时间戳）；漫画源限流（如拷贝漫画 "Request was throttled"）时 AI 搜索测试自动重试并跳过（`_search_zh_for_agent`），多章节列表测试对单章结果/限流容错
+
 ## [0.5.3] - 2026-07-28
 
 ### Fixed

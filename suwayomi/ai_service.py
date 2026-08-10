@@ -6,7 +6,12 @@ import time
 from typing import Any
 
 from .models import Chapter, Manga, Source
-from .service import fmt_chapter_display, get_or_fetch_chapters
+from .service import (
+    fmt_chapter_display,
+    fmt_chapter_num,
+    get_or_fetch_chapters,
+    parse_chapter_number_text,
+)
 
 from astrbot.api import logger
 
@@ -41,8 +46,9 @@ def is_successful_conversation_reset(event: Any) -> bool:
 class AiInteractionState:
     """Short-lived per-sender chapter candidates."""
 
-    def __init__(self, ttl: int = 600):
+    def __init__(self, ttl: int = 600, max_entries: int = 512):
         self.ttl = max(1, int(ttl))
+        self.max_entries = max(1, int(max_entries))
         self._chapters: dict[
             tuple[str, str], tuple[float, set[tuple[int, int]]]
         ] = {}
@@ -75,6 +81,9 @@ class AiInteractionState:
             known.update(entry[1])
         known.update((int(manga_id), int(chapter_id)) for chapter_id in chapter_ids)
         self._chapters[scope] = (timestamp, known)
+        if len(self._chapters) > self.max_entries:
+            oldest = min(self._chapters, key=lambda k: self._chapters[k][0])
+            del self._chapters[oldest]
 
     def was_chapter_exposed(
         self,
@@ -290,13 +299,8 @@ def _select_chapter_candidates(
             return None, [], f"未找到章节 ID {chapter_id}"
         return candidates[0], candidates, None
 
-    cleaned = normalized
-    if cleaned.startswith("第"):
-        cleaned = cleaned[1:]
-    cleaned = re.sub(r"(?:话|話|章)$", "", cleaned).strip()
-    try:
-        number = float(cleaned)
-    except ValueError:
+    number = parse_chapter_number_text(normalized)
+    if number is None:
         return None, [], (
             "selector 应为 latest、list、章节号或 ID:数字；"
             f"当前值为 {selector!r}"
@@ -304,7 +308,7 @@ def _select_chapter_candidates(
 
     candidates = [chapter for chapter in chapters if chapter.chapter_number == number]
     if not candidates:
-        return None, [], f"未找到第 {cleaned} 话"
+        return None, [], f"未找到第 {fmt_chapter_num(number)} 话"
     if len(candidates) > 1:
         return None, candidates, "同一章节号存在多个结果，需要使用 chapter_id 明确选择"
     return candidates[0], candidates, None

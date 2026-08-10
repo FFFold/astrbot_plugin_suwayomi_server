@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import time
 from typing import Any
 
 import aiohttp
@@ -14,6 +15,9 @@ from .models import Chapter, Manga, SearchResult, Source
 
 class SuwayomiError(Exception):
     pass
+
+
+_SOURCES_CACHE_TTL = 60
 
 
 class SuwayomiClient:
@@ -33,6 +37,7 @@ class SuwayomiClient:
         self._username = username
         self._password = password
         self._jwt_lock = asyncio.Lock()
+        self._sources_cache: tuple[float, list[Source]] | None = None
 
     async def _get_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
@@ -196,10 +201,15 @@ class SuwayomiClient:
         self._jwt_access_token = access_token
 
     async def get_sources(self) -> list[Source]:
+        now = time.time()
+        if self._sources_cache and now - self._sources_cache[0] < _SOURCES_CACHE_TTL:
+            return self._sources_cache[1]
         data = await self._raw_query(
             'query{sources{nodes{id name lang displayName supportsLatest}}}'
         )
-        return [Source.from_dict(s) for s in data["sources"]["nodes"]]
+        sources = [Source.from_dict(s) for s in data["sources"]["nodes"]]
+        self._sources_cache = (now, sources)
+        return sources
 
     async def search_manga(self, source_id: str | int, query: str, page: int = 1) -> SearchResult:
         data = await self._raw_query(

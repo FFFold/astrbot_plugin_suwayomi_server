@@ -11,7 +11,7 @@ from astrbot.api.event import MessageChain
 
 from ..suwayomi.models import Chapter
 from ..suwayomi.service import fmt_chapter_display
-from .pack import pack_cbz, pack_pdf, pack_zip
+from .pack import build_chapter_output_path, normalize_pack_format, pack_images
 
 if TYPE_CHECKING:
     from astrbot.api.star import Context
@@ -21,6 +21,8 @@ if TYPE_CHECKING:
 from ..suwayomi import PLUGIN_NAME
 _PLUGIN_NAME = PLUGIN_NAME
 
+_cleanup_tasks: set[asyncio.Task] = set()
+
 
 def is_aiocqhttp_target(context: Context, umo: str) -> bool:
     pid = umo.split(":", 1)[0]
@@ -28,9 +30,9 @@ def is_aiocqhttp_target(context: Context, umo: str) -> bool:
     return platform is not None and platform.meta().name == "aiocqhttp"
 
 
-def schedule_cleanup(tmp_dir: Path | None, delay: int = 60):
+def schedule_cleanup(tmp_dir: Path | None, delay: int = 60) -> asyncio.Task | None:
     if tmp_dir is None:
-        return
+        return None
 
     async def _cleanup():
         await asyncio.sleep(delay)
@@ -41,7 +43,75 @@ def schedule_cleanup(tmp_dir: Path | None, delay: int = 60):
         except Exception:
             pass
 
-    asyncio.create_task(_cleanup())
+    task = asyncio.create_task(_cleanup())
+    _cleanup_tasks.add(task)
+    task.add_done_callback(_cleanup_tasks.discard)
+    return task
+
+
+def cancel_pending_cleanups() -> int:
+    """Cancel pending temp-dir cleanup tasks (called on plugin terminate)."""
+    tasks = list(_cleanup_tasks)
+    for task in tasks:
+        task.cancel()
+    return len(tasks)
+
+
+def build_image_chain(
+    page_urls: list[str],
+    local_paths: list[str],
+    fetch_mode: str,
+    *,
+    send_mode: str,
+    forward_platform: bool,
+    page_label: str,
+    header: str | None = None,
+    header_node_name: str | None = None,
+    total_pages: int,
+    max_pages: int,
+    tail_text: str,
+) -> list:
+    """Build the image/forward message chain shared by read, push and AI send."""
+
+    def _img(idx: int) -> Comp.Image:
+        if fetch_mode == "download" and idx < len(local_paths) and local_paths[idx]:
+            return Comp.Image.fromFileSystem(local_paths[idx])
+        if fetch_mode == "download":
+            logger.warning(
+                f"[{_PLUGIN_NAME}] 图片 {idx + 1} 下载失败，将使用 URL 直连"
+                "（带认证的服务器可能无法加载，请检查认证配置）"
+            )
+        return Comp.Image.fromURL(page_urls[idx])
+
+    if send_mode == "forward" and forward_platform:
+        nodes: list[Comp.Node] = []
+        if header is not None:
+            nodes.append(Comp.Node(
+                uin="0",
+                name=header_node_name or page_label,
+                content=[Comp.Plain(header)],
+            ))
+        for i in range(len(page_urls)):
+            nodes.append(Comp.Node(
+                uin="0",
+                name=f"{page_label} - 第 {i + 1} 页",
+                content=[_img(i)],
+            ))
+        if total_pages > max_pages:
+            nodes.append(Comp.Node(
+                uin="0",
+                name="提示",
+                content=[Comp.Plain(tail_text)],
+            ))
+        return [Comp.Nodes(nodes)]
+
+    chain: list = []
+    if header is not None:
+        chain.append(Comp.Plain(header))
+    chain.extend(_img(i) for i in range(len(page_urls)))
+    if total_pages > max_pages:
+        chain.append(Comp.Plain(tail_text))
+    return chain
 
 
 async def push_chapter_images(
@@ -78,64 +148,28 @@ async def push_chapter_images(
                 return
             total_pages = len(pages)
             page_urls = [client.build_image_url(p) for p in pages[:max_pages]]
+            if client.auth_mode != "none":
+                logger.warning(
+                    f"[{_PLUGIN_NAME}] 自动推送图片获取方式为 URL 模式，但 Suwayomi "
+                    f"开启了 {client.auth_mode} 认证，图片可能无法加载，请改用下载模式"
+                )
 
         if not page_urls:
             return
 
-        def _img(idx: int) -> Comp.Image:
-            if fetch_mode == "download" and idx < len(local_paths) and local_paths[idx]:
-                return Comp.Image.fromFileSystem(local_paths[idx])
-            if fetch_mode == "download":
-                logger.warning(
-                    f"[{_PLUGIN_NAME}] 自动推送图片 {idx + 1} 下载失败，"
-                    "请检查 Suwayomi 认证配置"
-                )
-            return Comp.Image.fromURL(page_urls[idx])
-
+        chain = build_image_chain(
+            page_urls, local_paths, fetch_mode,
+            send_mode=send_mode,
+            forward_platform=is_aiocqhttp_target(context, umo),
+            page_label=ch_label,
+            header=f"📖「{title}」{ch_label}",
+            header_node_name=f"「{title}」{ch_label}",
+            total_pages=total_pages,
+            max_pages=max_pages,
+            tail_text=f"... 还有 {total_pages - max_pages} 页，请使用「漫画 阅读」查看",
+        )
         try:
-            if send_mode == "forward" and is_aiocqhttp_target(context, umo):
-                nodes = [
-                    Comp.Node(
-                        uin="0",
-                        name=f"「{title}」{ch_label}",
-                        content=[Comp.Plain(f"📖「{title}」{ch_label}")],
-                    )
-                ]
-                for i in range(len(page_urls)):
-                    nodes.append(
-                        Comp.Node(
-                            uin="0",
-                            name=f"{ch_label} - 第 {i + 1} 页",
-                            content=[_img(i)],
-                        )
-                    )
-                if total_pages > max_pages:
-                    nodes.append(
-                        Comp.Node(
-                            uin="0",
-                            name="提示",
-                            content=[
-                                Comp.Plain(
-                                    f"... 还有 {total_pages - max_pages} 页，"
-                                    f"请使用「漫画 阅读」查看"
-                                )
-                            ],
-                        )
-                    )
-                await context.send_message(
-                    umo, MessageChain(chain=[Comp.Nodes(nodes)])
-                )
-            else:
-                chain = [Comp.Plain(f"📖「{title}」{ch_label}")]
-                chain.extend(_img(i) for i in range(len(page_urls)))
-                if total_pages > max_pages:
-                    chain.append(
-                        Comp.Plain(
-                            f"... 还有 {total_pages - max_pages} 页，"
-                            f"请使用「漫画 阅读」查看"
-                        )
-                    )
-                await context.send_message(umo, MessageChain(chain=chain))
+            await context.send_message(umo, MessageChain(chain=chain))
         except Exception as e:
             logger.warning(
                 f"[{_PLUGIN_NAME}] 图片推送到{umo}失败: {e}"
@@ -173,27 +207,19 @@ async def push_chapter_file(
         return
 
     try:
-        safe_title = "".join(c for c in title if c not in r'<>:"/\|?*')[:50]
-        safe_label = "".join(
-            c for c in str(ch_label) if c not in r'<>:"/\|?*'
+        file_ext = normalize_pack_format(fmt)
+        output_path = build_chapter_output_path(
+            Path(valid_paths[0]).parent, title, str(ch_label), file_ext
         )
-        ext_map = {"zip": "zip", "pdf": "pdf", "cbz": "cbz"}
-        file_ext = ext_map.get(fmt, "zip")
-        output_path = Path(valid_paths[0]).parent / f"{safe_title}_{safe_label}.{file_ext}"
 
         try:
             loop = asyncio.get_running_loop()
-            if fmt == "pdf":
-                await loop.run_in_executor(None, pack_pdf, valid_paths, output_path)
-            elif fmt == "cbz":
-                await loop.run_in_executor(None, pack_cbz, valid_paths, output_path)
-            else:
-                await loop.run_in_executor(None, pack_zip, valid_paths, output_path)
+            await loop.run_in_executor(None, pack_images, valid_paths, output_path, fmt)
         except Exception as e:
             logger.error(f"[{_PLUGIN_NAME}] 自动推送打包失败: {e}")
             return
 
-        filename = f"{safe_title}_{safe_label}.{file_ext}"
+        filename = output_path.name
         chain = [Comp.File(file=str(output_path), name=filename)]
         try:
             await context.send_message(umo, MessageChain(chain=chain))

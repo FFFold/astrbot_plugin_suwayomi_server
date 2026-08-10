@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-import time
 from pathlib import Path
 
 import astrbot.api.message_components as Comp
@@ -34,6 +33,8 @@ from .suwayomi.service import (
     resolve_chapter,
     resolve_manga,
     search_best_match,
+    ttl_cache_lookup,
+    ttl_cache_store,
 )
 from .suwayomi.updater import check_updates as _check_updates, run_update_loop
 from .utils.downloader import fetch_pages_local
@@ -63,6 +64,7 @@ from .web.api import (
 )
 
 _CACHE_TTL = 600
+_SEARCH_CACHE_MAX_ENTRIES = 64
 _AI_TOOL_REPAIR_KEY = "suwayomi_ai_tool_activation_repaired_v1"
 
 
@@ -577,17 +579,15 @@ class SuwayomiPlugin(Star):
     # ── Search cache ───────────────────────────────────────────────
 
     def _get_cached_manga(self, umo: str, key: str) -> Manga | None:
-        entry = self._search_cache.get(umo)
-        if entry is None:
-            return None
-        ts, cache = entry
-        if time.time() - ts > _CACHE_TTL:
-            del self._search_cache[umo]
+        cache = ttl_cache_lookup(self._search_cache, umo, _CACHE_TTL)
+        if cache is None:
             return None
         return cache.get(key)
 
     def _set_search_cache(self, umo: str, cache: dict[str, Manga]):
-        self._search_cache[umo] = (time.time(), cache)
+        ttl_cache_store(
+            self._search_cache, umo, cache, _CACHE_TTL, _SEARCH_CACHE_MAX_ENTRIES
+        )
 
     async def _prepare_chapter_delivery(self, event: AstrMessageEvent, target):
         """Build one chapter result for command yield or direct AI-tool sending."""

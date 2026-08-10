@@ -41,8 +41,9 @@ def is_successful_conversation_reset(event: Any) -> bool:
 class AiInteractionState:
     """Short-lived per-sender chapter candidates."""
 
-    def __init__(self, ttl: int = 600):
+    def __init__(self, ttl: int = 600, max_entries: int = 512):
         self.ttl = max(1, int(ttl))
+        self.max_entries = max(1, int(max_entries))
         self._chapters: dict[
             tuple[str, str], tuple[float, set[tuple[int, int]]]
         ] = {}
@@ -75,6 +76,9 @@ class AiInteractionState:
             known.update(entry[1])
         known.update((int(manga_id), int(chapter_id)) for chapter_id in chapter_ids)
         self._chapters[scope] = (timestamp, known)
+        if len(self._chapters) > self.max_entries:
+            oldest = min(self._chapters, key=lambda k: self._chapters[k][0])
+            del self._chapters[oldest]
 
     def was_chapter_exposed(
         self,

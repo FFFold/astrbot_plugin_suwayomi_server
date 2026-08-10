@@ -4,7 +4,7 @@ import asyncio
 import math
 import re
 import time
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 import opencc
 
@@ -140,6 +140,38 @@ def resolve_chapter(
         f"第 {chapter_num} 话存在多个章节（可能为附录/番外），"
         f"请使用 ID 指定: /漫画 {cmd} {manga_name_or_id} {ids}"
     )
+
+
+def ttl_cache_store(
+    cache: dict[str, tuple[float, Any]],
+    key: str,
+    value: Any,
+    ttl: float,
+    max_entries: int,
+    now: float | None = None,
+) -> None:
+    """Store an entry with TTL; evict the oldest entry when over the cap."""
+    cache[key] = (now if now is not None else time.time(), value)
+    if len(cache) > max_entries:
+        oldest = min(cache, key=lambda k: cache[k][0])
+        del cache[oldest]
+
+
+def ttl_cache_lookup(
+    cache: dict[str, tuple[float, Any]],
+    key: str,
+    ttl: float,
+    now: float | None = None,
+) -> Any:
+    """Return a non-expired entry or None (expired entries are removed)."""
+    entry = cache.get(key)
+    if entry is None:
+        return None
+    ts, value = entry
+    if (now if now is not None else time.time()) - ts > ttl:
+        cache.pop(key, None)
+        return None
+    return value
 
 
 async def get_chapter_timestamp(

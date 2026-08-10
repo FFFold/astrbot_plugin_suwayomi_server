@@ -148,6 +148,11 @@ async def push_chapter_images(
                 return
             total_pages = len(pages)
             page_urls = [client.build_image_url(p) for p in pages[:max_pages]]
+            if client.auth_mode != "none":
+                logger.warning(
+                    f"[{_PLUGIN_NAME}] 自动推送图片获取方式为 URL 模式，但 Suwayomi "
+                    f"开启了 {client.auth_mode} 认证，图片可能无法加载，请改用下载模式"
+                )
 
         if not page_urls:
             return

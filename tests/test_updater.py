@@ -190,3 +190,24 @@ async def test_check_updates_skips_non_dict_subscription_value():
     )
     assert "1 部漫画更新" in summary
     assert "T2" in summary
+
+
+@pytest.mark.asyncio
+async def test_check_updates_all_failed_reports_error_without_timestamp():
+    """When every subscription check errors, report failure and do not stamp a fresh check time."""
+    async def always_broken(manga_id):
+        raise SuwayomiError("server down")
+
+    client = CountingClient({1: [], 2: []})
+    client.fetch_chapters = always_broken
+    plugin = FakePlugin()
+    sub_mgr = _make_sub_mgr(plugin)
+    for i in (1, 2):
+        await sub_mgr.subscribe(i, f"T{i}", 1, "u1")
+    summary = await check_updates(
+        client, sub_mgr, _context(), _config(),
+        plugin.get_kv_data, plugin.put_kv_data, asyncio.Lock(),
+        AsyncMock(), AsyncMock(),
+    )
+    assert "检查出错" in summary or "失败" in summary
+    assert "suwayomi_last_update_check" not in plugin._store

@@ -37,25 +37,29 @@ async def _check_one_manga(
     manga_id_str: str,
     info: dict,
 ):
-    """Check one subscription for new chapters. Returns an update tuple or None."""
+    """Check one subscription for new chapters.
+
+    Returns (update_tuple | None, is_error). None result means no update found;
+    is_error=True means the check itself failed (server/source error).
+    """
     if not isinstance(info, dict):
         logger.warning(
             f"[{_PLUGIN_NAME}] 订阅数据损坏: 忽略非法订阅条目 {manga_id_str!r}"
         )
-        return None
+        return None, False
     try:
         manga_id = int(manga_id_str)
     except (TypeError, ValueError):
         logger.warning(
             f"[{_PLUGIN_NAME}] 订阅数据损坏: 忽略非法漫画 ID {manga_id_str!r}"
         )
-        return None
+        return None, False
     title = info.get("title", f"ID:{manga_id}")
     latest_stored = info.get("latest_chapter_id", 0)
     subscribers = info.get("subscribers", {})
 
     if not subscribers:
-        return None
+        return None, False
 
     try:
         if force or cache_hours != 0:
@@ -81,7 +85,7 @@ async def _check_one_manga(
             client, get_kv_data, put_kv_data, config, manga_id, force=force
         )
         if not chapters:
-            return None
+            return None, False
 
         new_chapters = []
         max_id = latest_stored
@@ -92,7 +96,7 @@ async def _check_one_manga(
                     max_id = ch.id
 
         if not new_chapters:
-            return None
+            return None, False
 
         await sub_mgr.update_latest_chapter(manga_id, max_id)
         logger.info(
@@ -109,13 +113,13 @@ async def _check_one_manga(
         ch_info = [
             fmt_chapter_label(ch, num_count) for ch in new_chapters
         ]
-        return (manga_id, title, ch_info, new_chapters, subscribers)
+        return (manga_id, title, ch_info, new_chapters, subscribers), False
     except Exception as e:
         logger.warning(
             f"[{_PLUGIN_NAME}] 检查漫画 {title} "
             f"(ID:{manga_id}) 更新失败: {e}"
         )
-        return None
+        return None, True
 
 
 async def check_updates(
@@ -163,10 +167,20 @@ async def check_updates(
             *(_run(item) for item in all_subs.items())
         )
         updated_mangas = [
-            r for r in results if r is not None
+            r for r, _ in results if r is not None
         ]
+        error_count = sum(1 for _, is_error in results if is_error)
 
         if not updated_mangas:
+            if error_count and error_count == len(results):
+                logger.error(
+                    f"[{_PLUGIN_NAME}] 更新检查失败: "
+                    f"{error_count} 部订阅漫画全部检查出错"
+                )
+                return (
+                    "❌ 更新检查失败：所有订阅漫画均检查出错，"
+                    "请检查 Suwayomi 服务与网络连接。"
+                )
             logger.info(
                 f"[{_PLUGIN_NAME}] 更新检查完成: 检查 {len(all_subs)} 部漫画，"
                 f"暂无更新"

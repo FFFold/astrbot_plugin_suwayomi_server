@@ -1,5 +1,10 @@
 """Tests for suwayomi/service.py helpers (no network)."""
 
+import asyncio
+import copy
+
+import pytest
+
 from suwayomi.models import Chapter
 from suwayomi.service import (
     fmt_chapter_display,
@@ -113,3 +118,28 @@ class TestResolveChapter:
     def test_invalid_number(self):
         _, err = resolve_chapter([], "abc", "test", "阅读")
         assert err is not None and "章节号无效" in err
+
+
+class TestChapterTimestampConcurrency:
+
+    @pytest.mark.asyncio
+    async def test_concurrent_set_chapter_timestamp_preserves_all(self):
+        from suwayomi.service import set_chapter_timestamp
+
+        store: dict = {}
+
+        async def get_kv(key, default=None):
+            await asyncio.sleep(0.02)
+            value = store.get(key, default)
+            return copy.deepcopy(value)
+
+        async def put_kv(key, value):
+            await asyncio.sleep(0.02)
+            store[key] = value
+
+        await asyncio.gather(
+            set_chapter_timestamp(get_kv, put_kv, 1),
+            set_chapter_timestamp(get_kv, put_kv, 2),
+        )
+        data = store["suwayomi_chapter_timestamps"]
+        assert "1" in data and "2" in data

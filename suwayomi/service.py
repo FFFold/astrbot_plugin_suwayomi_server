@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import math
 import time
 from typing import TYPE_CHECKING, Callable
@@ -31,6 +32,8 @@ STATUS_EMOJI: dict[str, str] = {
 }
 
 KV_CHAPTER_TS = "suwayomi_chapter_timestamps"
+
+_ts_lock = asyncio.Lock()
 
 
 def normalize_zh(text: str) -> str:
@@ -107,8 +110,9 @@ def resolve_chapter(
 async def get_chapter_timestamp(
     get_kv_data: Callable, manga_id: int
 ) -> float:
-    data = await get_kv_data(KV_CHAPTER_TS, {})
-    return data.get(str(manga_id), 0)
+    async with _ts_lock:
+        data = await get_kv_data(KV_CHAPTER_TS, {})
+        return data.get(str(manga_id), 0)
 
 
 async def set_chapter_timestamp(
@@ -116,9 +120,10 @@ async def set_chapter_timestamp(
     put_kv_data: Callable,
     manga_id: int,
 ):
-    data = await get_kv_data(KV_CHAPTER_TS, {})
-    data[str(manga_id)] = time.time()
-    await put_kv_data(KV_CHAPTER_TS, data)
+    async with _ts_lock:
+        data = await get_kv_data(KV_CHAPTER_TS, {})
+        data[str(manga_id)] = time.time()
+        await put_kv_data(KV_CHAPTER_TS, data)
 
 
 async def get_or_fetch_chapters(

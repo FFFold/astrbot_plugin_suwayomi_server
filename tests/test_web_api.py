@@ -306,6 +306,39 @@ async def test_config_post_rejects_unknown_keys():
 
 
 @pytest.mark.asyncio
+async def test_config_post_rejects_invalid_enum():
+    """Enum values not in whitelist should be rejected."""
+    cfg = FakeConfig({"server_url": "http://old:4567"})
+
+    result = await api_config_post(cfg, {
+        "server_url": "http://new:4567",
+        "send_mode": "weird",
+        "download_format": "exe",
+    }, AsyncMock())
+    assert result["success"] is True
+    assert cfg.get("send_mode") != "weird"
+    assert cfg.get("download_format") != "exe"
+
+
+@pytest.mark.asyncio
+async def test_config_post_accepts_valid_enum():
+    cfg = FakeConfig({"server_url": "http://old:4567"})
+
+    result = await api_config_post(cfg, {
+        "server_url": "http://new:4567",
+        "send_mode": "forward",
+        "image_fetch_mode": "download",
+        "auto_push_mode": "file",
+        "download_format": "cbz",
+    }, AsyncMock())
+    assert result["success"] is True
+    assert cfg["send_mode"] == "forward"
+    assert cfg["image_fetch_mode"] == "download"
+    assert cfg["auto_push_mode"] == "file"
+    assert cfg["download_format"] == "cbz"
+
+
+@pytest.mark.asyncio
 async def test_config_post_validates_numeric_fields():
     """Numeric fields should be coerced to int with min bounds."""
     cfg = FakeConfig({"server_url": "http://old:4567", "check_interval": 60})

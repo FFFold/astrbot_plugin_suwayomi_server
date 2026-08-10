@@ -47,6 +47,13 @@ MAX_NUMERIC_CONFIG_KEYS = {
 
 BOOLEAN_CONFIG_KEYS = {"enable_ai_tools", "allow_ai_send"}
 
+ENUM_CONFIG_KEYS = {
+    "send_mode": {"image", "forward"},
+    "image_fetch_mode": {"url", "download"},
+    "auto_push_mode": {"image", "file"},
+    "download_format": {"zip", "pdf", "cbz"},
+}
+
 AI_CONFIG_DEFAULTS = {
     "enable_ai_tools": True,
     "allow_ai_send": True,
@@ -236,6 +243,9 @@ async def api_config_post(
                 value = value.strip().lower() in {"1", "true", "yes", "on"}
             else:
                 value = bool(value)
+        if key in ENUM_CONFIG_KEYS:
+            if not isinstance(value, str) or value not in ENUM_CONFIG_KEYS[key]:
+                continue
         config[key] = value
 
     try:

@@ -14,7 +14,7 @@
     <img src="https://img.shields.io/badge/AstrBot-%3E%3D4.16-blue?style=flat-square" alt="AstrBot >= 4.16">
     <img src="https://img.shields.io/badge/Python-3.12%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.12+">
     <img src="https://img.shields.io/badge/license-AGPL--3.0-orange?style=flat-square" alt="License AGPL-3.0">
-    <img src="https://img.shields.io/badge/version-0.5.3-8A2BE2?style=flat-square" alt="Version 0.5.3">
+    <img src="https://img.shields.io/badge/version-0.5.4-8A2BE2?style=flat-square" alt="Version 0.5.4">
     <img src="https://img.shields.io/badge/support-8%20platforms-green?style=flat-square" alt="8 platforms">
   </p>
   <p align="center">
@@ -53,7 +53,7 @@
 | 命令 | 说明 |
 |---|---|
 | `/漫画 源` | 列出所有已安装的漫画源 |
-| `/漫画 搜索 <关键词> [源名]` | 从多个源搜索漫画 |
+| `/漫画 搜索 <关键词> [源名]` | 从多个源搜索漫画（多词标题用 `+` 连接，如 `香格里拉+再`；`源名` 可用「漫画 源」查看） |
 | `/漫画 订阅 <编号>` | 订阅搜索结果中的漫画 |
 | `/漫画 批量订阅 <名称1>, <名称2>, ... [源名]` | 批量订阅多部漫画（逗号分隔） |
 | `/漫画 取消订阅 <ID或名称>` | 取消订阅指定漫画 |

@@ -121,6 +121,7 @@ astrbot_suwayomi_server/
 - 独立 async 函数，依赖注入参数（`client`、`sub_mgr`、`get_kv_data` 等）
 - `resolve_manga(client, sub_mgr, umo, name_or_id, cmd)` — 按 ID 或名称模糊解析漫画
 - `resolve_chapter(chapters, chapter_num, manga_name_or_id, cmd)` — 按编号或 ID 解析章节（支持重复编号检测）；编号解析统一走 `parse_chapter_number_text`（支持 `5`、`第5话`、`第38.5話`）
+- 源选择：`select_search_sources`（默认源：排除本地源、扩展名去重、变体补位；命令与 AI 路径共用）、`match_source_hint`（命令侧源提示：前缀/语言代码匹配）、`split_search_query`（从完整消息解析关键词与尾部源提示，多词标题用 `+` 连接）
 - `get_or_fetch_chapters(client, get_kv_data, put_kv_data, config, manga_id, force)` — 智能缓存/拉取章节
 - `search_best_match(client, config, name, source_filter)` — 跨源搜索最佳匹配
 - 格式化工具：`fmt_chapter_num`、`fmt_chapter_label`、`fmt_delivery_failure_message`（按失败原因区分提示文案）、`normalize_zh`

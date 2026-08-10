@@ -38,6 +38,11 @@ async def _check_one_manga(
     info: dict,
 ):
     """Check one subscription for new chapters. Returns an update tuple or None."""
+    if not isinstance(info, dict):
+        logger.warning(
+            f"[{_PLUGIN_NAME}] 订阅数据损坏: 忽略非法订阅条目 {manga_id_str!r}"
+        )
+        return None
     try:
         manga_id = int(manga_id_str)
     except (TypeError, ValueError):

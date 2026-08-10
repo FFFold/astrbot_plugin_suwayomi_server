@@ -166,3 +166,27 @@ async def test_check_updates_skips_corrupted_subscription_key():
     )
     assert "1 部漫画更新" in summary
     assert "T2" in summary
+
+
+@pytest.mark.asyncio
+async def test_check_updates_skips_non_dict_subscription_value():
+    """A subscription entry whose value is not a dict must not abort the scan."""
+    plugin = FakePlugin()
+    plugin._store["suwayomi_subscriptions"] = {
+        "1": "not-a-dict",
+        "2": {
+            "title": "T2",
+            "source_id": 1,
+            "latest_chapter_id": 0,
+            "subscribers": {"u1": {"push_enabled": False}},
+        },
+    }
+    sub_mgr = _make_sub_mgr(plugin)
+    client = CountingClient({2: _chapters(2, [2])})
+    summary = await check_updates(
+        client, sub_mgr, _context(), _config(),
+        plugin.get_kv_data, plugin.put_kv_data, asyncio.Lock(),
+        AsyncMock(), AsyncMock(),
+    )
+    assert "1 部漫画更新" in summary
+    assert "T2" in summary

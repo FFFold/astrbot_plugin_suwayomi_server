@@ -111,20 +111,20 @@ astrbot_suwayomi_server/
 - 使用 `@filter.command_group("漫画")` 组织命令
 - `__init__` 中初始化客户端、订阅管理器、搜索缓存，注册 7 个 WebUI API 端点，并尝试启动后台循环（热重载时事件循环已运行则立即启动）
 - `@filter.on_astrbot_loaded()` 中构建更新检查闭包并启动后台任务（作为首次启动的兜底）
-- `terminate()` 中取消后台任务并关闭 HTTP 会话
+- `terminate()` 中取消后台任务、取消未执行的临时目录清理任务（`cancel_pending_cleanups`），并关闭 HTTP 会话
 - WebUI 保存配置时 (`rebuild_client`) 取消旧后台任务、按新间隔重启循环，并清除搜索缓存
-- 搜索缓存使用 `(timestamp, {index: Manga})` 结构，10 分钟 TTL 自动过期
+- 搜索缓存使用 `(timestamp, {index: Manga})` 结构，10 分钟 TTL 自动过期，并按会话数上限（64）淘汰最旧条目（`ttl_cache_store` / `ttl_cache_lookup`）
 - 所有业务逻辑委托给 `suwayomi/service.py`、`suwayomi/updater.py`、`utils/downloader.py`、`utils/pusher.py`
 
 #### `suwayomi/service.py` — 业务逻辑层
 
 - 独立 async 函数，依赖注入参数（`client`、`sub_mgr`、`get_kv_data` 等）
 - `resolve_manga(client, sub_mgr, umo, name_or_id, cmd)` — 按 ID 或名称模糊解析漫画
-- `resolve_chapter(chapters, chapter_num, manga_name_or_id, cmd)` — 按编号或 ID 解析章节（支持重复编号检测）
+- `resolve_chapter(chapters, chapter_num, manga_name_or_id, cmd)` — 按编号或 ID 解析章节（支持重复编号检测）；编号解析统一走 `parse_chapter_number_text`（支持 `5`、`第5话`、`第38.5話`）
 - `get_or_fetch_chapters(client, get_kv_data, put_kv_data, config, manga_id, force)` — 智能缓存/拉取章节
 - `search_best_match(client, config, name, source_filter)` — 跨源搜索最佳匹配
-- 格式化工具：`fmt_chapter_num`、`fmt_chapter_label`、`normalize_zh`
-- 缓存管理：`get_chapter_timestamp` / `set_chapter_timestamp`
+- 格式化工具：`fmt_chapter_num`、`fmt_chapter_label`、`fmt_delivery_failure_message`（按失败原因区分提示文案）、`normalize_zh`
+- 缓存管理：`get_chapter_timestamp` / `set_chapter_timestamp`（模块级 `asyncio.Lock` 串行化读-改-写，防并发覆盖）；通用 TTL 缓存助手 `ttl_cache_store` / `ttl_cache_lookup`
 - 常量：`STATUS_EMOJI`、`KV_CHAPTER_TS`
 
 #### `suwayomi/ai_service.py` / `suwayomi/ai_tools.py` — Agent Tool 层
@@ -140,7 +140,7 @@ astrbot_suwayomi_server/
 
 #### `suwayomi/updater.py` — 更新引擎
 
-- `check_updates(client, sub_mgr, context, config, get_kv_data, put_kv_data, update_lock, push_chapter_images_fn, push_chapter_file_fn, force)` — 全部订阅检查，同步标题，检测新章节，推送通知，自动推送内容。`update_library()` 调用有 30 秒超时，避免挂死。
+- `check_updates(client, sub_mgr, context, config, get_kv_data, put_kv_data, update_lock, push_chapter_images_fn, push_chapter_file_fn, force)` — 全部订阅检查，同步标题，检测新章节，推送通知，自动推送内容。`update_library()` 调用有 30 秒超时，避免挂死。逐订阅检查通过 `asyncio.Semaphore(_UPDATE_CONCURRENCY=5)` 并行执行（`_check_one_manga`），单条损坏/失败不中断整轮；完成时写入 `suwayomi_last_update_check` 时间戳
 - `run_update_loop(interval, check_fn)` — 后台循环包装器，被 `main.py` 的 `_start_bg_task` 启动。正确处理 `CancelledError`，Task 异常退出时有日志记录。
 - 所有依赖通过参数注入，`push_chapter_images_fn` 和 `push_chapter_file_fn` 在 `main.py` 的 `_build_check_updates_fn` 中预绑定
 
@@ -152,9 +152,10 @@ astrbot_suwayomi_server/
 
 #### `utils/pusher.py` — 推送投递
 
-- `push_chapter_images(client, context, config, umo, title, chapter, fetch_pages_local_fn, fmt_chapter_num_fn)` — 推送章节为图片（支持 `send_mode=forward` 合并转发）
-- `push_chapter_file(context, config, umo, title, chapter, fetch_pages_local_fn, fmt_chapter_num_fn)` — 推送章节为打包文件（ZIP/CBZ/PDF）
-- `schedule_cleanup(tmp_dir, delay)` — 延迟清理临时目录（消除 4 处重复的 asyncio 任务）
+- `push_chapter_images(client, context, config, umo, title, chapter, fetch_pages_local_fn)` — 推送章节为图片（支持 `send_mode=forward` 合并转发）
+- `push_chapter_file(context, config, umo, title, chapter, fetch_pages_local_fn)` — 推送章节为打包文件（ZIP/CBZ/PDF）
+- `build_image_chain(...)` — 阅读、自动推送、AI 发送共用的图片/合并转发消息链构建器
+- `schedule_cleanup(tmp_dir, delay)` — 延迟清理临时目录；任务登记到 `_cleanup_tasks`，插件卸载时由 `cancel_pending_cleanups()` 统一取消
 - `is_aiocqhttp_target(context, umo)` — 检测平台是否为 aiocqhttp（用于 forward 模式判断）
 
 #### `suwayomi/client.py` — GraphQL 客户端
@@ -162,6 +163,7 @@ astrbot_suwayomi_server/
 - 基于 `aiohttp.ClientSession` 的异步 HTTP 客户端
 - 所有 Suwayomi 交互通过 `POST /api/graphql` 发送 GraphQL 查询/变更
 - 支持三种认证模式：无认证、Basic、JWT（自动刷新）
+- `get_sources()` 结果缓存 60 秒（`_sources_cache`），减少命令与更新循环中的重复请求
 - 提供 `auth_headers` 属性，暴露认证头供图片下载时复用（Basic 返回 `Basic ...`，JWT 返回缓存的 `Bearer ...` token）
 - `_post_graphql()` — 底层 HTTP POST，处理 JSON 解析、错误归一化、网络异常捕获
 - `_raw_query()` — 上层认证查询，调用 `_ensure_jwt()`，通过 `_response_data()` 统一校验响应
@@ -178,6 +180,7 @@ astrbot_suwayomi_server/
 - 通过 AstrBot 的 `get_kv_data()` / `put_kv_data()` 持久化
 - 数据结构：`{manga_id: {title, source_id, latest_chapter_id, subscribers: {umo: {push_enabled: bool}}}}`
 - `umo`（`unified_msg_origin`）是 AstrBot 的会话唯一标识
+- 所有写操作（订阅/取消/推送开关/章节进度/标题同步/偏好）由内部 `asyncio.Lock` 串行化读-改-写，防止后台更新循环与用户操作并发时互相覆盖
 - `delete_manga(manga_id)` — 删除漫画的全部订阅者（公开方法）
 
 #### `web/api.py` — WebUI API handlers

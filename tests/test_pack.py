@@ -4,7 +4,16 @@ from pathlib import Path
 
 import pytest
 
-from utils.pack import pack_zip, pack_cbz, pack_pdf, parse_download_args
+from utils.pack import (
+    pack_zip,
+    pack_cbz,
+    pack_pdf,
+    parse_download_args,
+    sanitize_filename,
+    normalize_pack_format,
+    build_chapter_output_path,
+    pack_images,
+)
 
 
 def _create_test_images(tmp_dir: Path, count: int = 3) -> list[str]:
@@ -155,3 +164,41 @@ class TestParseDownloadArgs:
         assert manga == "海贼王"
         assert chapter == "38.5"
         assert fmt == "pdf"
+
+
+class TestPackHelpers:
+
+    def test_sanitize_filename_strips_illegal_chars(self):
+        assert sanitize_filename('a<b>:"c|d\\e/f*g?') == "abcdefg"
+
+    def test_sanitize_filename_truncates(self):
+        assert len(sanitize_filename("x" * 100)) == 50
+
+    def test_sanitize_filename_empty_fallback(self):
+        assert sanitize_filename("   ") == "untitled"
+
+    def test_normalize_pack_format(self):
+        assert normalize_pack_format("pdf") == "pdf"
+        assert normalize_pack_format("cbz") == "cbz"
+        assert normalize_pack_format("zip") == "zip"
+        assert normalize_pack_format("weird") == "zip"
+
+    def test_build_chapter_output_path(self, tmp_path):
+        p = build_chapter_output_path(tmp_path, "a<b", "第1话", "pdf")
+        assert p == tmp_path / "ab_第1话.pdf"
+
+    def test_pack_images_zip(self, tmp_path):
+        images = _create_test_images(tmp_path)
+        output = tmp_path / "test.zip"
+        pack_images(images, output, "zip")
+        assert output.exists()
+        with zipfile.ZipFile(output) as zf:
+            assert len(zf.namelist()) == 3
+
+    def test_pack_images_unknown_falls_back_to_zip(self, tmp_path):
+        images = _create_test_images(tmp_path)
+        output = tmp_path / "test.bin"
+        pack_images(images, output, "weird")
+        assert output.exists()
+        with zipfile.ZipFile(output) as zf:
+            assert len(zf.namelist()) == 3

@@ -11,7 +11,7 @@ from astrbot.api.event import MessageChain
 
 from ..suwayomi.models import Chapter
 from ..suwayomi.service import fmt_chapter_display
-from .pack import pack_cbz, pack_pdf, pack_zip
+from .pack import build_chapter_output_path, normalize_pack_format, pack_images
 
 if TYPE_CHECKING:
     from astrbot.api.star import Context
@@ -186,27 +186,19 @@ async def push_chapter_file(
         return
 
     try:
-        safe_title = "".join(c for c in title if c not in r'<>:"/\|?*')[:50]
-        safe_label = "".join(
-            c for c in str(ch_label) if c not in r'<>:"/\|?*'
+        file_ext = normalize_pack_format(fmt)
+        output_path = build_chapter_output_path(
+            Path(valid_paths[0]).parent, title, str(ch_label), file_ext
         )
-        ext_map = {"zip": "zip", "pdf": "pdf", "cbz": "cbz"}
-        file_ext = ext_map.get(fmt, "zip")
-        output_path = Path(valid_paths[0]).parent / f"{safe_title}_{safe_label}.{file_ext}"
 
         try:
             loop = asyncio.get_running_loop()
-            if fmt == "pdf":
-                await loop.run_in_executor(None, pack_pdf, valid_paths, output_path)
-            elif fmt == "cbz":
-                await loop.run_in_executor(None, pack_cbz, valid_paths, output_path)
-            else:
-                await loop.run_in_executor(None, pack_zip, valid_paths, output_path)
+            await loop.run_in_executor(None, pack_images, valid_paths, output_path, fmt)
         except Exception as e:
             logger.error(f"[{_PLUGIN_NAME}] 自动推送打包失败: {e}")
             return
 
-        filename = f"{safe_title}_{safe_label}.{file_ext}"
+        filename = output_path.name
         chain = [Comp.File(file=str(output_path), name=filename)]
         try:
             await context.send_message(umo, MessageChain(chain=chain))

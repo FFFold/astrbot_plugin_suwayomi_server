@@ -36,7 +36,12 @@ from .suwayomi.service import (
 )
 from .suwayomi.updater import check_updates as _check_updates, run_update_loop
 from .utils.downloader import fetch_pages_local
-from .utils.pack import pack_cbz, pack_pdf, pack_zip, parse_download_args
+from .utils.pack import (
+    build_chapter_output_path,
+    normalize_pack_format,
+    pack_images,
+    parse_download_args,
+)
 from .utils.pusher import (
     cancel_pending_cleanups,
     push_chapter_file,
@@ -679,17 +684,13 @@ class SuwayomiPlugin(Star):
             )
 
         label = fmt_chapter_display(target)
-        safe_title = "".join(char for char in manga.title if char not in r'<>:"/\|?*')[:50]
-        safe_label = "".join(char for char in str(label) if char not in r'<>:"/\|?*')
-        output_path = Path(valid_paths[0]).parent / f"{safe_title}_{safe_label}.{fmt}"
+        file_ext = normalize_pack_format(fmt)
+        output_path = build_chapter_output_path(
+            Path(valid_paths[0]).parent, manga.title, str(label), file_ext
+        )
 
         loop = asyncio.get_running_loop()
-        if fmt == "pdf":
-            await loop.run_in_executor(None, pack_pdf, valid_paths, output_path)
-        elif fmt == "cbz":
-            await loop.run_in_executor(None, pack_cbz, valid_paths, output_path)
-        else:
-            await loop.run_in_executor(None, pack_zip, valid_paths, output_path)
+        await loop.run_in_executor(None, pack_images, valid_paths, output_path, fmt)
 
         filename = output_path.name
         result = event.chain_result([Comp.File(file=str(output_path), name=filename)])
@@ -1228,26 +1229,20 @@ class SuwayomiPlugin(Star):
             if len(valid_paths) < len(page_urls):
                 logger.warning(f"[{PLUGIN_NAME}] {len(page_urls) - len(valid_paths)} 页下载失败，将用已有页面打包")
 
-            safe_title = "".join(c for c in manga.title if c not in r'<>:"/\|?*')[:50]
-            safe_label = "".join(c for c in str(num_label) if c not in r'<>:"/\|?*')
-            ext_map = {"zip": "zip", "pdf": "pdf", "cbz": "cbz"}
-            file_ext = ext_map.get(fmt, "zip")
-            output_path = Path(valid_paths[0]).parent / f"{safe_title}_{safe_label}.{file_ext}"
+            file_ext = normalize_pack_format(fmt)
+            output_path = build_chapter_output_path(
+                Path(valid_paths[0]).parent, manga.title, str(num_label), file_ext
+            )
 
             try:
                 loop = asyncio.get_running_loop()
-                if fmt == "pdf":
-                    await loop.run_in_executor(None, pack_pdf, valid_paths, output_path)
-                elif fmt == "cbz":
-                    await loop.run_in_executor(None, pack_cbz, valid_paths, output_path)
-                else:
-                    await loop.run_in_executor(None, pack_zip, valid_paths, output_path)
+                await loop.run_in_executor(None, pack_images, valid_paths, output_path, fmt)
             except Exception as e:
                 logger.error(f"[{PLUGIN_NAME}] 打包失败: {e}")
                 yield event.plain_result(f"打包失败: {e}")
                 return
 
-            filename = f"{safe_title}_{safe_label}.{file_ext}"
+            filename = output_path.name
             try:
                 chain = [Comp.File(file=str(output_path), name=filename)]
                 yield event.chain_result(chain)

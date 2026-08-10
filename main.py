@@ -699,7 +699,7 @@ class SuwayomiPlugin(Star):
         text = """📖 Suwayomi 漫画助手
 
 🔍 搜索与订阅
-  /漫画 搜索 <关键词> [源名]  — 搜索漫画（多词标题用 + 连接，如 香格里拉+再；指定源如 关键词 再漫画）
+  /漫画 搜索 <关键词> [源名]  — 搜索漫画（多词用 + 连接）
   /漫画 订阅 <编号>            — 订阅搜索结果
   /漫画 批量订阅 <名称1>, <名称2>, ... [源名] — 批量订阅多部漫画
   /漫画 取消订阅 <ID或名称>    — 取消订阅
@@ -749,16 +749,14 @@ class SuwayomiPlugin(Star):
 
     @manga_group.command("搜索")
     async def search_manga(self, event: AstrMessageEvent, keyword: str):
-        '''搜索漫画。用法: /漫画 搜索 <关键词> [源名]，多词标题用 + 连接'''
+        '''搜索漫画。用法: /漫画 搜索 <关键词> [源名]'''
         try:
             # AstrBot splits args by spaces, so the trailing source name is lost
             # from the keyword param — parse it from the full message instead.
             keyword, source_hint = split_search_query(event.message_str, keyword)
             if not keyword:
                 yield event.plain_result(
-                    "用法: /漫画 搜索 <关键词> [源名]\n"
-                    "多词标题用 + 连接，如: 漫画 搜索 香格里拉+再\n"
-                    "指定源: 漫画 搜索 关键词 再漫画"
+                    "用法: /漫画 搜索 <关键词> [源名]（多词标题用 + 连接）"
                 )
                 return
 
@@ -778,7 +776,7 @@ class SuwayomiPlugin(Star):
                     search_query = f"{keyword} {source_hint}".strip()
                     yield event.plain_result(
                         f"未找到名为「{source_hint}」的漫画源，已将其作为关键词继续搜索。"
-                        "多词标题请用 + 连接（如 香格里拉+再）；可用「漫画 源」查看全部源。"
+                        "可用「漫画 源」查看全部源。"
                     )
             if not target_sources:
                 # Same selection as the AI tool path: skip the local source and

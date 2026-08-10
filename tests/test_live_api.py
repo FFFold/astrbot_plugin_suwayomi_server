@@ -24,6 +24,13 @@ AUTH_MODE = os.environ.get("SUWAYOMI_AUTH_MODE", "none")
 AUTH_USER = os.environ.get("SUWAYOMI_USERNAME", "")
 AUTH_PASS = os.environ.get("SUWAYOMI_PASSWORD", "")
 
+from tests.helpers import server_reachable_sync  # noqa: E402
+
+pytestmark = pytest.mark.skipif(
+    not server_reachable_sync(SERVER_URL),
+    reason="Suwayomi-Server 不可达，跳过集成测试（可用 SUWAYOMI_URL 指定地址）",
+)
+
 
 @pytest_asyncio.fixture
 async def client():

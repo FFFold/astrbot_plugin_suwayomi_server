@@ -1,6 +1,13 @@
 """Mock astrbot module for standalone integration tests."""
 import sys
+from pathlib import Path
 from unittest.mock import MagicMock
+
+# Allow importing plugin subpackages as a package (e.g. astrbot_suwayomi_server.utils.downloader),
+# required because utils/* modules use upward relative imports (from ..suwayomi import ...).
+_PLUGIN_ROOT = Path(__file__).resolve().parent.parent
+if str(_PLUGIN_ROOT.parent) not in sys.path:
+    sys.path.insert(0, str(_PLUGIN_ROOT.parent))
 
 # Mock astrbot.api before any plugin imports
 astrbot_mock = MagicMock()

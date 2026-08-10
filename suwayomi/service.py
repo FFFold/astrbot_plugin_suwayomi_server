@@ -146,11 +146,13 @@ def ttl_cache_store(
     cache: dict[str, tuple[float, Any]],
     key: str,
     value: Any,
-    ttl: float,
     max_entries: int,
     now: float | None = None,
 ) -> None:
-    """Store an entry with TTL; evict the oldest entry when over the cap."""
+    """Store an entry; evict the oldest entry when over the cap.
+
+    TTL is enforced on lookup via `ttl_cache_lookup`, not at write time.
+    """
     cache[key] = (now if now is not None else time.time(), value)
     if len(cache) > max_entries:
         oldest = min(cache, key=lambda k: cache[k][0])

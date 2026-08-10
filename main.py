@@ -586,7 +586,7 @@ class SuwayomiPlugin(Star):
 
     def _set_search_cache(self, umo: str, cache: dict[str, Manga]):
         ttl_cache_store(
-            self._search_cache, umo, cache, _CACHE_TTL, _SEARCH_CACHE_MAX_ENTRIES
+            self._search_cache, umo, cache, _SEARCH_CACHE_MAX_ENTRIES
         )
 
     async def _prepare_chapter_delivery(self, event: AstrMessageEvent, target):

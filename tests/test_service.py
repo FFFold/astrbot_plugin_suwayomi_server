@@ -191,16 +191,16 @@ class TestTtlCacheHelpers:
     def test_lookup_expires(self):
         from suwayomi.service import ttl_cache_lookup, ttl_cache_store
         cache = {}
-        ttl_cache_store(cache, "a", 1, ttl=10, max_entries=4, now=100.0)
+        ttl_cache_store(cache, "a", 1, max_entries=4, now=100.0)
         assert ttl_cache_lookup(cache, "a", 10, now=105.0) == 1
         assert ttl_cache_lookup(cache, "a", 10, now=115.0) is None
 
     def test_store_evicts_oldest(self):
         from suwayomi.service import ttl_cache_lookup, ttl_cache_store
         cache = {}
-        ttl_cache_store(cache, "a", 1, ttl=10, max_entries=2, now=1.0)
-        ttl_cache_store(cache, "b", 2, ttl=10, max_entries=2, now=2.0)
-        ttl_cache_store(cache, "c", 3, ttl=10, max_entries=2, now=3.0)
+        ttl_cache_store(cache, "a", 1, max_entries=2, now=1.0)
+        ttl_cache_store(cache, "b", 2, max_entries=2, now=2.0)
+        ttl_cache_store(cache, "c", 3, max_entries=2, now=3.0)
         assert ttl_cache_lookup(cache, "a", 10, now=4.0) is None
         assert ttl_cache_lookup(cache, "b", 10, now=4.0) == 2
         assert ttl_cache_lookup(cache, "c", 10, now=4.0) == 3

@@ -204,3 +204,32 @@ class TestTtlCacheHelpers:
         assert ttl_cache_lookup(cache, "a", 10, now=4.0) is None
         assert ttl_cache_lookup(cache, "b", 10, now=4.0) == 2
         assert ttl_cache_lookup(cache, "c", 10, now=4.0) == 3
+
+
+class TestSplitSearchQuery:
+
+    def test_message_with_trailing_source_hint(self):
+        """Full message keeps the trailing source hint lost by AstrBot's arg split."""
+        from suwayomi.service import split_search_query
+        kw, hint = split_search_query("/漫画 搜索 安达与岛村 再漫画", "安达与岛村")
+        assert kw == "安达与岛村"
+        assert hint == "再漫画"
+
+    def test_message_without_source_hint(self):
+        from suwayomi.service import split_search_query
+        kw, hint = split_search_query("/漫画 搜索 安达与岛村", "安达与岛村")
+        assert kw == "安达与岛村"
+        assert hint == ""
+
+    def test_falls_back_to_keyword_param(self):
+        """When message parsing fails, use the AstrBot keyword param as-is."""
+        from suwayomi.service import split_search_query
+        kw, hint = split_search_query("", "安达与岛村 再漫画")
+        assert kw == "安达与岛村"
+        assert hint == "再漫画"
+
+    def test_empty_message_and_keyword(self):
+        from suwayomi.service import split_search_query
+        kw, hint = split_search_query("", "")
+        assert kw == ""
+        assert hint == ""

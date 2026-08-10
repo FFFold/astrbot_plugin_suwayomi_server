@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 ### Fixed
 
+- **「漫画 搜索」尾部源名被截断** — AstrBot 按空格拆分参数导致 `/漫画 搜索 <关键词> <源名>` 的源名丢失、静默搜索默认源；改为从 `event.message_str` 解析完整关键词与源提示（`split_search_query`），源名无效时提示可用「漫画 源」查看
 - **live 集成测试自动跳过** — `test_live_api.py` / `test_live_web_api.py` 在 Suwayomi-Server 不可达时自动跳过（3s 探活），不再使全量 `pytest` 失败；本地调试仍可用 `SUWAYOMI_URL` 指向真实服务器
 - **订阅数据并发丢失更新** — `SubscriptionManager` 全部写操作（订阅/取消/推送开关/章节进度/标题同步）加 `asyncio.Lock` 串行化读-改-写，避免后台更新循环与用户命令并发时互相覆盖
 - **章节时间戳并发覆盖** — `get_chapter_timestamp` / `set_chapter_timestamp` 加锁，配合更新检查并行化后不会互相覆盖

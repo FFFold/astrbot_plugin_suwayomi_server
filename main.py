@@ -33,6 +33,7 @@ from .suwayomi.service import (
     resolve_chapter,
     resolve_manga,
     search_best_match,
+    split_search_query,
     ttl_cache_lookup,
     ttl_cache_store,
 )
@@ -748,7 +749,9 @@ class SuwayomiPlugin(Star):
     async def search_manga(self, event: AstrMessageEvent, keyword: str):
         '''搜索漫画。用法: /漫画 搜索 <关键词> [源名]'''
         try:
-            keyword = keyword.strip()
+            # AstrBot splits args by spaces, so the trailing source name is lost
+            # from the keyword param — parse it from the full message instead.
+            keyword, source_hint = split_search_query(event.message_str, keyword)
             if not keyword:
                 yield event.plain_result("用法: /漫画 搜索 <关键词> [源名]")
                 return
@@ -760,14 +763,18 @@ class SuwayomiPlugin(Star):
 
             source_filter = None
             search_query = keyword
-            words = keyword.rsplit(" ", 1)
-            if len(words) == 2:
-                potential_source = words[1].lower()
+            if source_hint:
+                potential_source = source_hint.lower()
                 for src in sources:
                     if potential_source in (src.name.lower(), src.display_name.lower(), src.lang.lower()):
                         source_filter = src
-                        search_query = words[0]
+                        search_query = keyword
                         break
+                if source_filter is None:
+                    yield event.plain_result(
+                        f"未找到名为「{source_hint}」的漫画源，将搜索默认源。"
+                        "可用「漫画 源」查看全部源。"
+                    )
 
             default_sid = self.config.get("default_source_id", 0)
             if source_filter:

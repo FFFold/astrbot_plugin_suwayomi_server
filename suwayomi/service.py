@@ -142,6 +142,30 @@ def resolve_chapter(
     )
 
 
+def split_search_query(message_str: str, keyword: str) -> tuple[str, str]:
+    """Split a search command message into (keyword, source_hint).
+
+    AstrBot's command handler splits arguments by spaces, so a trailing source
+    name like "/漫画 搜索 安达与岛村 再漫画" is lost from the keyword param.
+    Parse the full message instead, falling back to the keyword param.
+    """
+    raw = (message_str or "").strip()
+    tokens = raw.split()
+    args = ""
+    try:
+        idx = tokens.index("搜索")
+        args = " ".join(tokens[idx + 1:]).strip()
+    except ValueError:
+        pass
+    if not args:
+        args = (keyword or "").strip()
+
+    words = args.rsplit(" ", 1)
+    if len(words) == 2:
+        return words[0].strip(), words[1].strip()
+    return args, ""
+
+
 def ttl_cache_store(
     cache: dict[str, tuple[float, Any]],
     key: str,

@@ -10,8 +10,8 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock
 from suwayomi.models import Chapter
 
-import astrbot_suwayomi_server.utils.pusher as pusher_module
-from astrbot_suwayomi_server.utils.pusher import build_image_chain
+import plugin_pkg.utils.pusher as pusher_module
+from plugin_pkg.utils.pusher import build_image_chain
 from astrbot.api import message_components as Comp
 
 

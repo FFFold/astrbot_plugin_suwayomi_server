@@ -38,7 +38,13 @@ async def _check_one_manga(
     info: dict,
 ):
     """Check one subscription for new chapters. Returns an update tuple or None."""
-    manga_id = int(manga_id_str)
+    try:
+        manga_id = int(manga_id_str)
+    except (TypeError, ValueError):
+        logger.warning(
+            f"[{_PLUGIN_NAME}] 订阅数据损坏: 忽略非法漫画 ID {manga_id_str!r}"
+        )
+        return None
     title = info.get("title", f"ID:{manga_id}")
     latest_stored = info.get("latest_chapter_id", 0)
     subscribers = info.get("subscribers", {})

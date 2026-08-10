@@ -6,7 +6,12 @@ import time
 from typing import Any
 
 from .models import Chapter, Manga, Source
-from .service import fmt_chapter_display, get_or_fetch_chapters, parse_chapter_number_text
+from .service import (
+    fmt_chapter_display,
+    fmt_chapter_num,
+    get_or_fetch_chapters,
+    parse_chapter_number_text,
+)
 
 from astrbot.api import logger
 
@@ -303,7 +308,7 @@ def _select_chapter_candidates(
 
     candidates = [chapter for chapter in chapters if chapter.chapter_number == number]
     if not candidates:
-        return None, [], f"未找到第 {cleaned} 话"
+        return None, [], f"未找到第 {fmt_chapter_num(number)} 话"
     if len(candidates) > 1:
         return None, candidates, "同一章节号存在多个结果，需要使用 chapter_id 明确选择"
     return candidates[0], candidates, None

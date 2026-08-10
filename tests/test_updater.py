@@ -137,3 +137,32 @@ async def test_check_updates_survives_single_manga_failure():
     )
     assert "2 部漫画更新" in summary
     assert "T1" in summary and "T3" in summary
+
+
+@pytest.mark.asyncio
+async def test_check_updates_skips_corrupted_subscription_key():
+    """A non-numeric subscription key (corrupted KV) must not abort the whole scan."""
+    plugin = FakePlugin()
+    plugin._store["suwayomi_subscriptions"] = {
+        "abc": {
+            "title": "corrupted",
+            "source_id": 1,
+            "latest_chapter_id": 0,
+            "subscribers": {"u1": {"push_enabled": False}},
+        },
+        "2": {
+            "title": "T2",
+            "source_id": 1,
+            "latest_chapter_id": 0,
+            "subscribers": {"u1": {"push_enabled": False}},
+        },
+    }
+    sub_mgr = _make_sub_mgr(plugin)
+    client = CountingClient({2: _chapters(2, [2])})
+    summary = await check_updates(
+        client, sub_mgr, _context(), _config(),
+        plugin.get_kv_data, plugin.put_kv_data, asyncio.Lock(),
+        AsyncMock(), AsyncMock(),
+    )
+    assert "1 部漫画更新" in summary
+    assert "T2" in summary

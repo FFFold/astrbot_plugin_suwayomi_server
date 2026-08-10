@@ -131,6 +131,13 @@ class TestResolveChapter:
         assert err is None
         assert target is not None and target.id == 100
 
+    def test_missing_number_with_suffix_has_clean_message(self):
+        chapters = [_chapter(100, "第5话", 5)]
+        _, err = resolve_chapter(chapters, "第9话", "test", "阅读")
+        assert err is not None
+        assert "未找到第 9 话" in err
+        assert "第第" not in err
+
 
 class TestChapterTimestampConcurrency:
 

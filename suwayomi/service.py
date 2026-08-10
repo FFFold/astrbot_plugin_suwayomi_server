@@ -132,7 +132,7 @@ def resolve_chapter(
         return None, "章节号无效。示例: 1, 38.5, 第5话 或 ID:123"
     matches = find_chapters_by_num(chapters, chapter_num_f)
     if len(matches) == 0:
-        return None, f"未找到第 {chapter_num} 话。"
+        return None, f"未找到第 {fmt_chapter_num(chapter_num_f)} 话。"
     if len(matches) == 1:
         return matches[0], None
     ids = " 或 ".join(f"ID:{m.id}" for m in matches)

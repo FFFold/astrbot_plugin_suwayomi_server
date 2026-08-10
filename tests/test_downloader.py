@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from astrbot_suwayomi_server.utils.downloader import download_images, download_one
+from plugin_pkg.utils.downloader import download_images, download_one
 
 
 @pytest.mark.asyncio
@@ -15,7 +15,7 @@ async def test_download_images_creates_missing_custom_tmp(tmp_path, monkeypatch)
         dest.write_bytes(b"x")
         return True
 
-    monkeypatch.setattr("astrbot_suwayomi_server.utils.downloader.download_one", fake_download_one)
+    monkeypatch.setattr("plugin_pkg.utils.downloader.download_one", fake_download_one)
 
     paths, tmp_dir = await download_images(
         ["http://x/1", "http://x/2"],
@@ -33,7 +33,7 @@ async def test_download_images_returns_empty_paths_on_failure(tmp_path, monkeypa
     async def failing(session, url, dest, retries=3):
         raise OSError("boom")
 
-    monkeypatch.setattr("astrbot_suwayomi_server.utils.downloader.download_one", failing)
+    monkeypatch.setattr("plugin_pkg.utils.downloader.download_one", failing)
 
     paths, tmp_dir = await download_images(
         ["http://x/1", "http://x/2"],

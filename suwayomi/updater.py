@@ -22,6 +22,90 @@ if TYPE_CHECKING:
 
 _PLUGIN_NAME = PLUGIN_NAME
 
+_UPDATE_CONCURRENCY = 5
+LAST_CHECK_KV_KEY = "suwayomi_last_update_check"
+
+
+async def _check_one_manga(
+    client: SuwayomiClient,
+    sub_mgr: SubscriptionManager,
+    config: dict,
+    get_kv_data: Callable,
+    put_kv_data: Callable,
+    force: bool,
+    cache_hours: float,
+    manga_id_str: str,
+    info: dict,
+):
+    """Check one subscription for new chapters. Returns an update tuple or None."""
+    manga_id = int(manga_id_str)
+    title = info.get("title", f"ID:{manga_id}")
+    latest_stored = info.get("latest_chapter_id", 0)
+    subscribers = info.get("subscribers", {})
+
+    if not subscribers:
+        return None
+
+    try:
+        if force or cache_hours != 0:
+            last_ts = await get_chapter_timestamp(get_kv_data, manga_id)
+            if (
+                force
+                or last_ts == 0
+                or cache_hours == -1
+                or (time.time() - last_ts) > cache_hours * 3600
+            ):
+                try:
+                    manga = await client.get_manga(manga_id)
+                    if await sub_mgr.update_title(manga_id, manga.title):
+                        logger.info(
+                            f"[{_PLUGIN_NAME}] 漫画标题已更新: "
+                            f"「{title}」->「{manga.title}」(ID:{manga_id})"
+                        )
+                        title = manga.title
+                except Exception:
+                    pass
+
+        chapters = await get_or_fetch_chapters(
+            client, get_kv_data, put_kv_data, config, manga_id, force=force
+        )
+        if not chapters:
+            return None
+
+        new_chapters = []
+        max_id = latest_stored
+        for ch in chapters:
+            if ch.id > latest_stored:
+                new_chapters.append(ch)
+                if ch.id > max_id:
+                    max_id = ch.id
+
+        if not new_chapters:
+            return None
+
+        await sub_mgr.update_latest_chapter(manga_id, max_id)
+        logger.info(
+            f"[{_PLUGIN_NAME}] 发现更新: 「{title}」"
+            f"新增 {len(new_chapters)} 章节"
+        )
+        num_count: dict[float, int] = {}
+        for ch in chapters:
+            num_count[ch.chapter_number] = (
+                num_count.get(ch.chapter_number, 0) + 1
+            )
+
+        new_chapters.sort(key=lambda ch: ch.source_order)
+        ch_info = [
+            fmt_chapter_label(ch, num_count) for ch in new_chapters
+        ]
+        return (manga_id, title, ch_info, new_chapters, subscribers)
+    except Exception as e:
+        logger.warning(
+            f"[{_PLUGIN_NAME}] 检查漫画 {title} "
+            f"(ID:{manga_id}) 更新失败: {e}"
+        )
+        return None
+
 
 async def check_updates(
     client: SuwayomiClient,
@@ -55,81 +139,28 @@ async def check_updates(
         if cache_hours < -1:
             cache_hours = 0
 
-        for manga_id_str, info in all_subs.items():
-            manga_id = int(manga_id_str)
-            title = info.get("title", f"ID:{manga_id}")
-            latest_stored = info.get("latest_chapter_id", 0)
-            subscribers = info.get("subscribers", {})
+        sem = asyncio.Semaphore(_UPDATE_CONCURRENCY)
 
-            if not subscribers:
-                continue
-
-            try:
-                if force or cache_hours != 0:
-                    last_ts = await get_chapter_timestamp(get_kv_data, manga_id)
-                    if (
-                        force
-                        or last_ts == 0
-                        or cache_hours == -1
-                        or (time.time() - last_ts) > cache_hours * 3600
-                    ):
-                        try:
-                            manga = await client.get_manga(manga_id)
-                            if await sub_mgr.update_title(manga_id, manga.title):
-                                logger.info(
-                                    f"[{_PLUGIN_NAME}] 漫画标题已更新: "
-                                    f"「{title}」->「{manga.title}」(ID:{manga_id})"
-                                )
-                                title = manga.title
-                        except Exception:
-                            pass
-
-                chapters = await get_or_fetch_chapters(
-                    client, get_kv_data, put_kv_data, config, manga_id, force=force
+        async def _run(item):
+            async with sem:
+                return await _check_one_manga(
+                    client, sub_mgr, config, get_kv_data, put_kv_data,
+                    force, cache_hours, item[0], item[1],
                 )
-                if not chapters:
-                    continue
 
-                new_chapters = []
-                max_id = latest_stored
-                for ch in chapters:
-                    if ch.id > latest_stored:
-                        new_chapters.append(ch)
-                        if ch.id > max_id:
-                            max_id = ch.id
-
-                if new_chapters:
-                    await sub_mgr.update_latest_chapter(manga_id, max_id)
-                    logger.info(
-                        f"[{_PLUGIN_NAME}] 发现更新: 「{title}」"
-                        f"新增 {len(new_chapters)} 章节"
-                    )
-                    num_count: dict[float, int] = {}
-                    for ch in chapters:
-                        num_count[ch.chapter_number] = (
-                            num_count.get(ch.chapter_number, 0) + 1
-                        )
-
-                    new_chapters.sort(key=lambda ch: ch.source_order)
-                    ch_info = [
-                        fmt_chapter_label(ch, num_count) for ch in new_chapters
-                    ]
-                    updated_mangas.append(
-                        (manga_id, title, ch_info, new_chapters, subscribers)
-                    )
-
-            except Exception as e:
-                logger.warning(
-                    f"[{_PLUGIN_NAME}] 检查漫画 {title} "
-                    f"(ID:{manga_id}) 更新失败: {e}"
-                )
-                continue
+        results = await asyncio.gather(
+            *(_run(item) for item in all_subs.items())
+        )
+        updated_mangas = [
+            r for r in results if r is not None
+        ]
 
         if not updated_mangas:
             logger.info(
                 f"[{_PLUGIN_NAME}] 更新检查完成: 检查 {len(all_subs)} 部漫画，"
                 f"暂无更新"
             )
+            await put_kv_data(LAST_CHECK_KV_KEY, time.time())
             return "✅ 所有订阅的漫画暂无更新。"
 
         logger.info(
@@ -185,6 +216,7 @@ async def check_updates(
         summary_lines = [f"✅ 发现 {len(updated_mangas)} 部漫画更新："]
         for _, title, ch_info, _, _ in updated_mangas:
             summary_lines.append(f"  • {title}: {', '.join(ch_info)}")
+        await put_kv_data(LAST_CHECK_KV_KEY, time.time())
         return "\n".join(summary_lines)
 
 

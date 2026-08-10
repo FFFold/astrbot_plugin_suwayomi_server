@@ -37,7 +37,12 @@ from .suwayomi.service import (
 from .suwayomi.updater import check_updates as _check_updates, run_update_loop
 from .utils.downloader import fetch_pages_local
 from .utils.pack import pack_cbz, pack_pdf, pack_zip, parse_download_args
-from .utils.pusher import push_chapter_file, push_chapter_images, schedule_cleanup
+from .utils.pusher import (
+    cancel_pending_cleanups,
+    push_chapter_file,
+    push_chapter_images,
+    schedule_cleanup,
+)
 from .utils.subscription import SubscriptionManager
 from .web.api import (
     api_config_get,
@@ -513,6 +518,7 @@ class SuwayomiPlugin(Star):
     async def terminate(self):
         if self._bg_task and not self._bg_task.done():
             self._bg_task.cancel()
+        cancel_pending_cleanups()
         self._ai_state.clear()
         self._ai_send_locks.clear()
         await self.client.close()

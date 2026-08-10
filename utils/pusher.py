@@ -21,6 +21,8 @@ if TYPE_CHECKING:
 from ..suwayomi import PLUGIN_NAME
 _PLUGIN_NAME = PLUGIN_NAME
 
+_cleanup_tasks: set[asyncio.Task] = set()
+
 
 def is_aiocqhttp_target(context: Context, umo: str) -> bool:
     pid = umo.split(":", 1)[0]
@@ -28,9 +30,9 @@ def is_aiocqhttp_target(context: Context, umo: str) -> bool:
     return platform is not None and platform.meta().name == "aiocqhttp"
 
 
-def schedule_cleanup(tmp_dir: Path | None, delay: int = 60):
+def schedule_cleanup(tmp_dir: Path | None, delay: int = 60) -> asyncio.Task | None:
     if tmp_dir is None:
-        return
+        return None
 
     async def _cleanup():
         await asyncio.sleep(delay)
@@ -41,7 +43,18 @@ def schedule_cleanup(tmp_dir: Path | None, delay: int = 60):
         except Exception:
             pass
 
-    asyncio.create_task(_cleanup())
+    task = asyncio.create_task(_cleanup())
+    _cleanup_tasks.add(task)
+    task.add_done_callback(_cleanup_tasks.discard)
+    return task
+
+
+def cancel_pending_cleanups() -> int:
+    """Cancel pending temp-dir cleanup tasks (called on plugin terminate)."""
+    tasks = list(_cleanup_tasks)
+    for task in tasks:
+        task.cancel()
+    return len(tasks)
 
 
 async def push_chapter_images(

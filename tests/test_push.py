@@ -4,10 +4,13 @@ Uses a PushTester class that replicates the push logic.
 CompSpy tracks what Comp types were created to avoid MagicMock ambiguity.
 """
 
+import asyncio
 from dataclasses import dataclass, field
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 from suwayomi.models import Chapter
+
+import astrbot_suwayomi_server.utils.pusher as pusher_module
 
 
 @dataclass
@@ -213,3 +216,30 @@ class TestIsAiocqhttpTarget:
         mock_context.get_platform_inst = MagicMock(return_value=None)
         tester = PushTester(mock_context, FakeConfig(), CompSpy())
         assert tester._is_aiocqhttp_target("unknown:Group:1") is False
+
+
+class TestScheduleCleanup:
+
+    @pytest.mark.asyncio
+    async def test_cleanup_removes_dir_after_delay(self, tmp_path):
+        d = tmp_path / "d"
+        d.mkdir()
+        pusher_module.schedule_cleanup(d, delay=0.05)
+        assert d.exists()
+        await asyncio.sleep(0.15)
+        assert not d.exists()
+
+    def test_cleanup_skips_none(self):
+        assert pusher_module.schedule_cleanup(None) is None
+
+    @pytest.mark.asyncio
+    async def test_cancel_pending_cleanups(self, tmp_path):
+        d = tmp_path / "d"
+        d.mkdir()
+        task = pusher_module.schedule_cleanup(d, delay=60)
+        assert task is not None
+        assert task in pusher_module._cleanup_tasks
+        n = pusher_module.cancel_pending_cleanups()
+        assert n >= 1
+        await asyncio.sleep(0.05)
+        assert len(pusher_module._cleanup_tasks) == 0

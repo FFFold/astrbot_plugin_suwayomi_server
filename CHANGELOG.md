@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 - 新增 `.github/workflows/ci.yml`，push/PR 自动运行单元测试（live 测试在 CI 中自动跳过）
 - 新增 `tests/helpers.py`（`server_reachable` 探活助手）、`tests/test_live_skip.py`、`tests/test_updater.py`、`tests/test_downloader.py`
+- live 集成测试增强：新增真实命令主路径覆盖（`test_download_and_pack_chapter` 下载→打包 zip/pdf/cbz、`test_check_updates_detects_new_chapters_live` 真实更新扫描→推送→水位线→时间戳）；漫画源限流（如拷贝漫画 "Request was throttled"）时 AI 搜索测试自动重试并跳过（`_search_zh_for_agent`），多章节列表测试对单章结果/限流容错
 
 ## [0.5.3] - 2026-07-28
 

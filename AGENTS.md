@@ -143,8 +143,8 @@ main.py (SuwayomiPlugin — thin dispatch layer)
 - `requirements.txt`: Runtime deps (currently `aiohttp>=3.9.0`, `img2pdf>=0.5.0`, `opencc-python-reimplemented>=0.1.7`, and `pydantic>=2.12.5`)
 - `pyproject.toml`: Dev deps (pytest, pytest-asyncio), gitignored
 - Tests in `tests/` - unit tests are synchronous or use `@pytest.mark.asyncio`; `test_ai_service.py` covers structured Agent search, chapter selection, and subscription management, while `test_ai_tools.py` guards `call()` dispatch across initial load and config re-sync for all six tools
-- `test_live_api.py`: Integration tests for Suwayomi client, skipped by default, need live server
-- `test_live_web_api.py`: Integration tests for WebUI API handlers, skipped by default, need live server
+- `test_live_api.py`: Integration tests for Suwayomi client, auto-skipped when server unreachable. Covers sources/search/chapters/pages, AI search & chapter selection, plus the real command main path (`test_download_and_pack_chapter`: fetch pages → download images → pack zip/pdf/cbz; `test_check_updates_detects_new_chapters_live`: real scan → notify → watermark → last-check timestamp). Manga sources rate-limit consecutive fetches, so AI-search tests retry once and skip when throttled (`_search_zh_for_agent`)
+- `test_live_web_api.py`: Integration tests for WebUI API handlers, auto-skipped when server unreachable
 - Version is in `metadata.yaml`, not `pyproject.toml`
 
 ## Documentation Update Checklist

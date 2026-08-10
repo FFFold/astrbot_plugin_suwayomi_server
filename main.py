@@ -43,6 +43,7 @@ from .utils.pack import (
     parse_download_args,
 )
 from .utils.pusher import (
+    build_image_chain,
     cancel_pending_cleanups,
     push_chapter_file,
     push_chapter_images,
@@ -619,36 +620,17 @@ class SuwayomiPlugin(Star):
         if not page_urls:
             return None, total_pages, 0, tmp_dir
 
-        def _img(idx: int) -> Comp.Image:
-            if fetch_mode == "download" and idx < len(local_paths) and local_paths[idx]:
-                return Comp.Image.fromFileSystem(local_paths[idx])
-            if fetch_mode == "download":
-                logger.warning(
-                    f"[{PLUGIN_NAME}] 图片 {idx + 1} 下载失败，"
-                    "请检查 Suwayomi 认证配置（URL 模式不兼容带认证的服务器）"
-                )
-            return Comp.Image.fromURL(page_urls[idx])
-
-        if send_mode == "forward" and event.get_platform_name() == "aiocqhttp":
-            nodes = []
-            for i in range(len(page_urls)):
-                nodes.append(Comp.Node(
-                    uin="0",
-                    name=f"{fmt_chapter_display(target)} - 第 {i + 1} 页",
-                    content=[_img(i)],
-                ))
-            if total_pages > max_pages:
-                nodes.append(Comp.Node(
-                    uin="0",
-                    name="提示",
-                    content=[Comp.Plain(f"... 还有 {total_pages - max_pages} 页，请到 WebUI 查看")],
-                ))
-            result = event.chain_result([Comp.Nodes(nodes)])
-        else:
-            chain = [_img(i) for i in range(len(page_urls))]
-            if total_pages > max_pages:
-                chain.append(Comp.Plain(f"... 还有 {total_pages - max_pages} 页，请到 WebUI 查看"))
-            result = event.chain_result(chain)
+        chain = build_image_chain(
+            page_urls, local_paths, fetch_mode,
+            send_mode=send_mode,
+            forward_platform=event.get_platform_name() == "aiocqhttp",
+            page_label=fmt_chapter_display(target),
+            header=None,
+            total_pages=total_pages,
+            max_pages=max_pages,
+            tail_text=f"... 还有 {total_pages - max_pages} 页，请到 WebUI 查看",
+        )
+        result = event.chain_result(chain)
 
         return result, total_pages, len(page_urls), tmp_dir
 

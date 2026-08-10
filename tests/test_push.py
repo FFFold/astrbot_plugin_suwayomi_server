@@ -11,6 +11,8 @@ from unittest.mock import AsyncMock, MagicMock
 from suwayomi.models import Chapter
 
 import astrbot_suwayomi_server.utils.pusher as pusher_module
+from astrbot_suwayomi_server.utils.pusher import build_image_chain
+from astrbot.api import message_components as Comp
 
 
 @dataclass
@@ -243,3 +245,65 @@ class TestScheduleCleanup:
         assert n >= 1
         await asyncio.sleep(0.05)
         assert len(pusher_module._cleanup_tasks) == 0
+
+
+class TestBuildImageChain:
+
+    @pytest.fixture(autouse=True)
+    def reset_comp(self):
+        Comp.reset_mock()
+        yield
+
+    def test_inline_with_header_and_tail(self):
+        chain = build_image_chain(
+            ["http://x/1", "http://x/2"], ["", ""], "download",
+            send_mode="image", forward_platform=True,
+            page_label="第1话", header="📖「T」第1话",
+            total_pages=5, max_pages=2, tail_text="tail",
+        )
+        assert len(chain) == 4
+        assert Comp.Plain.call_count == 2
+        assert Comp.Image.fromURL.call_count == 2
+
+    def test_forward_with_header(self):
+        chain = build_image_chain(
+            ["http://x/1"], [""], "download",
+            send_mode="forward", forward_platform=True,
+            page_label="第1话", header="📖「T」第1话",
+            header_node_name="「T」第1话",
+            total_pages=1, max_pages=30, tail_text="tail",
+        )
+        assert len(chain) == 1  # [Nodes]
+        assert Comp.Nodes.call_count == 1
+        nodes = Comp.Nodes.call_args.args[0]
+        assert len(nodes) == 2  # header node + 1 page node
+
+    def test_forward_without_header(self):
+        chain = build_image_chain(
+            ["http://x/1"], [""], "download",
+            send_mode="forward", forward_platform=True,
+            page_label="第1话", header=None,
+            total_pages=1, max_pages=30, tail_text="tail",
+        )
+        nodes = Comp.Nodes.call_args.args[0]
+        assert len(nodes) == 1
+
+    def test_forward_ignored_on_non_forward_platform(self):
+        chain = build_image_chain(
+            ["http://x/1"], [""], "download",
+            send_mode="forward", forward_platform=False,
+            page_label="第1话", header=None,
+            total_pages=1, max_pages=30, tail_text="tail",
+        )
+        assert Comp.Nodes.call_count == 0
+        assert len(chain) == 1
+
+    def test_download_mode_uses_local_files(self):
+        chain = build_image_chain(
+            ["http://x/1"], ["/tmp/1.jpg"], "download",
+            send_mode="image", forward_platform=False,
+            page_label="第1话", header=None,
+            total_pages=1, max_pages=30, tail_text="tail",
+        )
+        assert Comp.Image.fromFileSystem.call_count == 1
+        assert Comp.Image.fromURL.call_count == 0

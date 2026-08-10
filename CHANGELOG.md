@@ -13,7 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 - **订阅数据并发丢失更新** — `SubscriptionManager` 全部写操作（订阅/取消/推送开关/章节进度/标题同步）加 `asyncio.Lock` 串行化读-改-写，避免后台更新循环与用户命令并发时互相覆盖
 - **章节时间戳并发覆盖** — `get_chapter_timestamp` / `set_chapter_timestamp` 加锁，配合更新检查并行化后不会互相覆盖
 - **更新检查并行化** — `check_updates` 改为按订阅并行检查（并发上限 5，`asyncio.Semaphore`），订阅多时一轮检查耗时显著下降；单部漫画失败不再拖累全部
-- **`last_update_check` 时间戳失真** — 后台更新循环与「漫画 更新」命令完成后统一写入 `suwayomi_last_update_check`，WebUI 仪表盘时间戳不再只随手动 API 更新
+- **`last_update_check` 时间戳失真** — 后台更新循环与「漫画 更新」命令完成后统一写入 `suwayomi_last_update_check`，WebUI 仪表盘时间戳不再只随手动 API 更新；全部订阅检查均出错时返回失败提示且不写入时间戳，避免掩盖服务故障
+- **URL 模式 + 认证告警** — 图片获取方式为 URL 模式且 Suwayomi 开启认证时记录告警日志，提示改用下载模式（URL 模式不兼容带认证的服务器）
 - **WebUI 配置枚举校验** — `send_mode` / `image_fetch_mode` / `auto_push_mode` / `download_format` 白名单校验，非法值不再写入配置
 - **命令支持「第X话」格式** — `resolve_chapter` 与 AI 路径共用 `parse_chapter_number_text`，`/漫画 阅读/下载 xxx 第5话` 不再报"章节号无效"
 - **temp_dir 自动创建** — 配置的临时目录不存在时自动 `mkdir`，不再直接抛异常

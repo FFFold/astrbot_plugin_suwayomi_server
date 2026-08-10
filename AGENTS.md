@@ -23,6 +23,7 @@ uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests
 # Integration tests (requires live Suwayomi-Server)
 uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
 # Custom server: SUWAYOMI_URL=http://host:4567 uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
+# Note: live tests auto-skip (3s probe) when the server is unreachable, so plain `uv run pytest` is always green without a server.
 
 # All tests
 uv run pytest -v
@@ -55,11 +56,11 @@ main.py (SuwayomiPlugin — thin dispatch layer)
 - `suwayomi/service.py`: Business logic — manga/chapter resolution, chapter fetching/caching, text normalization, status emoji mapping. All functions are standalone with dependency-injected parameters (client, sub_mgr, get_kv_data, etc.)
 - `suwayomi/ai_service.py`: Structured AI-facing search, chapter lookup, subscribe/unsubscribe, and subscription listing. Returns stable manga/chapter IDs and never sends messages.
 - `suwayomi/ai_tools.py`: Explicit JSON Schemas for six tools — `suwayomi_search_manga`, `suwayomi_get_chapters`, `suwayomi_send_chapter`, `suwayomi_subscribe_manga`, `suwayomi_get_subscriptions`, `suwayomi_unsubscribe_manga` — registered through `context.add_llm_tools()`; custom `call()` dispatch keeps event binding stable during initial load and config-driven re-registration.
-- `suwayomi/updater.py`: Update engine — `check_updates()` scans all subscriptions for new chapters, pushes notifications, triggers auto-push. `run_update_loop()` is the background task wrapper. Imported by `main.py` with pre-bound push callbacks.
+- `suwayomi/updater.py`: Update engine — `check_updates()` scans all subscriptions for new chapters (parallel, `_UPDATE_CONCURRENCY=5` Semaphore), pushes notifications, triggers auto-push, records `suwayomi_last_update_check` timestamp. `run_update_loop()` is the background task wrapper. Imported by `main.py` with pre-bound push callbacks.
 - `utils/downloader.py`: Image download pipeline — `download_one()` with exponential backoff, `download_images()` parallel batch download (accepts `headers` for auth), `fetch_pages_local()` downloads chapter pages to temp dir (passes `client.auth_headers`).
-- `utils/pack.py`: Pack images into ZIP, CBZ, or PDF files; `parse_download_args()` for command arg parsing
-- `utils/pusher.py`: Push delivery — `push_chapter_images()` sends images inline or via forward, `push_chapter_file()` sends packaged file. Also exports `schedule_cleanup()` for delayed temp dir cleanup (replaces 4 duplicated asyncio tasks) and `is_aiocqhttp_target()` for platform detection.
-- `utils/subscription.py`: Persists subscriptions via AstrBot's `get_kv_data()`/`put_kv_data()`. Also manages per-session push preferences (`set_push_default`/`get_push_default`/`clear_push_default`) stored under the `suwayomi_push_defaults` KV key.
+- `utils/pack.py`: Pack images into ZIP, CBZ, or PDF files; `parse_download_args()` for command arg parsing; shared helpers `sanitize_filename()`, `normalize_pack_format()`, `build_chapter_output_path()`, `pack_images()` used by download/push/AI-send.
+- `utils/pusher.py`: Push delivery — `push_chapter_images()` sends images inline or via forward, `push_chapter_file()` sends packaged file. Also exports `schedule_cleanup()` for delayed temp dir cleanup (tracked in `_cleanup_tasks`, cancelled via `cancel_pending_cleanups()` on terminate), `is_aiocqhttp_target()` for platform detection, and `build_image_chain()` — the single shared builder for image/forward message chains (read, auto-push, AI send).
+- `utils/subscription.py`: Persists subscriptions via AstrBot's `get_kv_data()`/`put_kv_data()`. All write operations are serialized by an internal `asyncio.Lock` (read-modify-write of the whole dict must not interleave). Also manages per-session push preferences (`set_push_default`/`get_push_default`/`clear_push_default`) stored under the `suwayomi_push_defaults` KV key.
 - `web/api.py`: 8 API handlers for admin WebUI (status, subscriptions CRUD, config, sources, update); each receives `client`/`sub_mgr`/`config` as params for testability
 - `pages/dashboard/`: AstrBot Plugin Pages — single HTML file with 3 tabs (仪表盘/订阅管理/设置), vanilla JS + CSS, communicates via Bridge SDK
 

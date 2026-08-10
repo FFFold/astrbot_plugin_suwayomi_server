@@ -348,13 +348,16 @@ async def search_best_match(
     if source_filter:
         target_sources = [source_filter]
     else:
-        default_sid = config.get("default_source_id", 0)
-        if default_sid:
-            target_sources = [s for s in sources if s.id == str(default_sid)]
-            if not target_sources:
-                target_sources = sources[:3]
-        else:
-            target_sources = sources[:3]
+        # Same selection as the AI tool path: skip the local source and prefer
+        # distinct extensions before language variants (MangaDex has 60+).
+        # Imported lazily to avoid a circular import (ai_service imports service).
+        from .ai_service import select_search_sources
+        target_sources = select_search_sources(
+            sources,
+            "",
+            config.get("default_source_id", 0),
+            max_sources=3,
+        )
 
     for src in target_sources:
         try:

@@ -4,6 +4,7 @@ import asyncio
 import copy
 
 import pytest
+from unittest.mock import AsyncMock, MagicMock
 
 from suwayomi.models import Chapter
 from suwayomi.service import (
@@ -233,3 +234,58 @@ class TestSplitSearchQuery:
         kw, hint = split_search_query("", "")
         assert kw == ""
         assert hint == ""
+
+
+class TestSearchBestMatch:
+
+    @pytest.mark.asyncio
+    async def test_default_sources_exclude_local_and_dedupe_variants(self):
+        """Default multi-source search must skip the local source and prefer
+        distinct extensions before MangaDex language variants."""
+        from suwayomi.models import Source
+        from suwayomi.service import search_best_match
+
+        sources = [
+            Source(id="0", name="Local", lang="en", display_name="Local source"),
+            Source(id="1", name="MangaDex", lang="af", display_name="MangaDex (AF)"),
+            Source(id="2", name="MangaDex", lang="sq", display_name="MangaDex (SQ)"),
+            Source(id="3", name="CopyManga", lang="zh", display_name="拷贝漫画"),
+            Source(id="4", name="Komiic", lang="zh", display_name="Komiic"),
+            Source(id="5", name="ZaiManHua", lang="zh", display_name="再漫画"),
+        ]
+        client = MagicMock()
+        client.get_sources = AsyncMock(return_value=sources)
+        client.search_manga = AsyncMock(return_value=MagicMock(mangas=[]))
+
+        manga, err = await search_best_match(client, {"default_source_id": 0}, "安达与岛村")
+
+        assert err == "未找到匹配结果"
+        assert manga is None
+        called_ids = [c.args[0] for c in client.search_manga.await_args_list]
+        assert called_ids == ["1", "3", "4"], (
+            "first distinct extensions only, local source excluded, "
+            f"got {called_ids}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_first_non_empty_result_wins(self):
+        from suwayomi.models import Manga, Source
+        from suwayomi.service import search_best_match
+
+        sources = [
+            Source(id="0", name="Local", lang="en", display_name="Local"),
+            Source(id="1", name="MangaDex", lang="af", display_name="MangaDex (AF)"),
+            Source(id="3", name="CopyManga", lang="zh", display_name="拷贝漫画"),
+        ]
+        found = Manga(id=42, source_id=3, url="", title="安达与岛村")
+        client = MagicMock()
+        client.get_sources = AsyncMock(return_value=sources)
+        client.search_manga = AsyncMock(side_effect=[
+            MagicMock(mangas=[]),
+            MagicMock(mangas=[found]),
+        ])
+
+        manga, err = await search_best_match(client, {"default_source_id": 0}, "安达与岛村")
+
+        assert err is None
+        assert manga is found

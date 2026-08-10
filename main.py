@@ -37,6 +37,7 @@ from .suwayomi.service import (
     ttl_cache_lookup,
     ttl_cache_store,
 )
+from .suwayomi.ai_service import select_search_sources
 from .suwayomi.updater import check_updates as _check_updates, run_update_loop
 from .utils.downloader import fetch_pages_local
 from .utils.pack import (
@@ -763,28 +764,25 @@ class SuwayomiPlugin(Star):
 
             source_filter = None
             search_query = keyword
+            target_sources: list = []
             if source_hint:
-                potential_source = source_hint.lower()
-                for src in sources:
-                    if potential_source in (src.name.lower(), src.display_name.lower(), src.lang.lower()):
-                        source_filter = src
-                        search_query = keyword
-                        break
-                if source_filter is None:
+                hinted = select_search_sources(sources, source_hint, 0, 1)
+                if hinted:
+                    target_sources = hinted
+                else:
                     yield event.plain_result(
                         f"未找到名为「{source_hint}」的漫画源，将搜索默认源。"
                         "可用「漫画 源」查看全部源。"
                     )
-
-            default_sid = self.config.get("default_source_id", 0)
-            if source_filter:
-                target_sources = [source_filter]
-            elif default_sid:
-                target_sources = [s for s in sources if s.id == str(default_sid)]
-                if not target_sources:
-                    target_sources = sources[:3]
-            else:
-                target_sources = sources[:5]
+            if not target_sources:
+                # Same selection as the AI tool path: skip the local source and
+                # prefer distinct extensions before language variants.
+                target_sources = select_search_sources(
+                    sources,
+                    "",
+                    self.config.get("default_source_id", 0),
+                    max_sources=5,
+                )
 
             all_results: list[tuple[str, SearchResult]] = []
             for src in target_sources:

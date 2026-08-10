@@ -236,6 +236,49 @@ class TestSplitSearchQuery:
         assert hint == ""
 
 
+class TestMatchSourceHint:
+
+    def _sources(self):
+        from suwayomi.models import Source
+        return [
+            Source(id="0", name="Local", lang="en", display_name="Local source"),
+            Source(id="1", name="CopyManga", lang="zh", display_name="拷贝漫画 (ZH)"),
+            Source(id="2", name="Komiic", lang="zh", display_name="Komiic (ZH)"),
+            Source(id="3", name="MangaDex", lang="af", display_name="MangaDex (AF)"),
+            Source(id="4", name="ZaiManHua", lang="zh", display_name="再漫画 (ZH)"),
+        ]
+
+    def test_exact_lang(self):
+        from suwayomi.service import match_source_hint
+        assert match_source_hint(self._sources(), "zh").id == "1"
+
+    def test_full_display_name(self):
+        from suwayomi.service import match_source_hint
+        assert match_source_hint(self._sources(), "再漫画").id == "4"
+
+    def test_prefix_of_display_name(self):
+        from suwayomi.service import match_source_hint
+        assert match_source_hint(self._sources(), "拷贝").id == "1"
+
+    def test_single_char_prefix_matches(self):
+        """'再' is a prefix of 再漫画 — matches, and mis-use is the user's fault."""
+        from suwayomi.service import match_source_hint
+        assert match_source_hint(self._sources(), "再").id == "4"
+
+    def test_substring_not_prefix_rejected(self):
+        """'漫画' is a substring of 拷贝漫画 but not a prefix — falls back to keyword."""
+        from suwayomi.service import match_source_hint
+        assert match_source_hint(self._sources(), "漫画") is None
+
+    def test_local_source_excluded(self):
+        from suwayomi.service import match_source_hint
+        assert match_source_hint(self._sources(), "local") is None
+
+    def test_no_match(self):
+        from suwayomi.service import match_source_hint
+        assert match_source_hint(self._sources(), "bilibili") is None
+
+
 class TestSearchBestMatch:
 
     @pytest.mark.asyncio

@@ -184,4 +184,16 @@ async def test_get_sources_refetches_after_ttl(client, monkeypatch):
     clock["now"] += 61
     await client.get_sources()
     assert client._post_graphql.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_search_manga_converts_plus_to_space():
+    """Multi-word titles joined with '+' (香格里拉+再) reach the source as a space."""
+    client = SuwayomiClient("http://localhost:4567", "none", "", "")
+    client._post_graphql = AsyncMock(return_value=(200, {"data": {"fetchSourceManga": {"mangas": [], "hasNextPage": False}}}))
+
+    await client.search_manga("1", "香格里拉+再")
+
+    variables = client._post_graphql.await_args.args[1]
+    assert variables["q"] == "香格里拉 再"
     assert not SuwayomiClient._is_unauthorized(200, {"errors": None})

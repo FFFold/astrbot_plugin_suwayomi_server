@@ -7,10 +7,12 @@ from typing import Any
 
 from .models import Chapter, Manga, Source
 from .service import (
+    _bounded_int,
     fmt_chapter_display,
     fmt_chapter_num,
     get_or_fetch_chapters,
     parse_chapter_number_text,
+    select_search_sources,
 )
 
 from astrbot.api import logger
@@ -110,6 +112,22 @@ def _bounded_int(value: Any, default: int, minimum: int, maximum: int) -> int:
     return max(minimum, min(parsed, maximum))
 
 
+def _bounded_int(value: Any, default: int, minimum: int, maximum: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = default
+    return max(minimum, min(parsed, maximum))
+
+
+def _bounded_int(value: Any, default: int, minimum: int, maximum: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = default
+    return max(minimum, min(parsed, maximum))
+
+
 def manga_to_agent_dict(manga: Manga, source_name: str | None = None) -> dict:
     description = (manga.description or "").strip()
     return {
@@ -144,47 +162,6 @@ def source_to_agent_dict(source: Source) -> dict:
         "name": source.display_name,
         "lang": source.lang,
     }
-
-
-def select_search_sources(
-    sources: list[Source],
-    source_hint: str,
-    default_source_id: Any,
-    max_sources: int,
-) -> list[Source]:
-    usable = [source for source in sources if str(source.id) != "0"]
-    limit = _bounded_int(max_sources, 5, 1, 10)
-
-    hint = source_hint.strip().casefold()
-    if hint:
-        matches = [
-            source
-            for source in usable
-            if hint in source.name.casefold()
-            or hint in source.display_name.casefold()
-            or hint == source.lang.casefold()
-        ]
-        return matches[:limit]
-
-    default_sid = str(default_source_id or "0")
-    if default_sid != "0":
-        matches = [source for source in usable if str(source.id) == default_sid]
-        if matches:
-            return matches
-
-    # Prefer different extensions before additional language variants of the
-    # same extension, so a small limit is not monopolized by MangaDex variants.
-    primary: list[Source] = []
-    variants: list[Source] = []
-    seen_names: set[str] = set()
-    for source in usable:
-        key = source.name.strip().casefold() or source.display_name.strip().casefold()
-        if key in seen_names:
-            variants.append(source)
-            continue
-        seen_names.add(key)
-        primary.append(source)
-    return (primary + variants)[:limit]
 
 
 async def search_manga_for_agent(

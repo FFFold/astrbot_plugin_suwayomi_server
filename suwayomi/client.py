@@ -212,6 +212,9 @@ class SuwayomiClient:
         return sources
 
     async def search_manga(self, source_id: str | int, query: str, page: int = 1) -> SearchResult:
+        # Multi-word titles are joined with '+' on the command side (AstrBot
+        # splits args by spaces); sources expect a space-separated query.
+        query = query.replace("+", " ")
         data = await self._raw_query(
             'mutation($sid:LongString!,$q:String!,$p:Int!){fetchSourceManga(input:{source:$sid,type:SEARCH,page:$p,query:$q}){mangas{id title url sourceId status thumbnailUrl inLibrary author artist description genre}hasNextPage}}',
             {"sid": str(source_id), "q": query, "p": page},

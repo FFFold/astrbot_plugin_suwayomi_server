@@ -166,6 +166,81 @@ def split_search_query(message_str: str, keyword: str) -> tuple[str, str]:
     return args, ""
 
 
+def match_source_hint(sources: list[Source], hint: str) -> Source | None:
+    """Match a user-provided source hint to a source.
+
+    Matches when the hint is a prefix of the source's name or display name,
+    or equals its language code. The local source (id "0") is excluded — it
+    crashes searches. A hint that does not match any source is treated as part
+    of the manga keyword by the caller.
+    """
+    hint = (hint or "").strip().casefold()
+    if not hint:
+        return None
+    for src in sources:
+        if str(src.id) == "0":
+            continue
+        display_core = src.display_name.split(" (")[0].casefold()
+        if (
+            hint == src.name.casefold()
+            or src.name.casefold().startswith(hint)
+            or hint == display_core
+            or display_core.startswith(hint)
+            or hint == src.lang.casefold()
+        ):
+            return src
+    return None
+
+
+def _bounded_int(value: Any, default: int, minimum: int, maximum: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = default
+    return max(minimum, min(parsed, maximum))
+
+
+def select_search_sources(
+    sources: list[Source],
+    source_hint: str,
+    default_source_id: Any,
+    max_sources: int,
+) -> list[Source]:
+    usable = [source for source in sources if str(source.id) != "0"]
+    limit = _bounded_int(max_sources, 5, 1, 10)
+
+    hint = source_hint.strip().casefold()
+    if hint:
+        matches = [
+            source
+            for source in usable
+            if hint in source.name.casefold()
+            or hint in source.display_name.casefold()
+            or hint == source.lang.casefold()
+        ]
+        return matches[:limit]
+
+    default_sid = str(default_source_id or "0")
+    if default_sid != "0":
+        matches = [source for source in usable if str(source.id) == default_sid]
+        if matches:
+            return matches
+
+    # Prefer different extensions before additional language variants of the
+    # same extension, so a small limit is not monopolized by MangaDex variants.
+    primary: list[Source] = []
+    variants: list[Source] = []
+    seen_names: set[str] = set()
+    for source in usable:
+        key = source.name.strip().casefold() or source.display_name.strip().casefold()
+        if key in seen_names:
+            variants.append(source)
+            continue
+        seen_names.add(key)
+        primary.append(source)
+    return (primary + variants)[:limit]
+
+
 def ttl_cache_store(
     cache: dict[str, tuple[float, Any]],
     key: str,
@@ -350,8 +425,6 @@ async def search_best_match(
     else:
         # Same selection as the AI tool path: skip the local source and prefer
         # distinct extensions before language variants (MangaDex has 60+).
-        # Imported lazily to avoid a circular import (ai_service imports service).
-        from .ai_service import select_search_sources
         target_sources = select_search_sources(
             sources,
             "",

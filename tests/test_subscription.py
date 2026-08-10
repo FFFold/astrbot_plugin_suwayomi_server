@@ -1,3 +1,6 @@
+import asyncio
+import copy
+
 import pytest
 from utils.subscription import SubscriptionManager
 
@@ -299,3 +302,34 @@ async def test_delete_manga_preserves_others(mgr):
     subs = await mgr.get_subscriptions("user1")
     assert len(subs) == 1
     assert subs[0]["manga_id"] == 2
+
+
+@pytest.mark.asyncio
+async def test_concurrent_updates_preserve_both_changes(kv):
+    """Concurrent read-modify-write on different mangas must not lose updates."""
+    mgr = SubscriptionManager(kv)
+    await mgr.subscribe(1, "A", 10, "u1")
+    await mgr.subscribe(2, "B", 20, "u1")
+
+    orig_get = kv.get_kv_data
+    orig_put = kv.put_kv_data
+
+    async def slow_get(key, default=None):
+        await asyncio.sleep(0.02)
+        value = await orig_get(key, default)
+        return copy.deepcopy(value)  # real KV returns a fresh copy per read
+
+    async def slow_put(key, value):
+        await asyncio.sleep(0.02)
+        await orig_put(key, value)
+
+    kv.get_kv_data = slow_get
+    kv.put_kv_data = slow_put
+
+    await asyncio.gather(
+        mgr.set_auto_push(1, "u1", True),
+        mgr.update_latest_chapter(2, 999),
+    )
+
+    assert await mgr.get_auto_push(1, "u1") is True
+    assert (await mgr.get_all_subscriptions())["2"]["latest_chapter_id"] == 999

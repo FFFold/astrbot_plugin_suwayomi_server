@@ -24,6 +24,7 @@ PLUGIN_NAME = "astrbot_plugin_suwayomi_server"
 # Whitelist of known config keys — shared by api_config_get and api_config_post
 ALLOWED_CONFIG_KEYS = {
     "server_url", "auth_mode", "username", "password",
+    "result_cards_enabled", "card_render_timeout_sec",
     "check_interval", "max_pages", "send_mode", "image_fetch_mode",
     "download_concurrency", "download_retries", "default_source_id",
     "chapter_cache_hours", "chapter_list_show_cover", "download_format",
@@ -40,18 +41,23 @@ NUMERIC_CONFIG_KEYS = {
     "download_retries": 0,
     "default_source_id": 0,
     "chapter_cache_hours": -1,
+    "card_render_timeout_sec": 5,
     "ai_max_sources": 1,
     "ai_results_per_source": 1,
     "ai_tool_timeout_sec": 10,
 }
 
 MAX_NUMERIC_CONFIG_KEYS = {
+    "card_render_timeout_sec": 120,
     "ai_max_sources": 10,
     "ai_results_per_source": 20,
     "ai_tool_timeout_sec": 300,
 }
 
-BOOLEAN_CONFIG_KEYS = {"enable_ai_tools", "allow_ai_send", "chapter_list_show_cover"}
+BOOLEAN_CONFIG_KEYS = {
+    "enable_ai_tools", "allow_ai_send",
+    "result_cards_enabled", "chapter_list_show_cover",
+}
 
 ENUM_CONFIG_KEYS = {
     "send_mode": {"image", "forward"},

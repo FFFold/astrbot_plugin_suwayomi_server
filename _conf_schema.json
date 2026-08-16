@@ -28,6 +28,27 @@
       }
     }
   },
+  "cards": {
+    "description": "卡片渲染",
+    "type": "object",
+    "items": {
+      "result_cards_enabled": {
+        "description": "💡指令结果卡片渲染",
+        "type": "bool",
+        "default": false,
+        "obvious_hint": true,
+        "hint": "开启后搜索/订阅/更新通知/章节列表等指令结果通过 AstrBot T2I 服务渲染为带封面的精美卡片，默认关闭（纯文本）；开启后渲染失败/超时自动回退纯文本"
+      },
+      "card_render_timeout_sec": {
+        "description": "卡片渲染超时（秒）",
+        "type": "int",
+        "default": 30,
+        "min": 5,
+        "max": 120,
+        "hint": "单张卡片渲染的超时上限，超时自动回退纯文本；T2I 服务不可用（如未配置/断网）时命令会等待该时长后回退"
+      }
+    }
+  },
   "reading": {
     "description": "阅读体验",
     "type": "object",
@@ -168,20 +189,6 @@
         "type": "string",
         "default": "",
         "hint": "留空使用系统默认临时目录。Docker 环境请设置为 AstrBot 和聊天平台容器共享的目录，例如 /AstrBot/data/temp"
-      },
-      "result_cards_enabled": {
-        "description": "指令结果卡片渲染",
-        "type": "bool",
-        "default": false,
-        "hint": "使用 T2I 服务把指令结果渲染为带封面的卡片（搜索/订阅/更新通知/章节列表等），默认关闭；开启后渲染失败会自动回退纯文本"
-      },
-      "card_render_timeout_sec": {
-        "description": "卡片渲染超时（秒）",
-        "type": "int",
-        "default": 30,
-        "min": 5,
-        "max": 120,
-        "hint": "单张卡片渲染的超时上限，超时自动回退纯文本；T2I 服务不可用（如未配置/断网）时命令会等待该时长后回退"
       }
     }
   }

@@ -216,6 +216,15 @@ uv pip install -r astrbot_suwayomi_server/requirements.txt
 | `username` | string | `""` | 认证用户名（basic / jwt 模式） |
 | `password` | string | `""` | 认证密码（basic / jwt 模式） |
 
+### 卡片渲染
+
+| 配置项 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `result_cards_enabled` | bool | `false` | 指令结果卡片渲染：搜索/订阅确认/批量订阅/我的订阅/更新通知/章节列表通过 AstrBot T2I 服务渲染为带封面的卡片；关闭或渲染失败时回退纯文本 |
+| `card_render_timeout_sec` | int | `30` | 单张卡片渲染超时（5-120 秒），超时自动回退纯文本；T2I 服务不可用时命令会等待该时长后回退，且之后 5 分钟内不再尝试渲染 |
+
+> 💡 **卡片渲染**：插件默认以纯文本回复。如需将指令结果渲染为带封面的精美卡片（依赖 AstrBot 的 T2I 服务，通常随 AstrBot 内置可用），在 WebUI 插件设置中将 `result_cards_enabled` 开启即可；T2I 服务不可用时所有命令自动回退纯文本，不会报错。
+
 ### 阅读体验
 
 | 配置项 | 类型 | 默认值 | 说明 |
@@ -257,10 +266,6 @@ uv pip install -r astrbot_suwayomi_server/requirements.txt
 | `chapter_list_show_cover` | bool | `true` | 「漫画 章节」列表顶部是否显示漫画封面；关闭后该命令不使用卡片渲染（回退纯文本） |
 | `default_source_id` | int | `0` | 默认搜索源 ID，`0` 搜索全部已安装源 |
 | `temp_dir` | string | `""` | 临时文件目录。留空用系统默认，Docker 环境设置共享目录如 `/AstrBot/data/temp` |
-| `result_cards_enabled` | bool | `false` | 指令结果卡片渲染：搜索/订阅确认/批量订阅/我的订阅/更新通知/章节列表通过 AstrBot T2I 服务渲染为带封面的卡片；关闭或渲染失败时回退纯文本 |
-| `card_render_timeout_sec` | int | `30` | 单张卡片渲染超时（5-120 秒），超时自动回退纯文本；T2I 服务不可用时命令会等待该时长后回退，且之后 5 分钟内不再尝试渲染 |
-
-> 💡 **卡片渲染**：插件默认以纯文本回复。如需将指令结果渲染为带封面的精美卡片（依赖 AstrBot 的 T2I 服务，通常随 AstrBot 内置可用），在 WebUI 插件设置中将 `result_cards_enabled` 开启即可；T2I 服务不可用时所有命令自动回退纯文本，不会报错。
 
 ### 认证模式说明
 

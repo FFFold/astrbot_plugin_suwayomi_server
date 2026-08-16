@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 ### Changed
 
 - **配置项按功能分组** — `_conf_schema.json` 配置改为六组嵌套结构（`server` 服务器连接 / `reading` 阅读体验 / `pack` 下载打包 / `push` 自动推送 / `ai` AI 漫画工具 / `advanced` 高级），与 WebUI 设置页分组一致；新增 `suwayomi/config.py` 提供分组读写与兼容迁移，旧版平铺配置在插件加载时自动迁移到分组并保存，无需手动重配
+- **卡片渲染配置前置并醒目提示** — `result_cards_enabled` / `card_render_timeout_sec` 从「高级」移至独立的「卡片渲染」分组（紧跟「服务器连接」之后），WebUI 设置页以警示样式突出显示并附行为说明，AstrBot 原生配置页同步加 `obvious_hint`；该开关会极大改变插件行为，默认保持关闭，引导用户自行决定
+- **WebUI 设置页补全缺失配置项** — 新增 `result_cards_enabled` / `card_render_timeout_sec` / `chapter_list_show_cover` 表单（此前仅存在于 `_conf_schema.json`，WebUI 无法修改）；`web/api.py` 配置白名单同步补全这三个键（含布尔转换、数值范围校验）
 
 ### Dev
 

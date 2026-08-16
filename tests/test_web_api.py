@@ -399,6 +399,38 @@ async def test_config_post_accepts_chapter_list_show_cover():
     assert cfg["advanced"]["chapter_list_show_cover"] is False
 
 
+@pytest.mark.asyncio
+async def test_config_post_card_render_keys():
+    """Card render config is whitelisted, coerced and clamped."""
+    cfg = FakeConfig({"server_url": "http://old:4567"})
+
+    result = await api_config_post(cfg, {
+        "server_url": "http://new:4567",
+        "result_cards_enabled": "true",
+        "card_render_timeout_sec": "999",
+    }, AsyncMock())
+
+    assert result["success"] is True
+    assert cfg["cards"]["result_cards_enabled"] is True
+    assert cfg["cards"]["card_render_timeout_sec"] == 120  # clamped to max
+    assert "evil_key" not in cfg
+
+
+@pytest.mark.asyncio
+async def test_config_post_rejects_bad_card_render_values():
+    cfg = FakeConfig({"server_url": "http://old:4567"})
+
+    result = await api_config_post(cfg, {
+        "server_url": "http://new:4567",
+        "result_cards_enabled": "garbage",
+        "card_render_timeout_sec": 2,  # below min of 5
+    }, AsyncMock())
+
+    assert result["success"] is True
+    assert cfg["cards"]["result_cards_enabled"] is False  # garbage string → False
+    assert cfg["cards"]["card_render_timeout_sec"] == 5  # clamped to min
+
+
 def test_config_get_only_returns_allowed_keys():
     """api_config_get should only return whitelisted keys."""
     cfg = {"server_url": "http://localhost:4567", "password": "pw", "internal_key": "secret"}

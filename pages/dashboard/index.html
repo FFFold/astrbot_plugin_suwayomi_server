@@ -139,6 +139,22 @@
           </div>
         </fieldset>
 
+        <fieldset class="fieldset-emphasis">
+          <legend>卡片渲染</legend>
+          <div class="form-group">
+            <label for="cfg-result_cards_enabled">💡指令结果卡片渲染</label>
+            <select id="cfg-result_cards_enabled" name="result_cards_enabled">
+              <option value="true">开启（渲染为精美卡片）</option>
+              <option value="false">关闭（纯文本，默认）</option>
+            </select>
+            <p class="form-hint">搜索 / 订阅 / 更新通知 / 章节列表等指令结果将使用 AstrBot T2I 服务渲染为带封面的卡片。默认关闭，开启后渲染失败或超时自动回退纯文本。</p>
+          </div>
+          <div class="form-group">
+            <label for="cfg-card_render_timeout_sec">卡片渲染超时（秒）</label>
+            <input type="number" id="cfg-card_render_timeout_sec" name="card_render_timeout_sec" min="5" max="120">
+          </div>
+        </fieldset>
+
         <fieldset>
           <legend>阅读体验</legend>
           <div class="form-group">
@@ -235,6 +251,13 @@
           <div class="form-group">
             <label for="cfg-default_source_id">默认搜索源 ID</label>
             <input type="number" id="cfg-default_source_id" name="default_source_id" min="0">
+          </div>
+          <div class="form-group">
+            <label for="cfg-chapter_list_show_cover">章节列表显示封面</label>
+            <select id="cfg-chapter_list_show_cover" name="chapter_list_show_cover">
+              <option value="true">开启</option>
+              <option value="false">关闭</option>
+            </select>
           </div>
           <div class="form-group">
             <label for="cfg-temp_dir">临时文件目录</label>

@@ -286,6 +286,24 @@ body {
   max-width: 400px;
 }
 
+.form-group .form-hint {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  max-width: 400px;
+  line-height: 1.5;
+}
+
+/* Emphasis: settings that dramatically change plugin behavior */
+.fieldset-emphasis {
+  border-color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 8%, transparent);
+}
+
+.fieldset-emphasis legend {
+  color: var(--warning);
+}
+
 .form-actions {
   display: flex;
   align-items: center;

@@ -3,11 +3,12 @@
 配置项按功能分组存储（与 WebUI 设置页、_conf_schema.json 的分组一致）：
 
 - `server`: 服务器连接（server_url / auth_mode / username / password）
+- `cards`: 卡片渲染（result_cards_enabled / card_render_timeout_sec）
 - `reading`: 阅读体验（max_pages / send_mode / image_fetch_mode）
 - `pack`: 下载打包（download_format / download_concurrency / download_retries）
 - `push`: 自动推送（auto_push_mode）
 - `ai`: AI 漫画工具（enable_ai_tools / allow_ai_send / ai_max_sources / ...）
-- `advanced`: 高级（check_interval / chapter_cache_hours / temp_dir / 卡片渲染等）
+- `advanced`: 高级（check_interval / chapter_cache_hours / temp_dir 等）
 
 所有读取统一走 `get_config_value()`，写入统一走 `set_config_value()`，
 两者均兼容旧版平铺结构（旧键存在于顶层时按旧键读取/写入）。
@@ -19,6 +20,7 @@ from typing import Any
 
 CONFIG_GROUPS: dict[str, list[str]] = {
     "server": ["server_url", "auth_mode", "username", "password"],
+    "cards": ["result_cards_enabled", "card_render_timeout_sec"],
     "reading": ["max_pages", "send_mode", "image_fetch_mode"],
     "pack": ["download_format", "download_concurrency", "download_retries"],
     "push": ["auto_push_mode"],
@@ -35,8 +37,6 @@ CONFIG_GROUPS: dict[str, list[str]] = {
         "chapter_list_show_cover",
         "default_source_id",
         "temp_dir",
-        "result_cards_enabled",
-        "card_render_timeout_sec",
     ],
 }
 

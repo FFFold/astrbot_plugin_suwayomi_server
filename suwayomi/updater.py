@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import TYPE_CHECKING, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
+import astrbot.api.message_components as Comp
 from astrbot.api import logger
 from astrbot.api.event import MessageChain
-import astrbot.api.message_components as Comp
 
 from . import PLUGIN_NAME
 from .service import (
@@ -20,6 +21,7 @@ from .service import (
 if TYPE_CHECKING:
     from ..utils.subscription import SubscriptionManager
     from .client import SuwayomiClient
+    from .models import Manga
 
 _PLUGIN_NAME = PLUGIN_NAME
 
@@ -116,6 +118,13 @@ async def _check_one_manga(
         ch_info = [
             fmt_chapter_label(ch, num_count) for ch in new_chapters
         ]
+        if manga_obj is None:
+            # 标题同步被缓存跳过（如 WebUI 触发的 force=False 检查）时，
+            # 尽力拉取元数据，保证更新卡片有封面与状态。
+            try:
+                manga_obj = await client.get_manga(manga_id)
+            except Exception:
+                pass
         return (manga_id, title, ch_info, new_chapters, subscribers, manga_obj), False
     except Exception as e:
         logger.warning(
@@ -152,7 +161,7 @@ async def check_updates(
         except Exception as e:
             logger.warning(f"[{_PLUGIN_NAME}] 触发书库更新失败: {e}")
 
-        updated_mangas: list[tuple[int, str, list[str], list, dict]] = []
+        updated_mangas: list[tuple[int, str, list[str], list, dict, Manga | None]] = []
 
         cache_hours = config.get("chapter_cache_hours", 6)
         if cache_hours < -1:
@@ -225,9 +234,15 @@ async def check_updates(
                         if len(user_updates[umo]) == 1
                         else f"📢 {len(user_updates[umo])} 部漫画更新了"
                     )
-                    card_path = await render_update_card_fn(
-                        umo, user_updates[umo], heading
-                    )
+                    try:
+                        card_path = await render_update_card_fn(
+                            umo, user_updates[umo], heading
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            f"[{_PLUGIN_NAME}] 更新卡片渲染异常，回退文本: {e}"
+                        )
+                        card_path = None
                     if card_path:
                         chain = MessageChain(
                             chain=[Comp.Image.fromFileSystem(card_path)]

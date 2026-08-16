@@ -294,3 +294,60 @@ async def test_check_updates_build_update_items_include_thumbnail():
     assert seen["items"][0]["thumbnail_url"] == "/api/v1/manga/1/thumbnail"
     assert seen["items"][0]["title"] == "T1"
     assert seen["items"][0]["status"] == "ONGOING"
+
+
+@pytest.mark.asyncio
+async def test_check_updates_lazy_fetch_manga_when_cache_fresh():
+    import time as _time
+
+    client = CountingClient({1: _chapters(1, [1, 2])})
+    client.get_manga = AsyncMock(return_value=_update_manga())
+    client.get_chapters = AsyncMock(return_value=_chapters(1, [1, 2]))
+    plugin = FakePlugin()
+    plugin._store["suwayomi_chapter_timestamps"] = {str(1): _time.time()}
+    sub_mgr = _make_sub_mgr(plugin)
+    await sub_mgr.subscribe(1, "T1", 1, "u1")
+    await sub_mgr.update_latest_chapter(1, 1)
+    ctx = _context()
+    seen = {}
+
+    async def render_fn(umo, items, heading):
+        seen["items"] = items
+        return "/tmp/c.jpg"
+
+    with patch("suwayomi.updater.Comp.Image.fromFileSystem") as mock_img:
+        mock_img.return_value = MagicMock()
+        await check_updates(
+            client, sub_mgr, ctx, {"chapter_cache_hours": 6},
+            plugin.get_kv_data, plugin.put_kv_data, asyncio.Lock(),
+            AsyncMock(), AsyncMock(),
+            render_update_card_fn=render_fn,
+        )
+    # 缓存新鲜跳过标题同步，但懒拉取仍补上封面
+    assert seen["items"][0]["thumbnail_url"] == "/api/v1/manga/1/thumbnail"
+    assert seen["items"][0]["status"] == "ONGOING"
+
+
+@pytest.mark.asyncio
+async def test_check_updates_render_fn_raises_still_sends_text():
+    client = CountingClient({1: _chapters(1, [1, 2])})
+    client.get_manga = AsyncMock(return_value=_update_manga())
+    plugin = FakePlugin()
+    sub_mgr = _make_sub_mgr(plugin)
+    await sub_mgr.subscribe(1, "T1", 1, "u1")
+    await sub_mgr.update_latest_chapter(1, 1)
+    ctx = _context()
+
+    async def render_fn(umo, items, heading):
+        raise RuntimeError("renderer exploded")
+
+    with patch("suwayomi.updater.Comp.Image.fromFileSystem") as mock_img:
+        mock_img.return_value = MagicMock()
+        await check_updates(
+            client, sub_mgr, ctx, _config(),
+            plugin.get_kv_data, plugin.put_kv_data, asyncio.Lock(),
+            AsyncMock(), AsyncMock(),
+            render_update_card_fn=render_fn,
+        )
+    mock_img.assert_not_called()
+    assert ctx.send_message.await_count == 1  # 文本兜底仍发送

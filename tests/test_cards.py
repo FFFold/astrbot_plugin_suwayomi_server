@@ -1,18 +1,13 @@
 """Unit tests for suwayomi/cards.py (no network)."""
 import asyncio
-import math
-
-import pytest
-
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import plugin_pkg.utils.downloader as downloader_mod
 import plugin_pkg.utils.pusher as pusher_mod
-
+import pytest
 from plugin_pkg.suwayomi.cards import (
     CHAPTER_LINES_PER_CARD,
     MAX_CHAPTER_CARDS,
-    COVER_WIDTH,
     CardCache,
     build_batch_card,
     build_chapter_cards,
@@ -225,6 +220,19 @@ async def test_embed_covers_download_error_no_raise(mock_cleanup, mock_download)
     items = [{"title": "A", "thumbnail_url": "/a"}, {"title": "B", "thumbnail_url": "/b"}]
     result = await embed_covers(client, items, retries=3)
     assert all(item["cover_data_url"] is None for item in result)
+
+
+@patch.object(downloader_mod, "download_images", new_callable=AsyncMock)
+@patch.object(pusher_mod, "schedule_cleanup")
+@pytest.mark.asyncio
+async def test_embed_covers_skips_download_when_no_thumbnail(mock_cleanup, mock_download):
+    client = FakeClient()
+    items = [{"title": "A", "thumbnail_url": None}, {"title": "B", "thumbnail_url": ""}]
+    result = await embed_covers(client, items, retries=3)
+    assert result[0]["cover_data_url"] is None
+    assert result[1]["cover_data_url"] is None
+    mock_download.assert_not_called()
+    mock_cleanup.assert_not_called()
 
 
 def test_embed_covers_bad_image_no_raise(tmp_path):

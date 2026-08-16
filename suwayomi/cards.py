@@ -23,7 +23,7 @@ from . import PLUGIN_NAME
 from .service import STATUS_EMOJI
 
 if TYPE_CHECKING:
-    from .client import SuwayomiClient
+    pass
 
 CARD_WIDTH = 440
 COVER_WIDTH = 120
@@ -409,12 +409,15 @@ async def embed_covers(
         url, use_headers = resolve_cover_url(client, item.get("thumbnail_url"))
         resolved.append((item, url, use_headers))
 
+    covers: dict[int, str | None] = {}
     grouped: dict[tuple, list[tuple[int, str]]] = {}
     for idx, (_item, url, use_headers) in enumerate(resolved):
+        if url is None:
+            covers[idx] = None
+            continue
         key = tuple(sorted((use_headers or {}).items()))
         grouped.setdefault(key, []).append((idx, url))
 
-    covers: dict[int, str | None] = {}
     for key, entries in grouped.items():
         urls = [url for _, url in entries]
         if not urls:

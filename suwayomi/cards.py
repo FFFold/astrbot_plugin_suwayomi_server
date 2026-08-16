@@ -126,6 +126,22 @@ CARD_TEMPLATE = """
     </div>
   </div>
 
+{% elif card_type == "subscriptions" %}
+  <div class="title">📋 你的订阅列表</div>
+  {% for row in rows %}
+  <div class="card">
+    {% if row.cover_data_url %}
+      <img class="cover" style="width:44px;height:60px" src="{{ row.cover_data_url }}">
+    {% else %}
+      <div class="cover cover-placeholder" style="width:44px;height:60px">?</div>
+    {% endif %}
+    <div class="body">
+      <div class="name">{{ row.title }}</div>
+      <div class="meta">{{ row.detail }}</div>
+    </div>
+  </div>
+  {% endfor %}
+
 {% elif card_type == "batch" %}
   <div class="title">📚 批量订阅完成 <span class="sub">（{{ summary }}）</span></div>
   {% for row in rows %}
@@ -262,6 +278,18 @@ def build_batch_card(rows: list[dict], summary: str) -> dict:
             "thumbnail_url": r.get("thumbnail_url"),
         })
     return {"card_type": "batch", "summary": html.escape(summary), "rows": cleaned}
+
+
+def build_subscriptions_card(rows: list[dict]) -> dict:
+    """rows: [{title, detail, thumbnail_url}]."""
+    cleaned = []
+    for r in rows:
+        cleaned.append({
+            "title": html.escape(r["title"]),
+            "detail": html.escape(r["detail"]),
+            "thumbnail_url": r.get("thumbnail_url"),
+        })
+    return {"card_type": "subscriptions", "rows": cleaned}
 
 
 def _split_columns(lines: list[str], n: int = 3) -> list[list[str]]:

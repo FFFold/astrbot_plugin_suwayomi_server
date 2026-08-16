@@ -18,6 +18,7 @@ from plugin_pkg.suwayomi.cards import (
     build_chapter_cards,
     build_search_card,
     build_subscribe_confirm_card,
+    build_subscriptions_card,
     build_update_card,
     embed_covers,
     render_card,
@@ -75,6 +76,14 @@ def test_build_update_card_multi():
     assert data["items"][0]["status"] == "连载中"
     assert data["items"][1]["status_class"] == "status-completed"
     assert data["items"][0]["chapters"][0] == "#251 新的一页"
+
+
+def test_build_subscriptions_card():
+    data = build_subscriptions_card([
+        {"title": "咒术回战", "detail": "连载中 - 拷贝漫画 · 🔔 推送开 · ID: 1", "thumbnail_url": "/a"},
+    ])
+    assert data["card_type"] == "subscriptions"
+    assert data["rows"][0]["title"] == "咒术回战"
 
 
 def test_build_batch_card_marks():

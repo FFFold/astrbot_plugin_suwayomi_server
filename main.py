@@ -27,6 +27,7 @@ from .suwayomi.cards import (
     build_chapter_cards,
     build_search_card,
     build_subscribe_confirm_card,
+    build_subscriptions_card,
     build_update_card,
     embed_covers,
     render_card_cached,
@@ -1094,6 +1095,39 @@ class SuwayomiPlugin(Star):
                 return
             sources = await self.client.get_sources()
             src_map = {str(s.id): s.display_name for s in sources}
+
+            if self._result_cards_enabled():
+                try:
+                    metadatas = await asyncio.gather(
+                        *(self.client.get_manga(s["manga_id"]) for s in subs),
+                        return_exceptions=True,
+                    )
+                    card_rows = []
+                    for s, meta in zip(subs, metadatas):
+                        thumbnail = meta.thumbnail_url if not isinstance(meta, Exception) else None
+                        status = meta.status if not isinstance(meta, Exception) else "UNKNOWN"
+                        src_name = src_map.get(str(s["source_id"]), "")
+                        push = "🔔 推送开" if s.get("push_enabled") else "🔕 推送关"
+                        tag = f" - {src_name}" if src_name else ""
+                        card_rows.append({
+                            "title": s["title"],
+                            "detail": f"{STATUS_EMOJI.get(status, '未知')}{tag} · {push} · ID: {s['manga_id']}",
+                            "thumbnail_url": thumbnail,
+                        })
+                    tmpldata = build_subscriptions_card(card_rows)
+                    tmpldata["rows"] = await embed_covers(
+                        self.client, tmpldata["rows"],
+                        custom_tmp=self.config.get("temp_dir", "").strip(),
+                        retries=self.config.get("download_retries", 3),
+                        concurrency=self.config.get("download_concurrency", 6),
+                    )
+                    path = await self._render_card_result(tmpldata)
+                    if path:
+                        yield event.chain_result([Comp.Image.fromFileSystem(path)])
+                        return
+                except Exception as e:
+                    logger.warning(f"[{PLUGIN_NAME}] 订阅列表卡片渲染失败，回退文本: {e}")
+
             lines = ["📋 你的订阅列表:"]
             for s in subs:
                 source_name = src_map.get(str(s["source_id"]), "")

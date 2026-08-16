@@ -170,3 +170,44 @@ async def test_batch_subscribe_card_success(monkeypatch):
 
     results = [msg async for msg in plugin.batch_subscribe(event)]
     assert event.chain_result.call_count >= 1
+
+
+@pytest.mark.asyncio
+async def test_my_subscriptions_card_success(monkeypatch):
+    plugin = _plugin(cards_enabled=True)
+    plugin.sub_mgr.get_subscriptions = AsyncMock(return_value=[
+        {"manga_id": 1, "title": "咒术回战", "source_id": 2, "latest_chapter_id": 5,
+         "push_enabled": True},
+    ])
+    plugin.client.get_sources = AsyncMock(return_value=[_source()])
+    plugin.client.get_manga = AsyncMock(return_value=_manga("咒术回战", 1))
+    plugin._render_card_result = AsyncMock(return_value="/tmp/subs.jpg")
+    monkeypatch.setattr(
+        "plugin_pkg.main.embed_covers",
+        AsyncMock(side_effect=lambda c, items, **kw: [dict(i, cover_data_url="x") for i in items]),
+    )
+    event = _event()
+
+    results = [msg async for msg in plugin.my_subscriptions(event)]
+    assert len(results) == 1
+    event.chain_result.assert_called_once()
+    event.plain_result.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_my_subscriptions_card_render_failure_text(monkeypatch):
+    plugin = _plugin(cards_enabled=True)
+    plugin.sub_mgr.get_subscriptions = AsyncMock(return_value=[
+        {"manga_id": 1, "title": "咒术回战", "source_id": 2, "latest_chapter_id": 5,
+         "push_enabled": True},
+    ])
+    plugin.client.get_sources = AsyncMock(return_value=[_source()])
+    plugin.client.get_manga = AsyncMock(return_value=_manga("咒术回战", 1))
+    plugin._render_card_result = AsyncMock(return_value=None)
+    event = _event()
+
+    results = [msg async for msg in plugin.my_subscriptions(event)]
+    assert len(results) == 1
+    assert "订阅列表" in results[0]
+    event.plain_result.assert_called_once()
+    event.chain_result.assert_not_called()

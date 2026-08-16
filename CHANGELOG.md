@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 ### Dev
 
-- 新增 `tests/test_list_chapters.py`，并扩展 `tests/test_downloader.py`，覆盖封面下载、配置开关、无章节和封面缺失回退场景。
+- 新增 `tests/test_list_chapters.py`，并扩展 `tests/test_downloader.py`，覆盖封面下载、配置开关、无章节、封面缺失回退，以及封面下载/章节拉取的错误路径。
 
 ## [0.5.4] - 2026-08-10
 

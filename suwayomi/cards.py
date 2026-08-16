@@ -47,8 +47,8 @@ def _status_pill_class(status: str) -> str:
 CARD_TEMPLATE = """
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background:#e9ecf3;
-         padding:28px 28px 36px; color:#1a1d29; }
+  body { font-family: "Smiley Sans","LXGW WenKai","Noto Sans CJK SC","HarmonyOS Sans SC","MiSans","PingFang SC","Microsoft YaHei",sans-serif;
+         background:#e9ecf3; padding:28px 28px 36px; color:#1a1d29; }
   .title { font-size:34px; font-weight:700; margin-bottom:20px; }
   .title .sub { font-size:24px; color:#8a8f9d; font-weight:400; }
   .card { background:#fff; border-radius:20px; padding:16px 20px; display:flex;
@@ -86,7 +86,7 @@ CARD_TEMPLATE = """
   .hint { font-size:22px; color:#8a8f9d; margin-top:12px; }
   .hint.pushed { margin-top:auto; padding-top:20px; }
   .cols { display:flex; gap:16px; margin-top:16px; }
-  .col { flex:1; background:#fff; border-radius:16px; padding:16px; font-family:Consolas,monospace;
+  .col { flex:1; background:#fff; border-radius:16px; padding:16px; font-family:"Smiley Sans","LXGW WenKai","Noto Sans CJK SC","Noto Sans Mono CJK SC",Consolas,monospace;
          font-size:24px; color:#3a3f4b; line-height:1.8; overflow:hidden; }
   .row-main { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .row-id { color:#8a8f9d; font-size:20px; line-height:1.5; }

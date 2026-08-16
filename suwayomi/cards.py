@@ -488,7 +488,14 @@ async def render_card(
     timeout: float = 30.0,
 ) -> str | None:
     """Render tmpldata via the injected html_render; return local path or None."""
-    opts = {"type": "jpeg", "quality": 85, "viewport_width": CARD_WIDTH}
+    opts = {
+        "type": "jpeg",
+        "quality": 95,
+        "viewport_width": CARD_WIDTH,
+        # 440px 视口 × 1.8 设备像素比 → 792px 物理像素输出，
+        # 保证手机 2x/3x 屏上文字锐利（服务端默认 1.0x 会糊）
+        "device_scale_factor_level": "ultra",
+    }
     if options:
         opts.update(options)
     try:

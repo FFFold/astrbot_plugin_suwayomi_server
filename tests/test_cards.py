@@ -244,11 +244,17 @@ def test_embed_covers_bad_image_no_raise(tmp_path):
 
 @pytest.mark.asyncio
 async def test_render_card_returns_path():
+    captured = {}
+
     async def fake_html_render(tmpl, data, return_url, options):
+        captured["options"] = options
         return "/tmp/card.jpg"
 
     path = await render_card(fake_html_render, {"card_type": "search"}, timeout=10)
     assert path == "/tmp/card.jpg"
+    # 高清输出：440px 视口 × 1.8 设备像素比 → 792px 物理像素，手机 2x/3x 屏上文字不糊
+    assert captured["options"]["viewport_width"] == 440
+    assert captured["options"]["device_scale_factor_level"] == "ultra"
 
 
 @pytest.mark.asyncio

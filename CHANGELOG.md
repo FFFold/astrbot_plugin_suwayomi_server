@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 ### Fixed
 
-- **旧配置迁移覆盖新填值** — 配置曾被 Core 清空后重新填写分组配置的用户，重载插件时 Core 补回的 invisible 旧键默认值会被迁移逻辑误当作"用户旧值"覆盖分组中的真实配置；迁移改为**仅迁移非默认值的旧键**（等于 `_LEGACY_KEY_DEFAULTS` 的旧键视为无意义占位，原样保留），并保证迁移标记在首次评估时即持久化保存
+- **旧配置迁移覆盖新填值** — 配置曾被 Core 清空后重新填写分组配置的用户，重载插件时 Core 补回的 invisible 旧键默认值会被迁移逻辑误当作"用户旧值"覆盖分组中的真实配置；迁移改为**仅迁移非默认值的旧键**（等于 `_LEGACY_KEY_DEFAULTS` 的旧键视为无意义占位，原样保留）
+- **迁移机制简化为无状态幂等同步** — 移除 `_config_migrated_v1` 迁移标记（schema 键与守卫逻辑）：Core 补回的占位永远是默认值、天然不会被迁移，非默认平铺键（升级残留或手改）在任何一次加载后都会被同步进分组；幂等（无变更不保存），无需持久化标记状态
 - **首装用户配置稳态** — 默认值旧键不再被清理删除（删除会使 Core 每次加载重新补键、打 23 条 "Config key missing" 日志并多余写盘）；占位键原样保留，首装与升级用户磁盘结构一致、加载零噪音
 - **迁移数值旧键类型规范化** — 手改配置文件产生的字符串旧值（如 `"check_interval": "30"`）在迁入分组时规范化为 `int` / `bool`，避免下游 `cache_hours < -1` 等比较抛 `TypeError`；无法转换的值不迁移（留在旧键位），等于默认值的字符串值同样视为占位
 - **WebUI 配置 API 一致性** — `api_config_get` 的 AI 默认值兜底改走 `get_config_value`（与分组读取一致）；`web/api.py` 的兼容导入失败仅回退绝对导入，不再掩盖包内真实导入错误
@@ -22,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 ### Changed
 
 - **配置项按功能分组** — `_conf_schema.json` 配置改为七组嵌套结构（`server` 服务器连接 / `cards` 卡片渲染 / `reading` 阅读体验 / `pack` 下载打包 / `push` 自动推送 / `ai` AI 漫画工具 / `advanced` 高级），与 WebUI 设置页分组一致；新增 `suwayomi/config.py` 提供分组读写与兼容迁移
-- **旧版平铺配置无损迁移** — `_conf_schema.json` 中保留全部旧配置键（`invisible: true`，对用户不可见），使 AstrBot Core 的配置同步不会删除旧键、用户配置值得以保留；插件加载时 `migrate_legacy_config()` 把旧值迁入分组并置迁移标记 `_config_migrated_v1`，标记置位后不再迁移（防止 Core 补回的默认值覆盖真实配置）。迁移完成的下一个大版本可移除 schema 中的兼容旧键
+- **旧版平铺配置无损迁移** — `_conf_schema.json` 中保留全部旧配置键（`invisible: true`，对用户不可见），使 AstrBot Core 的配置同步不会删除旧键、用户配置值得以保留；插件每次加载时 `migrate_legacy_config()` 把非默认值的旧键同步进分组（幂等，无变更不保存）。迁移完成的下一个大版本可移除 schema 中的兼容旧键
 - **卡片渲染配置前置并醒目提示** — `result_cards_enabled` / `card_render_timeout_sec` 从「高级」移至独立的「卡片渲染」分组（紧跟「服务器连接」之后），WebUI 设置页以警示样式突出显示并附行为说明，AstrBot 原生配置页同步加 `obvious_hint`；该开关会极大改变插件行为，默认保持关闭，引导用户自行决定
 - **WebUI 设置页补全缺失配置项** — 新增 `result_cards_enabled` / `card_render_timeout_sec` / `chapter_list_show_cover` 表单（此前仅存在于 `_conf_schema.json`，WebUI 无法修改）；`web/api.py` 配置白名单同步补全这三个键（含布尔转换、数值范围校验）
 

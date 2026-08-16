@@ -268,14 +268,22 @@ async def test_config_post_empty_body():
 @pytest.mark.asyncio
 async def test_config_post_skips_masked_password():
     """Password field with '***' from GET should not overwrite real password."""
-    cfg = FakeConfig({"server_url": "http://old:4567", "password": "real_pw"})
+    cfg = FakeConfig({"server_url": "http://old:4567"})
+
+    # Establish a real grouped password first
+    first = await api_config_post(cfg, {
+        "server_url": "http://new:4567",
+        "password": "real_pw",
+    }, AsyncMock())
+    assert first["success"] is True
+    assert cfg["server"]["password"] == "real_pw"
 
     result = await api_config_post(cfg, {
         "server_url": "http://new:4567",
         "password": "***",
     }, AsyncMock())
     assert result["success"] is True
-    assert cfg.get("password", cfg.get("server", {}).get("password")) == "real_pw"  # not overwritten
+    assert cfg["server"]["password"] == "real_pw"  # not overwritten
 
 
 @pytest.mark.asyncio

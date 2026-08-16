@@ -97,8 +97,8 @@ class SuwayomiPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
         self.config = config
-        # _conf_schema.json 中保留的 invisible 旧键使 Core 不会删掉用户旧配置，
-        # 此处把旧平铺值迁入分组并置迁移标记（已迁移过的实例直接跳过）。
+        # _conf_schema.json 中保留的 invisible 旧键使 Core 不会删掉用户旧配置；
+        # 此处每次加载把非默认的旧平铺值同步进分组（幂等，无变更不保存）。
         if migrate_legacy_config(config):
             try:
                 config.save_config()
@@ -123,7 +123,7 @@ class SuwayomiPlugin(Star):
         self._build_check_updates_fn()
         self._try_start_bg_loop()
         logger.info(
-            f"[{PLUGIN_NAME}] 插件已加载 | 服务器: {get_config_value(config, 'server_url')} | "
+            f"[{PLUGIN_NAME}] 插件已加载 | 服务器: {get_config_value(config, 'server_url', 'http://localhost:4567')} | "
             f"缓存: {get_config_value(config, 'chapter_cache_hours', 6)}h | "
             f"检查间隔: {get_config_value(config, 'check_interval', 60)}min"
         )

@@ -214,11 +214,5 @@
   "chapter_cache_hours": { "type": "int", "default": 6, "invisible": true },
   "chapter_list_show_cover": { "type": "bool", "default": true, "invisible": true },
   "default_source_id": { "type": "int", "default": 0, "invisible": true },
-  "temp_dir": { "type": "string", "default": "", "invisible": true },
-  "_config_migrated_v1": {
-    "description": "旧版平铺配置迁移标记（内部使用）",
-    "type": "bool",
-    "default": false,
-    "invisible": true
-  }
+  "temp_dir": { "type": "string", "default": "", "invisible": true }
 }

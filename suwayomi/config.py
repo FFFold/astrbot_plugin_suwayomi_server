@@ -14,17 +14,15 @@
 两者均兼容旧版平铺结构（旧键存在于顶层时按旧键读取/写入）。
 
 旧版平铺配置迁移：`_conf_schema.json` 中保留了全部旧键（`invisible: true`，
-对用户不可见），因此 AstrBot Core 的配置同步不会删除它们，用户旧值得以
-保留；插件 `__init__` 中调用 `migrate_legacy_config()` 把旧值迁入分组并
-置迁移标记 `_config_migrated_v1`。标记置位后不再迁移，防止 Core 补回的
-无意义旧键默认值覆盖分组中的真实配置。
+对用户不可见），因此 AstrBot Core 的配置同步不会删除它们。插件每次加载
+时调用 `migrate_legacy_config()`：非默认值的平铺键（升级残留或用户手改）
+被同步进分组并清理，等于默认值的占位键（Core 补回的，不代表用户设置）
+原样保留、永不覆盖分组——因此无需迁移标记，手改平铺键在任何加载后都
+持续生效。
 """
 from __future__ import annotations
 
 from typing import Any
-
-# 迁移标记键（_conf_schema.json 中保留，invisible）。置位后跳过迁移。
-MIGRATE_FLAG_KEY = "_config_migrated_v1"
 
 # 旧键的"无意义值"（= _conf_schema.json 中 invisible 旧键的 default，
 # 与旧版平铺 schema 的默认值一致）。Core 每次加载都会给缺失的 invisible
@@ -147,21 +145,20 @@ def flatten_config(config: dict, keys: list[str]) -> dict:
 
 
 def migrate_legacy_config(config: dict) -> bool:
-    """把旧版平铺配置项迁移到分组结构，返回是否发生了变更（需保存）。
+    """把旧版平铺配置项同步到分组结构，返回是否发生了变更（需保存）。
 
     `_conf_schema.json` 中保留的全部旧键（`invisible: true`）使 AstrBot
-    Core 的配置同步不会删除它们，用户旧值得以保留；本函数在插件
-    `__init__` 中把旧值迁入分组并置迁移标记后保存。规则：
+    Core 的配置同步不会删除它们。本函数在插件 `__init__` 中**每次加载**
+    执行（无需迁移标记）：
 
-    - 旧键值**等于默认值**（`_LEGACY_KEY_DEFAULTS`）：视为 Core 补回的
-      无意义占位（用户从未设置过），**原样保留**（不迁移、不覆盖分组，
-      也不删除——删除会导致 Core 每次加载重新补键并打日志）。
-    - 旧键值**非默认**：用户确实设置过的旧值，迁入分组（优先于分组内
-      刚被 Schema 补的默认值），并删除顶层旧键。
-    - 迁移标记已置位：跳过（防止 Core 补回的默认值再次污染分组）。
+    - 旧键值**等于默认值**（`_LEGACY_KEY_DEFAULTS`）：Core 补回的无意义
+      占位（用户从未设置过），原样保留——不迁移、不覆盖分组，也不删除
+      （删除会导致 Core 每次加载重新补键并打日志）。
+    - 旧键值**非默认**：只可能是升级残留或用户手改配置文件，同步进分组
+      （优先于分组内刚被 Schema 补的默认值）并清理旧键——因此手改平铺键
+      在任何一次加载后都持续生效，且清理后不会在后续覆盖 WebUI 修改。
     """
-    if config.get(MIGRATE_FLAG_KEY):
-        return False
+    changed = False
     for key in list(config):
         if key not in KEY_TO_GROUP:
             continue
@@ -171,5 +168,5 @@ def migrate_legacy_config(config: dict) -> bool:
         if value == _LEGACY_KEY_DEFAULTS.get(key):
             continue
         set_config_value(config, key, value)
-    config[MIGRATE_FLAG_KEY] = True
-    return True
+        changed = True
+    return changed

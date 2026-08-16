@@ -4,7 +4,6 @@ from pathlib import Path
 
 from suwayomi.config import (
     CONFIG_GROUPS,
-    MIGRATE_FLAG_KEY,
     _LEGACY_KEY_DEFAULTS,
     flatten_config,
     get_config_value,
@@ -99,7 +98,6 @@ def test_migrate_legacy_config_moves_flat_keys():
     assert "server_url" not in cfg
     assert "max_pages" not in cfg
     assert cfg["already_grouped"] is True
-    assert cfg[MIGRATE_FLAG_KEY] is True  # migration flag set
 
 
 def test_migrate_legacy_config_overrides_group_defaults():
@@ -107,7 +105,6 @@ def test_migrate_legacy_config_overrides_group_defaults():
     cfg = {"server_url": "http://custom:4567", "server": {"server_url": "http://default:4567"}}
     assert migrate_legacy_config(cfg) is True
     assert cfg["server"]["server_url"] == "http://custom:4567"
-    assert cfg[MIGRATE_FLAG_KEY] is True
 
 
 def test_migrate_legacy_config_normalizes_string_values():
@@ -142,7 +139,7 @@ def test_migrate_legacy_config_keeps_grouped_values_vs_refilled_defaults():
         "auth_mode": "none",  # Core-refilled default
         "max_pages": 30,  # Core-refilled default
     }
-    assert migrate_legacy_config(cfg) is True  # flag set
+    assert migrate_legacy_config(cfg) is False  # no real values → no change
     assert cfg["server"]["server_url"] == "http://grouped:4567"  # untouched
     assert cfg["server"]["auth_mode"] == "jwt"  # untouched
     # Refilled defaults are kept as inert placeholders (dropping them would
@@ -153,29 +150,32 @@ def test_migrate_legacy_config_keeps_grouped_values_vs_refilled_defaults():
 
 
 def test_migrate_legacy_config_defaults_kept_when_no_real_values():
-    """Fresh install: all-default legacy keys stay as placeholders, flag set."""
+    """Fresh install: all-default legacy keys stay as placeholders, no change."""
     cfg = {"server_url": "http://localhost:4567", "auth_mode": "none"}
-    assert migrate_legacy_config(cfg) is True
-    assert cfg == {
-        "server_url": "http://localhost:4567",
-        "auth_mode": "none",
-        MIGRATE_FLAG_KEY: True,
-    }
+    assert migrate_legacy_config(cfg) is False
+    assert cfg == {"server_url": "http://localhost:4567", "auth_mode": "none"}
 
 
 def test_migrate_legacy_config_noop_when_already_grouped():
     cfg = {"server": {"server_url": "http://x:4567"}}
-    assert migrate_legacy_config(cfg) is True  # flag set (nothing to migrate)
-    assert cfg == {"server": {"server_url": "http://x:4567"}, MIGRATE_FLAG_KEY: True}
+    assert migrate_legacy_config(cfg) is False
+    assert cfg == {"server": {"server_url": "http://x:4567"}}
 
 
-def test_migrate_legacy_config_noop_after_flag_set():
-    """Once migrated, Core re-added legacy defaults must never override groups."""
+def test_migrate_legacy_config_idempotent_and_hand_edit_synced():
+    """No flag: migration is stateless and runs every load.
+
+    A settled config yields no change (nothing to save); a non-default flat
+    key appearing later (hand edit) is synced into the group on the next load
+    and removed, so it can never clobber later WebUI changes.
+    """
     cfg = {
         "server": {"server_url": "http://grouped:4567"},
-        "server_url": "http://refilled-default:4567",  # re-added by Core sync
-        MIGRATE_FLAG_KEY: True,
+        "server_url": "http://localhost:4567",  # Core-refilled placeholder
     }
-    assert migrate_legacy_config(cfg) is False
-    assert cfg["server"]["server_url"] == "http://grouped:4567"  # untouched
-    assert cfg["server_url"] == "http://refilled-default:4567"  # legacy key kept as-is
+    assert migrate_legacy_config(cfg) is False  # idempotent: no change
+    cfg["server_url"] = "http://hand-edited:4567"  # hand edit after settle
+    assert migrate_legacy_config(cfg) is True
+    assert cfg["server"]["server_url"] == "http://hand-edited:4567"  # synced
+    assert "server_url" not in cfg  # flat key cleaned
+    assert migrate_legacy_config(cfg) is False  # settled again

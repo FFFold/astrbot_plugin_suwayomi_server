@@ -230,15 +230,15 @@ async def test_check_updates_sends_card_when_render_fn_succeeds():
     async def render_fn(umo, items, heading):
         return "/tmp/update-card.jpg"
 
-    with patch("suwayomi.updater.Comp.Image.fromFileSystem") as mock_img:
-        mock_img.return_value = MagicMock()
+    with patch("suwayomi.updater.Comp") as mock_comp:
+        mock_comp.Image.fromFileSystem.return_value = MagicMock()
         await check_updates(
             client, sub_mgr, ctx, _config(),
             plugin.get_kv_data, plugin.put_kv_data, asyncio.Lock(),
             AsyncMock(), AsyncMock(),
             render_update_card_fn=render_fn,
         )
-    mock_img.assert_called_once_with("/tmp/update-card.jpg")
+    mock_comp.Image.fromFileSystem.assert_called_once_with("/tmp/update-card.jpg")
     assert ctx.send_message.await_count == 1
 
 
@@ -255,15 +255,15 @@ async def test_check_updates_falls_back_to_text_when_render_fails():
     async def render_fn(umo, items, heading):
         return None
 
-    with patch("suwayomi.updater.Comp.Image.fromFileSystem") as mock_img:
-        mock_img.return_value = MagicMock()
+    with patch("suwayomi.updater.Comp") as mock_comp:
+        mock_comp.Image.fromFileSystem.return_value = MagicMock()
         await check_updates(
             client, sub_mgr, ctx, _config(),
             plugin.get_kv_data, plugin.put_kv_data, asyncio.Lock(),
             AsyncMock(), AsyncMock(),
             render_update_card_fn=render_fn,
         )
-    mock_img.assert_not_called()
+    mock_comp.Image.fromFileSystem.assert_not_called()
     assert ctx.send_message.await_count == 1  # 文本消息回退
 
 
@@ -283,8 +283,8 @@ async def test_check_updates_build_update_items_include_thumbnail():
         seen["heading"] = heading
         return "/tmp/c.jpg"
 
-    with patch("suwayomi.updater.Comp.Image.fromFileSystem") as mock_img:
-        mock_img.return_value = MagicMock()
+    with patch("suwayomi.updater.Comp") as mock_comp:
+        mock_comp.Image.fromFileSystem.return_value = MagicMock()
         await check_updates(
             client, sub_mgr, ctx, _config(),
             plugin.get_kv_data, plugin.put_kv_data, asyncio.Lock(),
@@ -315,8 +315,8 @@ async def test_check_updates_lazy_fetch_manga_when_cache_fresh():
         seen["items"] = items
         return "/tmp/c.jpg"
 
-    with patch("suwayomi.updater.Comp.Image.fromFileSystem") as mock_img:
-        mock_img.return_value = MagicMock()
+    with patch("suwayomi.updater.Comp") as mock_comp:
+        mock_comp.Image.fromFileSystem.return_value = MagicMock()
         await check_updates(
             client, sub_mgr, ctx, {"chapter_cache_hours": 6},
             plugin.get_kv_data, plugin.put_kv_data, asyncio.Lock(),
@@ -341,13 +341,41 @@ async def test_check_updates_render_fn_raises_still_sends_text():
     async def render_fn(umo, items, heading):
         raise RuntimeError("renderer exploded")
 
-    with patch("suwayomi.updater.Comp.Image.fromFileSystem") as mock_img:
-        mock_img.return_value = MagicMock()
+    with patch("suwayomi.updater.Comp") as mock_comp:
+        mock_comp.Image.fromFileSystem.return_value = MagicMock()
         await check_updates(
             client, sub_mgr, ctx, _config(),
             plugin.get_kv_data, plugin.put_kv_data, asyncio.Lock(),
             AsyncMock(), AsyncMock(),
             render_update_card_fn=render_fn,
         )
-    mock_img.assert_not_called()
+    mock_comp.Image.fromFileSystem.assert_not_called()
     assert ctx.send_message.await_count == 1  # 文本兜底仍发送
+
+
+@pytest.mark.asyncio
+async def test_check_updates_caps_card_chapters():
+    client = CountingClient({1: _chapters(1, list(range(1, 32)))})
+    client.get_manga = AsyncMock(return_value=_update_manga())
+    plugin = FakePlugin()
+    sub_mgr = _make_sub_mgr(plugin)
+    await sub_mgr.subscribe(1, "T1", 1, "u1")
+    await sub_mgr.update_latest_chapter(1, 1)
+    ctx = _context()
+    seen = {}
+
+    async def render_fn(umo, items, heading):
+        seen["items"] = items
+        return "/tmp/c.jpg"
+
+    with patch("suwayomi.updater.Comp") as mock_comp:
+        mock_comp.Image.fromFileSystem.return_value = MagicMock()
+        await check_updates(
+            client, sub_mgr, ctx, _config(),
+            plugin.get_kv_data, plugin.put_kv_data, asyncio.Lock(),
+            AsyncMock(), AsyncMock(),
+            render_update_card_fn=render_fn,
+        )
+    chapters = seen["items"][0]["chapters"]
+    assert len(chapters) == 25  # 24 上限 + "+N 话"
+    assert chapters[-1] == "+6 话"

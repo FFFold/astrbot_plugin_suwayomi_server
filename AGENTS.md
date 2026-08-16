@@ -18,7 +18,7 @@
 
 ```bash
 # Unit tests (no network needed)
-uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_downloader.py tests/test_list_chapters.py tests/test_subscription.py tests/test_web_api.py tests/test_batch_subscribe.py tests/test_push.py tests/test_service.py tests/test_updater.py tests/test_ai_service.py tests/test_ai_tools.py tests/test_live_skip.py -v
+uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_downloader.py tests/test_list_chapters.py tests/test_cards.py tests/test_card_commands.py tests/test_subscription.py tests/test_web_api.py tests/test_batch_subscribe.py tests/test_push.py tests/test_service.py tests/test_updater.py tests/test_ai_service.py tests/test_ai_tools.py tests/test_live_skip.py -v
 
 # Integration tests (requires live Suwayomi-Server)
 uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
@@ -39,6 +39,7 @@ main.py (SuwayomiPlugin — thin dispatch layer)
   ├── suwayomi/client.py (SuwayomiClient - async GraphQL HTTP)
   ├── suwayomi/models.py (Source, Manga, Chapter, SearchResult dataclasses)
   ├── suwayomi/service.py (resolve_manga, resolve_chapter, get_or_fetch_chapters, fmt helpers)
+  ├── suwayomi/cards.py (T2I card template, data prep, embed_covers, render_card, CardCache)
   ├── suwayomi/ai_service.py (structured, side-effect-free Agent search/chapter/subscription service)
   ├── suwayomi/ai_tools.py (FunctionTool schemas and registration factory)
   ├── suwayomi/updater.py (check_updates, run_update_loop)
@@ -52,6 +53,7 @@ main.py (SuwayomiPlugin — thin dispatch layer)
 
 - `main.py`: Plugin entry, all commands under `@filter.command_group("漫画")`, six AstrBot Agent tools, background update loop, WebUI API registration. Thin dispatch layer — all business logic delegated to service/updater/downloader/pusher modules.
   - `suwayomi/client.py`: All Suwayomi interaction via `POST /api/graphql`; supports none/basic/jwt auth. Exposes `auth_headers` property for image download auth.
+- `suwayomi/cards.py`: T2I 结果卡片渲染。`CARD_TEMPLATE` 为单个 Jinja2 模板（远程 T2I 端点原生渲染）；`build_*` 纯函数准备 tmpldata（用户文本统一 `html.escape`）；`embed_covers` 复用 `download_images` 并发下载封面→PIL 压缩 120px→base64 嵌入（失败显示占位块）；`render_card` 用 `asyncio.wait_for` 包裹 `html_render(return_url=False)`（440px JPEG q85），异常/超时返回 None 供调用方回退纯文本；`CardCache` 以 sha1(tmpldata) 为键 TTL 缓存。`main.py` 的 `_result_cards_enabled()` 在渲染失败后进入 5 分钟冷却（`_card_cooldown_until`），期间命令直接回退文本。
 - `suwayomi/models.py`: Pure dataclasses with `from_dict()` factory methods
 - `suwayomi/service.py`: Business logic — manga/chapter resolution, chapter fetching/caching, text normalization, status emoji mapping. All functions are standalone with dependency-injected parameters (client, sub_mgr, get_kv_data, etc.)
 - `suwayomi/ai_service.py`: Structured AI-facing search, chapter lookup, subscribe/unsubscribe, and subscription listing. Returns stable manga/chapter IDs and never sends messages.

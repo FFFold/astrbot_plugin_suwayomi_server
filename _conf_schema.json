@@ -77,7 +77,7 @@
     "description": "章节列表显示封面",
     "type": "bool",
     "default": true,
-    "hint": "在「漫画 章节」列表顶部显示漫画封面"
+    "hint": "在「漫画 章节」列表顶部显示漫画封面；关闭后该命令不使用卡片渲染（回退纯文本）"
   },
   "download_format": {
     "description": "默认下载打包格式",

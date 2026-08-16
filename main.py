@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import time
 from pathlib import Path
 
 import astrbot.api.message_components as Comp
@@ -88,6 +89,7 @@ _CACHE_TTL = 600
 _SEARCH_CACHE_MAX_ENTRIES = 64
 _AI_TOOL_REPAIR_KEY = "suwayomi_ai_tool_activation_repaired_v1"
 CARD_CACHE_TTL = 600
+CARD_FAIL_COOLDOWN = 300
 
 
 class SuwayomiPlugin(Star):
@@ -105,6 +107,7 @@ class SuwayomiPlugin(Star):
         self._ai_state = AiInteractionState(ttl=_CACHE_TTL)
         self._ai_send_locks: dict[tuple[str, str], asyncio.Lock] = {}
         self._card_cache = CardCache(ttl=CARD_CACHE_TTL)
+        self._card_cooldown_until = 0.0
         self._update_lock = asyncio.Lock()
         self._bg_task: asyncio.Task | None = None
         self._check_updates_fn = None
@@ -629,10 +632,19 @@ class SuwayomiPlugin(Star):
         )
 
     def _result_cards_enabled(self) -> bool:
-        return self._config_bool(self.config.get("result_cards_enabled", True), True)
+        if not self._config_bool(self.config.get("result_cards_enabled", True), True):
+            return False
+        if time.time() < getattr(self, "_card_cooldown_until", 0.0):
+            return False
+        return True
 
     async def _render_card_result(self, tmpldata: dict) -> str | None:
-        """Render one card to a local file; return path or None on failure."""
+        """Render one card to a local file; return path or None on failure.
+
+        A failure starts a cooldown window (``CARD_FAIL_COOLDOWN``) during
+        which ``_result_cards_enabled`` returns False, so commands fall back
+        to text immediately instead of waiting for the render timeout again.
+        """
         try:
             timeout = float(self.config.get("card_render_timeout_sec", 30))
         except (TypeError, ValueError):
@@ -641,6 +653,10 @@ class SuwayomiPlugin(Star):
         path = await render_card_cached(
             self._card_cache, self.html_render, tmpldata, timeout=timeout
         )
+        if path:
+            self._card_cooldown_until = 0.0
+        else:
+            self._card_cooldown_until = time.time() + CARD_FAIL_COOLDOWN
         if path:
             schedule_cleanup_file(path, delay=CARD_CACHE_TTL + 60)
         return path
@@ -1120,8 +1136,12 @@ class SuwayomiPlugin(Star):
 
             if self._result_cards_enabled():
                 try:
+                    sem = asyncio.Semaphore(8)
+                    async def _fetch_manga(s):
+                        async with sem:
+                            return await self.client.get_manga(s["manga_id"])
                     metadatas = await asyncio.gather(
-                        *(self.client.get_manga(s["manga_id"]) for s in subs),
+                        *(_fetch_manga(s) for s in subs),
                         return_exceptions=True,
                     )
                     card_rows = []

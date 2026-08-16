@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from plugin_pkg.main import SuwayomiPlugin
+from plugin_pkg.suwayomi.cards import CardCache
 from plugin_pkg.suwayomi.models import Manga, SearchResult, Source
 
 
@@ -21,8 +22,10 @@ def _plugin(cards_enabled=True):
     plugin.get_kv_data = AsyncMock(return_value={})
     plugin.put_kv_data = AsyncMock()
     plugin._search_cache = {}
+    plugin._card_cache = CardCache(ttl=600)
+    plugin._card_cooldown_until = 0.0
+    plugin.html_render = AsyncMock(return_value="/tmp/card.jpg")
     return plugin
-
 
 def _event():
     event = MagicMock()
@@ -210,3 +213,47 @@ async def test_my_subscriptions_card_render_failure_text(monkeypatch):
     assert "订阅列表" in results[0]
     event.plain_result.assert_called_once()
     event.chain_result.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_card_render_failure_enters_cooldown(monkeypatch):
+    plugin = _plugin(cards_enabled=True)
+    _plugin_with_search(plugin, [_manga("咒术回战", 1)])
+    event = _event()
+    monkeypatch.setattr(
+        "plugin_pkg.main.render_card_cached", AsyncMock(return_value=None)
+    )
+    monkeypatch.setattr(
+        "plugin_pkg.main.embed_covers",
+        AsyncMock(side_effect=lambda c, items, **kw: items),
+    )
+
+    _ = [msg async for msg in plugin.search_manga(event, "咒术回战")]
+    # 渲染失败进入冷却：后续命令直接回退文本，不再尝试渲染
+    assert plugin._result_cards_enabled() is False
+    event.plain_result.reset_mock()
+    _ = [msg async for msg in plugin.search_manga(event, "咒术回战")]
+    event.plain_result.assert_called_once()
+
+    # 冷却恢复后重新尝试
+    plugin._card_cooldown_until = 0.0
+    assert plugin._result_cards_enabled() is True
+
+
+@pytest.mark.asyncio
+async def test_card_render_success_clears_cooldown(monkeypatch):
+    plugin = _plugin(cards_enabled=True)
+    _plugin_with_search(plugin, [_manga("咒术回战", 1)])
+    event = _event()
+    plugin._card_cooldown_until = 12345.0
+    monkeypatch.setattr(
+        "plugin_pkg.main.render_card_cached", AsyncMock(return_value="/tmp/card.jpg")
+    )
+    monkeypatch.setattr(
+        "plugin_pkg.main.embed_covers",
+        AsyncMock(side_effect=lambda c, items, **kw: items),
+    )
+    monkeypatch.setattr("plugin_pkg.main.schedule_cleanup_file", MagicMock())
+
+    _ = [msg async for msg in plugin.search_manga(event, "咒术回战")]
+    assert plugin._result_cards_enabled() is True

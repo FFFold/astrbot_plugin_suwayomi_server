@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 _PLUGIN_NAME = PLUGIN_NAME
 
 _UPDATE_CONCURRENCY = 5
+_UPDATE_CARD_MAX_CHAPTERS = 24
 LAST_CHECK_KV_KEY = "suwayomi_last_update_check"
 
 
@@ -215,10 +216,15 @@ async def check_updates(
                 f"新增章节：{', '.join(ch_info)}\n"
                 f"发送「漫画 阅读 {title} {latest_num}」开始阅读"
             )
+            chapters_display = list(ch_info)
+            if len(chapters_display) > _UPDATE_CARD_MAX_CHAPTERS:
+                chapters_display = chapters_display[:_UPDATE_CARD_MAX_CHAPTERS] + [
+                    f"+{len(ch_info) - _UPDATE_CARD_MAX_CHAPTERS} 话"
+                ]
             item = {
                 "title": title,
                 "status": manga_obj.status if manga_obj else "UNKNOWN",
-                "chapters": ch_info,
+                "chapters": chapters_display,
                 "read_hint": f"「漫画 阅读 {title} {latest_num}」",
                 "thumbnail_url": manga_obj.thumbnail_url if manga_obj else None,
             }

@@ -138,7 +138,7 @@
   "result_cards_enabled": {
     "description": "指令结果卡片渲染",
     "type": "bool",
-    "default": true,
+    "default": false,
     "hint": "使用 T2I 服务把指令结果渲染为带封面的卡片（搜索/订阅/更新通知/章节列表等）；关闭或渲染失败时回退纯文本"
   },
   "card_render_timeout_sec": {

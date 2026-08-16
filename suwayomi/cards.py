@@ -13,6 +13,7 @@ import hashlib
 import html
 import json
 import math
+import re
 import time
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
@@ -48,7 +49,7 @@ CARD_TEMPLATE = """
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background:#e9ecf3;
-         padding:28px; color:#1a1d29; }
+         padding:28px 28px 36px; color:#1a1d29; }
   .title { font-size:34px; font-weight:700; margin-bottom:20px; }
   .title .sub { font-size:24px; color:#8a8f9d; font-weight:400; }
   .card { background:#fff; border-radius:20px; padding:16px 20px; display:flex;
@@ -87,7 +88,10 @@ CARD_TEMPLATE = """
   .hint.pushed { margin-top:auto; padding-top:20px; }
   .cols { display:flex; gap:16px; margin-top:16px; }
   .col { flex:1; background:#fff; border-radius:16px; padding:16px; font-family:Consolas,monospace;
-         font-size:24px; color:#3a3f4b; line-height:1.8; }
+         font-size:24px; color:#3a3f4b; line-height:1.8; overflow:hidden; }
+  .row { display:flex; align-items:baseline; }
+  .row-main { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .row-id { flex-shrink:0; color:#8a8f9d; margin-left:8px; }
   .mini-head { display:flex; align-items:center; gap:20px; background:#fff; border-radius:20px;
                padding:16px 24px; box-shadow:0 2px 6px rgba(0,0,0,.05); }
   .mini-title { font-size:28px; font-weight:700; }
@@ -209,7 +213,7 @@ CARD_TEMPLATE = """
   {% if chunks %}
   <div class="cols">
     {% for col in chunks %}
-    <div class="col">{% for line in col %}{{ line }}{% if not loop.last %}<br>{% endif %}{% endfor %}</div>
+    <div class="col">{% for line in col %}<div class="row"><span class="row-main">{{ line.main }}</span>{% if line.id %}<span class="row-id">{{ line.id }}</span>{% endif %}</div>{% endfor %}</div>
     {% endfor %}
   </div>
   {% endif %}
@@ -296,7 +300,36 @@ def build_subscriptions_card(rows: list[dict]) -> dict:
 
 
 def _split_columns(lines: list[str], n: int = 3) -> list[list[str]]:
-    return [lines[i::n] for i in range(n)]
+    """Split lines into n columns preserving reading order.
+
+    Uses contiguous slices (column 1 gets the first chunk, column 2 the next,
+    ...) so each column reads top-to-bottom in the same order as the
+    plain-text list, instead of round-robin interleaving (1,4,7 / 2,5,8).
+    """
+    if not lines:
+        return [[] for _ in range(n)]
+    per = math.ceil(len(lines) / n)
+    return [lines[i * per:(i + 1) * per] for i in range(n)]
+
+
+_ID_TAG_RE = re.compile(r"\s*\(ID:\d+\)\s*$")
+
+
+def _chapter_row(line: str) -> dict:
+    """Split a chapter line into (main, id_tag) for single-line truncation.
+
+    Lines like ``#1 单行本：第01卷 (ID:2539)`` become main ``#1 单行本：第01卷``
+    and a fixed ``(ID:2539)`` tag, so the title can be ellipsized without
+    ever hiding the ID users need for ``ID:xxx`` disambiguation.
+    """
+    m = _ID_TAG_RE.search(line)
+    if m:
+        main = line[: m.start()].strip()
+        id_tag = m.group(0).strip()
+    else:
+        main = line
+        id_tag = ""
+    return {"main": html.escape(main), "id": html.escape(id_tag)}
 
 
 def build_chapter_cards(manga: dict, lines: list[str]) -> tuple[list[dict], list[str]]:
@@ -307,7 +340,7 @@ def build_chapter_cards(manga: dict, lines: list[str]) -> tuple[list[dict], list
     NOT escaped); this function HTML-escapes the ones placed into cards and
     returns the unescaped overflow as ``tail``.
     """
-    safe_lines = [html.escape(line) for line in lines]
+    safe_lines = [_chapter_row(line) for line in lines]
     per_card = CHAPTER_LINES_PER_CARD
     if not lines:
         card_count = 1

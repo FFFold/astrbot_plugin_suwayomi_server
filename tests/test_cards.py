@@ -136,11 +136,33 @@ def test_build_chapter_cards_escapes_lines():
     lines = ["#1 章 & 节", "#2 <b>x</b>"]
     cards, tail = build_chapter_cards({"title": "X", "cover_data_url": None}, lines)
     flat = [line for col in cards[0]["chunks"] for line in col]
-    assert "章 &amp; 节" in flat[0]
-    assert "<b>" not in "".join(flat)
+    assert "章 &amp; 节" in flat[0]["main"]
+    assert "<b>" not in "".join(x["main"] + x["id"] for x in flat)
     # tail 返回原始行（用于纯文本，不转义）
     cards2, tail2 = build_chapter_cards({"title": "X", "cover_data_url": None}, ["#1 & x"] * 600)
     assert tail2 == ["#1 & x"] * (600 - CHAPTER_LINES_PER_CARD * MAX_CHAPTER_CARDS)
+
+
+def test_build_chapter_cards_columns_keep_reading_order():
+    lines = [f"#{i}" for i in range(1, 11)]
+    cards, tail = build_chapter_cards({"title": "X", "cover_data_url": None}, lines)
+    chunks = cards[0]["chunks"]
+    # 连续切片而非轮询：列 1 = #1..#4，列 2 = #5..#8，列 3 = #9..#10
+    flat = [x["main"] for col in chunks for x in col]
+    assert flat == ["#1", "#2", "#3", "#4", "#5", "#6", "#7", "#8", "#9", "#10"]
+    assert [x["main"] for x in chunks[0]] == ["#1", "#2", "#3", "#4"]
+
+
+def test_build_chapter_cards_splits_id_tag():
+    cards, tail = build_chapter_cards(
+        {"title": "X", "cover_data_url": None},
+        ["#1 单行本：第01卷 (ID:2539)", "#2 普通章节", "#1 (ID:7)"],
+    )
+    flat = [x for col in cards[0]["chunks"] for x in col]
+    by_main = {x["main"]: x["id"] for x in flat}
+    assert by_main["#1 单行本：第01卷"] == "(ID:2539)"
+    assert by_main["#2 普通章节"] == ""
+    assert by_main["#1"] == "(ID:7)"
 
 
 def test_build_chapter_cards_empty_lines_returns_header():

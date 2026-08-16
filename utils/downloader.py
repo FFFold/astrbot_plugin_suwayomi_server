@@ -5,6 +5,7 @@ import shutil
 import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlparse
 
 import aiohttp
 
@@ -91,6 +92,63 @@ async def download_images(
     except Exception:
         shutil.rmtree(tmp_dir, ignore_errors=True)
         raise
+
+
+async def download_cover(
+    client: SuwayomiClient,
+    thumbnail_url: str | None,
+    custom_tmp: str = "",
+    retries: int = 3,
+    headers: dict[str, str] | None = None,
+) -> tuple[str | None, Path | None]:
+    """Download a single manga cover to a temporary directory.
+
+    Returns ``(local_path, tmp_dir)`` on success, or ``(None, None)`` when the
+    cover is unavailable or cannot be downloaded. On success the caller is
+    responsible for cleaning ``tmp_dir`` (e.g. via ``schedule_cleanup``).
+
+    Suwayomi's GraphQL ``thumbnailUrl`` is normally a server-relative path like
+    ``/api/v1/manga/{id}/thumbnail``. For such same-origin URLs the caller's
+    auth ``headers`` are forwarded; for external absolute URLs they are not, to
+    avoid leaking Suwayomi credentials to third-party hosts.
+    """
+    if not thumbnail_url:
+        return None, None
+
+    if thumbnail_url.startswith(("http://", "https://")):
+        url = thumbnail_url
+        use_headers = None
+        if client.server_url:
+            server = urlparse(client.server_url)
+            target = urlparse(thumbnail_url)
+            server_port = server.port or (443 if server.scheme == "https" else 80 if server.scheme == "http" else None)
+            target_port = target.port or (443 if target.scheme == "https" else 80 if target.scheme == "http" else None)
+            if (
+                server.scheme == target.scheme
+                and server.hostname == target.hostname
+                and server_port == target_port
+            ):
+                use_headers = headers
+    else:
+        url = client.build_image_url(thumbnail_url)
+        use_headers = headers
+
+    try:
+        paths, tmp_dir = await download_images(
+            [url], concurrency=1, custom_tmp=custom_tmp, retries=retries, headers=use_headers
+        )
+    except (aiohttp.ClientError, asyncio.TimeoutError, OSError) as e:
+        logger.warning(f"[{_PLUGIN_NAME}] 封面下载失败: {e}", exc_info=True)
+        return None, None
+    except Exception:
+        logger.exception(f"[{_PLUGIN_NAME}] 封面下载出现未知异常")
+        raise
+
+    if not paths or not paths[0]:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        return None, None
+
+    return paths[0], tmp_dir
 
 
 async def fetch_pages_local(

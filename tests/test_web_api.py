@@ -385,6 +385,19 @@ async def test_config_post_coerces_ai_tool_booleans_and_limits():
     assert cfg["ai_tool_timeout_sec"] == 300
 
 
+@pytest.mark.asyncio
+async def test_config_post_accepts_chapter_list_show_cover():
+    cfg = FakeConfig({"server_url": "http://old:4567"})
+
+    result = await api_config_post(cfg, {
+        "server_url": "http://new:4567",
+        "chapter_list_show_cover": "false",
+    }, AsyncMock())
+
+    assert result["success"] is True
+    assert cfg["chapter_list_show_cover"] is False
+
+
 def test_config_get_only_returns_allowed_keys():
     """api_config_get should only return whitelisted keys."""
     cfg = {"server_url": "http://localhost:4567", "password": "pw", "internal_key": "secret"}

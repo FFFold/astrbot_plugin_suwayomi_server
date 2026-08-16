@@ -40,7 +40,7 @@ from .suwayomi.service import (
     ttl_cache_store,
 )
 from .suwayomi.updater import check_updates as _check_updates, run_update_loop
-from .utils.downloader import fetch_pages_local
+from .utils.downloader import download_cover, fetch_pages_local
 from .utils.pack import (
     build_chapter_output_path,
     normalize_pack_format,
@@ -1071,11 +1071,44 @@ class SuwayomiPlugin(Star):
                 yield event.plain_result(err or "未找到该漫画。")
                 return
 
-            chapters = await get_or_fetch_chapters(
-                self.client, self.get_kv_data, self.put_kv_data, self.config, manga.id, force=force
-            )
+            show_cover = self.config.get("chapter_list_show_cover", True)
+            cover_path: str | None = None
+            cover_tmp: Path | None = None
+
+            if show_cover and manga.thumbnail_url:
+                chapters_result, cover_result = await asyncio.gather(
+                    get_or_fetch_chapters(
+                        self.client, self.get_kv_data, self.put_kv_data, self.config, manga.id, force=force
+                    ),
+                    download_cover(
+                        self.client,
+                        manga.thumbnail_url,
+                        custom_tmp=self.config.get("temp_dir", "").strip(),
+                        retries=self.config.get("download_retries", 3),
+                        headers=self.client.auth_headers,
+                    ),
+                    return_exceptions=True,
+                )
+                if isinstance(chapters_result, Exception):
+                    # If the cover was already downloaded, do not leak its temp dir.
+                    if isinstance(cover_result, tuple) and cover_result[0]:
+                        schedule_cleanup(cover_result[1], delay=60)
+                    raise chapters_result
+                chapters = chapters_result
+                if not isinstance(cover_result, Exception):
+                    cover_path, cover_tmp = cover_result
+            else:
+                chapters = await get_or_fetch_chapters(
+                    self.client, self.get_kv_data, self.put_kv_data, self.config, manga.id, force=force
+                )
+
             if not chapters:
-                yield event.plain_result(f"「{manga.title}」暂无章节。")
+                if cover_path:
+                    msg = f"「{manga.title}」暂无章节。"
+                    schedule_cleanup(cover_tmp, delay=60)
+                    yield event.chain_result([Comp.Image.fromFileSystem(cover_path), Comp.Plain(msg)])
+                else:
+                    yield event.plain_result(f"「{manga.title}」暂无章节。")
                 return
 
             chapters.sort(key=lambda ch: ch.source_order)
@@ -1102,7 +1135,10 @@ class SuwayomiPlugin(Star):
             for i, chunk in enumerate(chunks):
                 prefix = header if i == 0 else f"📖「{manga.title}」{src_tag} 章节续 ({i + 1}/{len(chunks)}):"
                 msg = prefix + "\n" + "\n".join(chunk)
-                if i == 0:
+                if i == 0 and cover_path:
+                    schedule_cleanup(cover_tmp, delay=60)
+                    yield event.chain_result([Comp.Image.fromFileSystem(cover_path), Comp.Plain(msg)])
+                elif i == 0:
                     yield event.plain_result(msg)
                 else:
                     await event.send(event.plain_result(msg))

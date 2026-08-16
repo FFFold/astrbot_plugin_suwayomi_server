@@ -102,6 +102,8 @@ Bot:  📖「一拳超人」章节列表（共 200 话）:
         ✅ #199 第199话
         ...
 
+> 章节列表的首条消息会附带漫画封面；可通过配置 `chapter_list_show_cover` 关闭。
+
 用户: /漫画 阅读 一拳超人 200
 Bot:  📖 正在加载「一拳超人」第 200 话，请稍后...
       [图片] [图片] [图片] ...
@@ -226,6 +228,7 @@ uv pip install -r astrbot_suwayomi_server/requirements.txt
 | `download_concurrency` | int | `6` | 并行下载图片数（仅 `download` 模式） |
 | `download_retries` | int | `3` | 图片下载失败重试次数（指数退避） |
 | `chapter_cache_hours` | int | `6` | 章节缓存时长（小时）。`0` = 不自动刷新，`-1` = 总是从源刷新 |
+| `chapter_list_show_cover` | bool | `true` | 「漫画 章节」列表顶部是否显示漫画封面 |
 | `download_format` | string | `pdf` | 下载打包格式：`zip` / `pdf` / `cbz` |
 | `temp_dir` | string | `""` | 临时文件目录。留空用系统默认，Docker 环境设置共享目录如 `/AstrBot/data/temp` |
 | `auto_push_mode` | string | `image` | 自动推送模式：`image`（图片）/ `file`（文件） |

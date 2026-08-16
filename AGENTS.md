@@ -18,7 +18,7 @@
 
 ```bash
 # Unit tests (no network needed)
-uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_subscription.py tests/test_web_api.py tests/test_batch_subscribe.py tests/test_push.py tests/test_service.py tests/test_ai_service.py tests/test_ai_tools.py -v
+uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_downloader.py tests/test_list_chapters.py tests/test_subscription.py tests/test_web_api.py tests/test_batch_subscribe.py tests/test_push.py tests/test_service.py tests/test_updater.py tests/test_ai_service.py tests/test_ai_tools.py tests/test_live_skip.py -v
 
 # Integration tests (requires live Suwayomi-Server)
 uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
@@ -42,7 +42,7 @@ main.py (SuwayomiPlugin — thin dispatch layer)
   ├── suwayomi/ai_service.py (structured, side-effect-free Agent search/chapter/subscription service)
   ├── suwayomi/ai_tools.py (FunctionTool schemas and registration factory)
   ├── suwayomi/updater.py (check_updates, run_update_loop)
-  ├── utils/downloader.py (download_one, download_images, fetch_pages_local)
+  ├── utils/downloader.py (download_one, download_images, download_cover, fetch_pages_local)
   ├── utils/pack.py (pack_zip, pack_cbz, pack_pdf — image packaging)
   ├── utils/pusher.py (push_chapter_images, push_chapter_file, schedule_cleanup)
   ├── utils/subscription.py (SubscriptionManager - AstrBot KV storage)
@@ -57,7 +57,7 @@ main.py (SuwayomiPlugin — thin dispatch layer)
 - `suwayomi/ai_service.py`: Structured AI-facing search, chapter lookup, subscribe/unsubscribe, and subscription listing. Returns stable manga/chapter IDs and never sends messages.
 - `suwayomi/ai_tools.py`: Explicit JSON Schemas for six tools — `suwayomi_search_manga`, `suwayomi_get_chapters`, `suwayomi_send_chapter`, `suwayomi_subscribe_manga`, `suwayomi_get_subscriptions`, `suwayomi_unsubscribe_manga` — registered through `context.add_llm_tools()`; custom `call()` dispatch keeps event binding stable during initial load and config-driven re-registration.
 - `suwayomi/updater.py`: Update engine — `check_updates()` scans all subscriptions for new chapters (parallel, `_UPDATE_CONCURRENCY=5` Semaphore), pushes notifications, triggers auto-push, records `suwayomi_last_update_check` timestamp. `run_update_loop()` is the background task wrapper. Imported by `main.py` with pre-bound push callbacks.
-- `utils/downloader.py`: Image download pipeline — `download_one()` with exponential backoff, `download_images()` parallel batch download (accepts `headers` for auth), `fetch_pages_local()` downloads chapter pages to temp dir (passes `client.auth_headers`).
+- `utils/downloader.py`: Image download pipeline — `download_one()` with exponential backoff, `download_images()` parallel batch download (accepts `headers` for auth), `download_cover()` downloads a single manga cover to temp dir (used by `/漫画 章节`), `fetch_pages_local()` downloads chapter pages to temp dir (passes `client.auth_headers`).
 - `utils/pack.py`: Pack images into ZIP, CBZ, or PDF files; `parse_download_args()` for command arg parsing; shared helpers `sanitize_filename()`, `normalize_pack_format()`, `build_chapter_output_path()`, `pack_images()` used by download/push/AI-send.
 - `utils/pusher.py`: Push delivery — `push_chapter_images()` sends images inline or via forward, `push_chapter_file()` sends packaged file. Also exports `schedule_cleanup()` for delayed temp dir cleanup (tracked in `_cleanup_tasks`, cancelled via `cancel_pending_cleanups()` on terminate), `is_aiocqhttp_target()` for platform detection, and `build_image_chain()` — the single shared builder for image/forward message chains (read, auto-push, AI send).
 - `utils/subscription.py`: Persists subscriptions via AstrBot's `get_kv_data()`/`put_kv_data()`. All write operations are serialized by an internal `asyncio.Lock` (read-modify-write of the whole dict must not interleave). Also manages per-session push preferences (`set_push_default`/`get_push_default`/`clear_push_default`) stored under the `suwayomi_push_defaults` KV key.
@@ -142,7 +142,7 @@ main.py (SuwayomiPlugin — thin dispatch layer)
 - `_conf_schema.json`: AstrBot WebUI config form schema
 - `requirements.txt`: Runtime deps (currently `aiohttp>=3.9.0`, `img2pdf>=0.5.0`, `opencc-python-reimplemented>=0.1.7`, and `pydantic>=2.12.5`)
 - `pyproject.toml`: Dev deps (pytest, pytest-asyncio), gitignored
-- Tests in `tests/` - unit tests are synchronous or use `@pytest.mark.asyncio`; `test_ai_service.py` covers structured Agent search, chapter selection, and subscription management, while `test_ai_tools.py` guards `call()` dispatch across initial load and config re-sync for all six tools
+- Tests in `tests/` - unit tests are synchronous or use `@pytest.mark.asyncio`; `test_ai_service.py` covers structured Agent search, chapter selection, and subscription management, while `test_ai_tools.py` guards `call()` dispatch across initial load and config re-sync for all six tools; `test_downloader.py` covers image/cover download helpers; `test_list_chapters.py` covers `/漫画 章节` cover logic and error paths
 - `test_live_api.py`: Integration tests for Suwayomi client, auto-skipped when server unreachable. Covers sources/search/chapters/pages, AI search & chapter selection, plus the real command main path (`test_download_and_pack_chapter`: fetch pages → download images → pack zip/pdf/cbz; `test_check_updates_detects_new_chapters_live`: real scan → notify → watermark → last-check timestamp). Manga sources rate-limit consecutive fetches, so AI-search tests retry once and skip when throttled (`_search_zh_for_agent`)
 - `test_live_web_api.py`: Integration tests for WebUI API handlers, auto-skipped when server unreachable
 - Version is in `metadata.yaml`, not `pyproject.toml`

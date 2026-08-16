@@ -157,7 +157,7 @@ git clone https://github.com/FFFold/astrbot_suwayomi_server.git
 
 ### 填写示例
 
-配置项在 WebUI 插件设置中按分组展示（服务器连接 / 阅读体验 / 下载打包 / 自动推送 / AI 漫画工具 / 高级）。
+配置项在 WebUI 插件设置中按分组展示（服务器连接 / 卡片渲染 / 阅读体验 / 下载打包 / 自动推送 / AI 漫画工具 / 高级）。
 
 **场景 1：同一台机器，无认证**
 ```

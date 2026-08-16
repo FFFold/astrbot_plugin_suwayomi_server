@@ -110,6 +110,25 @@ def test_migrate_legacy_config_overrides_group_defaults():
     assert cfg[MIGRATE_FLAG_KEY] is True
 
 
+def test_migrate_legacy_config_normalizes_string_values():
+    """Hand-edited string values are normalized when migrated into groups."""
+    cfg = {
+        "chapter_cache_hours": "6",  # string equal to default → placeholder kept
+        "check_interval": "30",  # string, non-default → migrated as int
+        "max_pages": "abc",  # not convertible → skipped, left as-is
+        "enable_ai_tools": "false",  # string bool → migrated as False
+    }
+    assert migrate_legacy_config(cfg) is True
+    assert cfg["chapter_cache_hours"] == "6"  # placeholder untouched
+    assert cfg["advanced"]["check_interval"] == 30
+    assert isinstance(cfg["advanced"]["check_interval"], int)
+    assert "check_interval" not in cfg
+    assert cfg["max_pages"] == "abc"  # unparseable value never reaches groups
+    assert "max_pages" not in cfg.get("reading", {})
+    assert cfg["ai"]["enable_ai_tools"] is False
+    assert isinstance(cfg["ai"]["enable_ai_tools"], bool)
+
+
 def test_migrate_legacy_config_keeps_grouped_values_vs_refilled_defaults():
     """Core-refilled legacy defaults must never clobber real grouped config.
 

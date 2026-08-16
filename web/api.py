@@ -15,9 +15,18 @@ from typing import Any, Awaitable, Callable
 from astrbot.api import logger
 
 try:
-    from ..suwayomi.config import flatten_config, set_config_value
-except ImportError:  # tests import web.api as top-level package
-    from suwayomi.config import flatten_config, set_config_value
+    from ..suwayomi.config import (
+        flatten_config,
+        get_config_value,
+        set_config_value,
+    )
+except ImportError:
+    # 真正以包内模块导入（__package__ 含至少两级，如 astrbot_suwayomi_server.web）
+    # 时，相对导入失败意味着 suwayomi.config 内部出错，不应掩盖；
+    # 测试把 web 当作顶层包导入时层级不足，回退绝对导入。
+    if __package__ and __package__.count(".") >= 1:
+        raise
+    from suwayomi.config import flatten_config, get_config_value, set_config_value
 
 PLUGIN_NAME = "astrbot_plugin_suwayomi_server"
 
@@ -212,7 +221,7 @@ def api_config_get(config: Any) -> dict:
     """GET /config — 读取当前插件配置，仅返回白名单字段，掩码敏感字段"""
     cfg = flatten_config(config, sorted(ALLOWED_CONFIG_KEYS))
     for key, default in AI_CONFIG_DEFAULTS.items():
-        cfg.setdefault(key, config.get(key, default))
+        cfg.setdefault(key, get_config_value(config, key, default))
     if cfg.get("password"):
         cfg["password"] = "***"
     return cfg

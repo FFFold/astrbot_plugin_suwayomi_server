@@ -28,7 +28,7 @@ MIGRATE_FLAG_KEY = "_config_migrated_v1"
 
 # 旧键的"无意义值"（= _conf_schema.json 中 invisible 旧键的 default，
 # 与旧版平铺 schema 的默认值一致）。Core 每次加载都会给缺失的 invisible
-# 键补回这些默认值，它们不代表用户设置，迁移时直接清理、不得覆盖分组。
+# 键补回这些默认值，它们不代表用户设置，迁移时原样保留、不得覆盖分组。
 _LEGACY_KEY_DEFAULTS: dict[str, Any] = {
     "server_url": "http://localhost:4567",
     "auth_mode": "none",
@@ -54,6 +54,32 @@ _LEGACY_KEY_DEFAULTS: dict[str, Any] = {
     "default_source_id": 0,
     "temp_dir": "",
 }
+
+_INT_LEGACY_KEYS = {
+    key
+    for key, value in _LEGACY_KEY_DEFAULTS.items()
+    if isinstance(value, int) and not isinstance(value, bool)
+}
+
+_BOOL_LEGACY_KEYS = {
+    key for key, value in _LEGACY_KEY_DEFAULTS.items() if isinstance(value, bool)
+}
+
+
+def _normalize_legacy_value(key: str, value: Any) -> Any | None:
+    """把手改配置文件产生的字符串旧值规范化为目标类型；无法规范化返回 None。"""
+    if key in _INT_LEGACY_KEYS:
+        if isinstance(value, bool):
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+    if key in _BOOL_LEGACY_KEYS:
+        if isinstance(value, str):
+            return value.strip().lower() in {"1", "true", "yes", "on"}
+        return bool(value)
+    return value
 
 CONFIG_GROUPS: dict[str, list[str]] = {
     "server": ["server_url", "auth_mode", "username", "password"],
@@ -139,7 +165,9 @@ def migrate_legacy_config(config: dict) -> bool:
     for key in list(config):
         if key not in KEY_TO_GROUP:
             continue
-        value = config[key]
+        value = _normalize_legacy_value(key, config[key])
+        if value is None:
+            continue
         if value == _LEGACY_KEY_DEFAULTS.get(key):
             continue
         set_config_value(config, key, value)

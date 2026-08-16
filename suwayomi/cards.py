@@ -89,9 +89,8 @@ CARD_TEMPLATE = """
   .cols { display:flex; gap:16px; margin-top:16px; }
   .col { flex:1; background:#fff; border-radius:16px; padding:16px; font-family:Consolas,monospace;
          font-size:24px; color:#3a3f4b; line-height:1.8; overflow:hidden; }
-  .row { display:flex; align-items:baseline; }
-  .row-main { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .row-id { flex-shrink:0; color:#8a8f9d; margin-left:8px; }
+  .row-main { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .row-id { color:#8a8f9d; font-size:20px; line-height:1.5; }
   .mini-head { display:flex; align-items:center; gap:20px; background:#fff; border-radius:20px;
                padding:16px 24px; box-shadow:0 2px 6px rgba(0,0,0,.05); }
   .mini-title { font-size:28px; font-weight:700; }
@@ -213,7 +212,7 @@ CARD_TEMPLATE = """
   {% if chunks %}
   <div class="cols">
     {% for col in chunks %}
-    <div class="col">{% for line in col %}<div class="row"><span class="row-main">{{ line.main }}</span>{% if line.id %}<span class="row-id">{{ line.id }}</span>{% endif %}</div>{% endfor %}</div>
+    <div class="col">{% for line in col %}<div class="row"><div class="row-main">{{ line.main }}</div>{% if line.id %}<div class="row-id">{{ line.id }}</div>{% endif %}</div>{% endfor %}</div>
     {% endfor %}
   </div>
   {% endif %}

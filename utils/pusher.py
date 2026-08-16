@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import shutil
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 import astrbot.api.message_components as Comp
 from astrbot.api import logger
@@ -19,6 +20,7 @@ if TYPE_CHECKING:
     from ..suwayomi.client import SuwayomiClient
 
 from ..suwayomi import PLUGIN_NAME
+
 _PLUGIN_NAME = PLUGIN_NAME
 
 _cleanup_tasks: set[asyncio.Task] = set()

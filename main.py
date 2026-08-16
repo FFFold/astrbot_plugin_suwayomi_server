@@ -1263,10 +1263,13 @@ class SuwayomiPlugin(Star):
                 return
 
             show_cover = self.config.get("chapter_list_show_cover", True)
+            cards_active = self._result_cards_enabled() and show_cover
             cover_path: str | None = None
             cover_tmp: Path | None = None
 
-            if show_cover and manga.thumbnail_url:
+            if show_cover and manga.thumbnail_url and not cards_active:
+                # 卡片模式下封面由 embed_covers 统一下载，避免与 download_cover 双重下载；
+                # 卡片渲染失败回退时直接走纯文本（无封面）。
                 chapters_result, cover_result = await asyncio.gather(
                     get_or_fetch_chapters(
                         self.client, self.get_kv_data, self.put_kv_data, self.config, manga.id, force=force
@@ -1314,7 +1317,7 @@ class SuwayomiPlugin(Star):
                 src_name = None
             src_tag = f" - {src_name}" if src_name else ""
 
-            if self._result_cards_enabled() and show_cover:
+            if cards_active:
                 try:
                     lines_card: list[str] = []
                     dl_count = 0

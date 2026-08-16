@@ -302,9 +302,8 @@ async def test_list_chapters_cards_success_multiple_images(monkeypatch):
         "plugin_pkg.main.embed_covers",
         AsyncMock(side_effect=lambda c, items, **kw: [dict(i, cover_data_url="x") for i in items]),
     )
-    cover_tmp = MagicMock()
-    monkeypatch.setattr("plugin_pkg.main.download_cover",
-                        AsyncMock(return_value=("/tmp/cover.jpg", cover_tmp)))
+    download_cover_mock = AsyncMock(return_value=("/tmp/cover.jpg", MagicMock()))
+    monkeypatch.setattr("plugin_pkg.main.download_cover", download_cover_mock)
     plugin._render_card_result = AsyncMock(
         side_effect=lambda data: f"/tmp/card{data['title']}.jpg"
     )
@@ -318,11 +317,9 @@ async def test_list_chapters_cards_success_multiple_images(monkeypatch):
     assert event.send.await_count == 2
     assert event.send.await_count == plugin._render_card_result.call_count - 1
     event.plain_result.assert_not_called()
-    # 卡片路径成功也必须清理 download_cover 的临时目录（防泄漏）
-    schedule_cleanup_mock.assert_called_once()
-    cleanup_args = schedule_cleanup_mock.call_args
-    assert cleanup_args.args[0] is cover_tmp
-    assert cleanup_args.kwargs.get("delay") == 60
+    # 卡片模式封面由 embed_covers 统一负责：不调用 download_cover，无临时目录泄漏
+    download_cover_mock.assert_not_awaited()
+    schedule_cleanup_mock.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -335,9 +332,8 @@ async def test_list_chapters_cards_render_failure_falls_back(monkeypatch):
     plugin._render_card_result = AsyncMock(return_value=None)
     monkeypatch.setattr("plugin_pkg.main.resolve_manga", AsyncMock(return_value=(manga, None)))
     monkeypatch.setattr("plugin_pkg.main.get_or_fetch_chapters", AsyncMock(return_value=chapters))
-    cover_tmp = MagicMock()
-    monkeypatch.setattr("plugin_pkg.main.download_cover",
-                        AsyncMock(return_value=("/tmp/cover.jpg", cover_tmp)))
+    download_cover_mock = AsyncMock(return_value=("/tmp/cover.jpg", MagicMock()))
+    monkeypatch.setattr("plugin_pkg.main.download_cover", download_cover_mock)
     schedule_cleanup_mock = MagicMock()
     monkeypatch.setattr("plugin_pkg.main.schedule_cleanup", schedule_cleanup_mock)
     monkeypatch.setattr(
@@ -348,7 +344,9 @@ async def test_list_chapters_cards_render_failure_falls_back(monkeypatch):
     results = [msg async for msg in plugin.list_chapters(event, "测试漫画")]
 
     assert len(results) == 1
-    event.chain_result.assert_called_once()  # 旧封面+文本路径
-    chain = event.chain_result.call_args[0][0]
-    assert len(chain) == 2
-    event.plain_result.assert_not_called()
+    assert "章节列表" in results[0]
+    # 卡片模式未预下载封面，回退时直接纯文本（无封面）
+    event.plain_result.assert_called_once()
+    event.chain_result.assert_not_called()
+    download_cover_mock.assert_not_awaited()
+    schedule_cleanup_mock.assert_not_called()

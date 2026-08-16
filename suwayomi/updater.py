@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import Callable
-from typing import TYPE_CHECKING
+from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING, Any
 
 import astrbot.api.message_components as Comp
 from astrbot.api import logger
@@ -135,6 +135,10 @@ async def _check_one_manga(
         return None, True
 
 
+# 更新卡片渲染回调：注入时被 check_updates await，返回卡片图片路径或 None（回退文本）。
+RenderUpdateCardFn = Callable[[str, list[dict[str, Any]], str], Awaitable[str | None]]
+
+
 async def check_updates(
     client: SuwayomiClient,
     sub_mgr: SubscriptionManager,
@@ -146,7 +150,7 @@ async def check_updates(
     push_chapter_images_fn: Callable,
     push_chapter_file_fn: Callable,
     force: bool = False,
-    render_update_card_fn: Callable | None = None,
+    render_update_card_fn: RenderUpdateCardFn | None = None,
 ) -> str:
     logger.info(f"[{_PLUGIN_NAME}] 开始检查更新 (force={force})")
     async with update_lock:

@@ -112,6 +112,17 @@ def test_build_chapter_cards_single_header_only():
     assert cards[0]["title"] == "咒术回战"
 
 
+def test_build_chapter_cards_dict_tags_preserve_class():
+    cards, tail = build_chapter_cards(
+        {"title": "X", "cover_data_url": None,
+         "tags": [{"text": "连载中", "class": "status-ongoing"}, "默认样式"]},
+        ["#1"],
+    )
+    tags = cards[0]["tags"]
+    assert {"text": "连载中", "class": "status-ongoing"} in tags
+    assert {"text": "默认样式", "class": "status-default"} in tags
+
+
 def test_build_chapter_cards_chunks_by_constant():
     lines = [f"#{i} 章" for i in range(1, CHAPTER_LINES_PER_CARD * 2 + 1)]
     cards, tail = build_chapter_cards({"title": "X", "cover_data_url": None}, lines)

@@ -16,7 +16,6 @@ import math
 import re
 import time
 from typing import TYPE_CHECKING, Any, TypedDict
-from urllib.parse import urlparse
 
 from astrbot.api import logger
 
@@ -441,32 +440,14 @@ def build_chapter_cards(manga: dict, lines: list[str]) -> tuple[list[dict], list
 
 
 def resolve_cover_url(client: Any, thumbnail_url: str | None) -> tuple[str | None, dict | None]:
-    """Resolve a Suwayomi thumbnail URL to a fetchable URL plus auth headers.
+    """Resolve a Suwayomi thumbnail URL plus auth headers for cover download.
 
-    Mirrors utils.downloader.download_cover's same-origin policy: relative
-    paths always carry auth headers; absolute URLs only when same-origin
-    (avoid leaking credentials to third-party hosts).
+    Thin wrapper over ``utils.downloader.resolve_image_url`` (the single
+    source of truth for same-origin auth policy, shared with download_cover).
     """
-    if not thumbnail_url:
-        return None, None
-    if thumbnail_url.startswith(("http://", "https://")):
-        url = thumbnail_url
-        use_headers = None
-        server = urlparse(client.server_url) if client.server_url else None
-        if server:
-            target = urlparse(thumbnail_url)
-            server_port = server.port or (443 if server.scheme == "https" else 80 if server.scheme == "http" else None)
-            target_port = target.port or (443 if target.scheme == "https" else 80 if target.scheme == "http" else None)
-            if (
-                server.scheme == target.scheme
-                and server.hostname == target.hostname
-                and server_port == target_port
-            ):
-                use_headers = client.auth_headers
-    else:
-        url = client.build_image_url(thumbnail_url)
-        use_headers = client.auth_headers
-    return url, use_headers
+    from ..utils.downloader import resolve_image_url
+
+    return resolve_image_url(client, thumbnail_url, client.auth_headers)
 
 
 def _cover_data_url(path: str) -> str | None:
@@ -484,7 +465,8 @@ def _cover_data_url(path: str) -> str | None:
         buf = BytesIO()
         img.save(buf, format="JPEG", quality=80)
         return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
-    except Exception:
+    except Exception as exc:
+        logger.warning(f"[{_PLUGIN_NAME}] 封面压缩失败（将显示占位块）: {path}: {exc}")
         return None
 
 

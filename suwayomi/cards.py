@@ -7,9 +7,13 @@ delegated to utils.downloader via ``embed_covers``.
 """
 from __future__ import annotations
 
+import asyncio
 import base64
+import hashlib
 import html
+import json
 import math
+import time
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
@@ -410,3 +414,73 @@ async def embed_covers(
         new_item.pop("thumbnail_url", None)
         result.append(new_item)
     return result
+
+
+class CardCache:
+    """In-memory TTL cache keyed by a stable hash of the tmpldata dict."""
+
+    def __init__(self, ttl: float = 600.0, max_entries: int = 32):
+        self._ttl = ttl
+        self._max_entries = max_entries
+        self._data: dict[str, tuple[float, str]] = {}
+
+    @staticmethod
+    def _key(tmpldata: dict) -> str:
+        payload = json.dumps(tmpldata, ensure_ascii=False, sort_keys=True, default=str)
+        return hashlib.sha1(payload.encode("utf-8")).hexdigest()
+
+    def get(self, tmpldata: dict, now: float | None = None) -> str | None:
+        key = self._key(tmpldata)
+        entry = self._data.get(key)
+        if entry is None:
+            return None
+        ts, path = entry
+        t = now if now is not None else time.time()
+        if t - ts > self._ttl:
+            self._data.pop(key, None)
+            return None
+        return path
+
+    def put(self, tmpldata: dict, path: str, now: float | None = None) -> None:
+        key = self._key(tmpldata)
+        t = now if now is not None else time.time()
+        self._data[key] = (t, path)
+        if len(self._data) > self._max_entries:
+            oldest = min(self._data, key=lambda k: self._data[k][0])
+            self._data.pop(oldest, None)
+
+
+async def render_card(
+    html_render: Any,
+    tmpldata: dict,
+    options: dict | None = None,
+    timeout: float = 30.0,
+) -> str | None:
+    """Render tmpldata via the injected html_render; return local path or None."""
+    opts = {"type": "jpeg", "quality": 85, "viewport_width": CARD_WIDTH}
+    if options:
+        opts.update(options)
+    try:
+        return await asyncio.wait_for(
+            html_render(CARD_TEMPLATE, tmpldata, return_url=False, options=opts),
+            timeout=timeout,
+        )
+    except Exception as exc:
+        logger.warning(f"[{_PLUGIN_NAME}] 卡片渲染失败: {exc}")
+        return None
+
+
+async def render_card_cached(
+    cache: CardCache,
+    html_render: Any,
+    tmpldata: dict,
+    options: dict | None = None,
+    timeout: float = 30.0,
+) -> str | None:
+    cached = cache.get(tmpldata)
+    if cached:
+        return cached
+    path = await render_card(html_render, tmpldata, options=options, timeout=timeout)
+    if path:
+        cache.put(tmpldata, path)
+    return path

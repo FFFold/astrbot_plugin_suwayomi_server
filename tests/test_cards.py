@@ -1,4 +1,5 @@
 """Unit tests for suwayomi/cards.py (no network)."""
+import asyncio
 import math
 
 import pytest
@@ -12,12 +13,15 @@ from plugin_pkg.suwayomi.cards import (
     CHAPTER_LINES_PER_CARD,
     MAX_CHAPTER_CARDS,
     COVER_WIDTH,
+    CardCache,
     build_batch_card,
     build_chapter_cards,
     build_search_card,
     build_subscribe_confirm_card,
     build_update_card,
     embed_covers,
+    render_card,
+    render_card_cached,
     resolve_cover_url,
 )
 
@@ -219,3 +223,77 @@ def test_embed_covers_bad_image_no_raise(tmp_path):
     bad = tmp_path / "bad.jpg"
     bad.write_bytes(b"not an image")
     assert _cover_data_url(str(bad)) is None
+
+
+@pytest.mark.asyncio
+async def test_render_card_returns_path():
+    async def fake_html_render(tmpl, data, return_url, options):
+        return "/tmp/card.jpg"
+
+    path = await render_card(fake_html_render, {"card_type": "search"}, timeout=10)
+    assert path == "/tmp/card.jpg"
+
+
+@pytest.mark.asyncio
+async def test_render_card_failure_returns_none():
+    async def boom(tmpl, data, return_url, options):
+        raise RuntimeError("endpoint down")
+
+    assert await render_card(boom, {"card_type": "search"}, timeout=10) is None
+
+
+@pytest.mark.asyncio
+async def test_render_card_timeout_returns_none():
+    async def slow(tmpl, data, return_url, options):
+        await asyncio.sleep(5)
+
+    assert await render_card(slow, {"card_type": "search"}, timeout=0.01) is None
+
+
+def test_card_cache_hit_and_miss():
+    cache = CardCache(ttl=600)
+    data = {"card_type": "search", "rows": []}
+    assert cache.get(data) is None
+    cache.put(data, "/a")
+    assert cache.get(data) == "/a"
+    assert cache.get({"card_type": "search", "rows": [1]}) is None
+
+
+def test_card_cache_ttl_expiry():
+    cache = CardCache(ttl=10)
+    data = {"card_type": "search"}
+    cache.put(data, "/a", now=100)
+    assert cache.get(data, now=105) == "/a"
+    assert cache.get(data, now=111) is None
+
+
+def test_card_cache_key_ignores_key_order():
+    cache = CardCache()
+    cache.put({"a": 1, "b": 2}, "/x")
+    assert cache.get({"b": 2, "a": 1}) == "/x"
+
+
+def test_card_cache_max_entries_evicts_oldest():
+    cache = CardCache(ttl=600, max_entries=2)
+    cache.put({"k": 1}, "/1", now=1)
+    cache.put({"k": 2}, "/2", now=2)
+    cache.put({"k": 3}, "/3", now=3)
+    assert cache.get({"k": 1}, now=4) is None
+    assert cache.get({"k": 2}, now=4) == "/2"
+
+
+@pytest.mark.asyncio
+async def test_render_card_cached_skips_render_on_hit():
+    cache = CardCache(ttl=600)
+    calls = 0
+
+    async def fake_html_render(tmpl, data, return_url, options):
+        nonlocal calls
+        calls += 1
+        return "/tmp/card.jpg"
+
+    data = {"card_type": "search"}
+    first = await render_card_cached(cache, fake_html_render, data, timeout=10)
+    second = await render_card_cached(cache, fake_html_render, data, timeout=10)
+    assert first == second == "/tmp/card.jpg"
+    assert calls == 1

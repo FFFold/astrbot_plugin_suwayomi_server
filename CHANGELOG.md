@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [Unreleased]
+
+### Added
+
+- **「漫画 章节」封面增强** — `/漫画 章节` 在列表顶部显示漫画封面（默认开启，可通过 `chapter_list_show_cover` 关闭）；封面从 Suwayomi-Server 的 `/api/v1/manga/{id}/thumbnail` 下载到本地后随首条消息发送，长列表仅首条带封面，无章节时也会显示封面。
+
+### Dev
+
+- 新增 `tests/test_list_chapters.py`，并扩展 `tests/test_downloader.py`，覆盖封面下载、配置开关、无章节和封面缺失回退场景。
+
 ## [0.5.4] - 2026-08-10
 
 ### Fixed

@@ -21,7 +21,8 @@ ALLOWED_CONFIG_KEYS = {
     "server_url", "auth_mode", "username", "password",
     "check_interval", "max_pages", "send_mode", "image_fetch_mode",
     "download_concurrency", "download_retries", "default_source_id",
-    "chapter_cache_hours", "download_format", "temp_dir", "auto_push_mode",
+    "chapter_cache_hours", "chapter_list_show_cover", "download_format",
+    "temp_dir", "auto_push_mode",
     "enable_ai_tools", "allow_ai_send", "ai_max_sources",
     "ai_results_per_source", "ai_tool_timeout_sec",
 }
@@ -45,7 +46,7 @@ MAX_NUMERIC_CONFIG_KEYS = {
     "ai_tool_timeout_sec": 300,
 }
 
-BOOLEAN_CONFIG_KEYS = {"enable_ai_tools", "allow_ai_send"}
+BOOLEAN_CONFIG_KEYS = {"enable_ai_tools", "allow_ai_send", "chapter_list_show_cover"}
 
 ENUM_CONFIG_KEYS = {
     "send_mode": {"image", "forward"},

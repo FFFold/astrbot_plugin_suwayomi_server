@@ -93,6 +93,49 @@ async def download_images(
         raise
 
 
+async def download_cover(
+    client: SuwayomiClient,
+    thumbnail_url: str | None,
+    custom_tmp: str = "",
+    retries: int = 3,
+    headers: dict[str, str] | None = None,
+) -> tuple[str | None, Path | None]:
+    """Download a single manga cover to a temporary directory.
+
+    Returns ``(local_path, tmp_dir)`` on success, or ``(None, None)`` when the
+    cover is unavailable or cannot be downloaded. On success the caller is
+    responsible for cleaning ``tmp_dir`` (e.g. via ``schedule_cleanup``).
+
+    Suwayomi's GraphQL ``thumbnailUrl`` is normally a server-relative path like
+    ``/api/v1/manga/{id}/thumbnail``. For such same-origin URLs the caller's
+    auth ``headers`` are forwarded; for external absolute URLs they are not, to
+    avoid leaking Suwayomi credentials to third-party hosts.
+    """
+    if not thumbnail_url:
+        return None, None
+
+    if thumbnail_url.startswith(("http://", "https://")):
+        url = thumbnail_url
+        use_headers = headers if client.server_url and thumbnail_url.startswith(client.server_url) else None
+    else:
+        url = client.build_image_url(thumbnail_url)
+        use_headers = headers
+
+    try:
+        paths, tmp_dir = await download_images(
+            [url], concurrency=1, custom_tmp=custom_tmp, retries=retries, headers=use_headers
+        )
+    except Exception as e:
+        logger.warning(f"[{_PLUGIN_NAME}] 封面下载失败: {e}")
+        return None, None
+
+    if not paths or not paths[0]:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        return None, None
+
+    return paths[0], tmp_dir
+
+
 async def fetch_pages_local(
     client: SuwayomiClient,
     chapter_id: int,

@@ -66,6 +66,20 @@
     "default": 0,
     "hint": "0 表示搜索所有已安装源"
   },
+  "result_cards_enabled": {
+    "description": "指令结果卡片渲染",
+    "type": "bool",
+    "default": false,
+    "hint": "使用 T2I 服务把指令结果渲染为带封面的卡片（搜索/订阅/更新通知/章节列表等），默认关闭；开启后渲染失败会自动回退纯文本"
+  },
+  "card_render_timeout_sec": {
+    "description": "卡片渲染超时（秒）",
+    "type": "int",
+    "default": 30,
+    "min": 5,
+    "max": 120,
+    "hint": "单张卡片渲染的超时上限，超时自动回退纯文本；T2I 服务不可用（如未配置/断网）时命令会等待该时长后回退"
+  },
   "chapter_cache_hours": {
     "description": "章节缓存时间（小时）",
     "type": "int",
@@ -77,7 +91,7 @@
     "description": "章节列表显示封面",
     "type": "bool",
     "default": true,
-    "hint": "在「漫画 章节」列表顶部显示漫画封面"
+    "hint": "在「漫画 章节」列表顶部显示漫画封面；关闭后该命令不使用卡片渲染（回退纯文本）"
   },
   "download_format": {
     "description": "默认下载打包格式",

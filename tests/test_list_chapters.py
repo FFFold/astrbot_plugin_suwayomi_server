@@ -2,7 +2,6 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from plugin_pkg.main import SuwayomiPlugin
 from plugin_pkg.suwayomi.models import Chapter, Manga
 
@@ -15,6 +14,7 @@ def _make_plugin(config: dict | None = None) -> SuwayomiPlugin:
     plugin.sub_mgr = MagicMock()
     plugin.config = {
         "chapter_list_show_cover": True,
+        "result_cards_enabled": False,
         "temp_dir": "",
         "download_retries": 3,
         **(config or {}),
@@ -286,3 +286,67 @@ async def test_list_chapters_chapters_error_cleans_cover_tmp_and_returns_error(m
     cleanup_args = schedule_cleanup_mock.call_args
     assert cleanup_args.args[0] is cover_tmp
     assert cleanup_args.kwargs.get("delay") == 60
+
+
+@pytest.mark.asyncio
+async def test_list_chapters_cards_success_multiple_images(monkeypatch):
+    manga = _make_manga()
+    chapters = [Chapter(id=i, url="", name=f"第{i}话", chapter_number=float(i),
+                        source_order=i, manga_id=1) for i in range(1, 300)]
+    plugin = _make_plugin(config={"result_cards_enabled": True})
+    event = _make_event()
+
+    monkeypatch.setattr("plugin_pkg.main.resolve_manga", AsyncMock(return_value=(manga, None)))
+    monkeypatch.setattr("plugin_pkg.main.get_or_fetch_chapters", AsyncMock(return_value=chapters))
+    monkeypatch.setattr(
+        "plugin_pkg.main.embed_covers",
+        AsyncMock(side_effect=lambda c, items, **kw: [dict(i, cover_data_url="x") for i in items]),
+    )
+    download_cover_mock = AsyncMock(return_value=("/tmp/cover.jpg", MagicMock()))
+    monkeypatch.setattr("plugin_pkg.main.download_cover", download_cover_mock)
+    plugin._render_card_result = AsyncMock(
+        side_effect=lambda data: f"/tmp/card{data['title']}.jpg"
+    )
+    schedule_cleanup_mock = MagicMock()
+    monkeypatch.setattr("plugin_pkg.main.schedule_cleanup", schedule_cleanup_mock)
+
+    _ = [msg async for msg in plugin.list_chapters(event, "测试漫画")]
+
+    # 3 张卡：第 1 张 yield，后续 2 张 event.send
+    assert event.chain_result.call_count == 3
+    assert event.send.await_count == 2
+    assert event.send.await_count == plugin._render_card_result.call_count - 1
+    event.plain_result.assert_not_called()
+    # 卡片模式封面由 embed_covers 统一负责：不调用 download_cover，无临时目录泄漏
+    download_cover_mock.assert_not_awaited()
+    schedule_cleanup_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_list_chapters_cards_render_failure_falls_back(monkeypatch):
+    manga = _make_manga()
+    chapters = [Chapter(id=i, url="", name=f"第{i}话", chapter_number=float(i),
+                        source_order=i, manga_id=1) for i in range(1, 4)]
+    plugin = _make_plugin(config={"result_cards_enabled": True})
+    event = _make_event()
+    plugin._render_card_result = AsyncMock(return_value=None)
+    monkeypatch.setattr("plugin_pkg.main.resolve_manga", AsyncMock(return_value=(manga, None)))
+    monkeypatch.setattr("plugin_pkg.main.get_or_fetch_chapters", AsyncMock(return_value=chapters))
+    download_cover_mock = AsyncMock(return_value=("/tmp/cover.jpg", MagicMock()))
+    monkeypatch.setattr("plugin_pkg.main.download_cover", download_cover_mock)
+    schedule_cleanup_mock = MagicMock()
+    monkeypatch.setattr("plugin_pkg.main.schedule_cleanup", schedule_cleanup_mock)
+    monkeypatch.setattr(
+        "plugin_pkg.main.embed_covers",
+        AsyncMock(side_effect=lambda c, items, **kw: [dict(i, cover_data_url="x") for i in items]),
+    )
+
+    results = [msg async for msg in plugin.list_chapters(event, "测试漫画")]
+
+    assert len(results) == 1
+    assert "章节列表" in results[0]
+    # 卡片模式未预下载封面，回退时直接纯文本（无封面）
+    event.plain_result.assert_called_once()
+    event.chain_result.assert_not_called()
+    download_cover_mock.assert_not_awaited()
+    schedule_cleanup_mock.assert_not_called()

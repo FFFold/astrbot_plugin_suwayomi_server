@@ -15,6 +15,7 @@ astrbot_suwayomi_server/
 │   ├── client.py              # Suwayomi GraphQL 异步 HTTP 客户端
 │   ├── models.py              # 数据模型定义
 │   ├── service.py             # 业务逻辑层（漫画/章节解析、缓存策略、格式化）
+│   ├── cards.py               # 指令结果卡片（T2I 模板、数据准备、封面嵌入、渲染缓存）
 │   ├── ai_service.py          # Agent 结构化搜索、章节查询与订阅管理（无发送副作用）
 │   ├── ai_tools.py            # AstrBot FunctionTool Schema 与注册工厂
 │   └── updater.py             # 更新引擎（check_updates + run_update_loop）
@@ -22,7 +23,7 @@ astrbot_suwayomi_server/
 │   ├── __init__.py
 │   ├── downloader.py          # 图片下载管道（download_one/download_images/download_cover/fetch_pages_local）
 │   ├── pack.py                # 图片打包工具（ZIP/CBZ/PDF）
-│   ├── pusher.py              # 推送投递（push_chapter_images/push_chapter_file）+ schedule_cleanup
+│   ├── pusher.py              # 推送投递（push_chapter_images/push_chapter_file）+ schedule_cleanup/schedule_cleanup_file
 │   └── subscription.py        # 订阅管理器（AstrBot KV 存储封装）
 ├── web/
 │   ├── __init__.py
@@ -47,6 +48,8 @@ astrbot_suwayomi_server/
 │   ├── test_ai_service.py     # Agent Tool 服务层单元测试
 │   ├── test_ai_tools.py       # AstrBot Tool call() 调度回归测试
 │   ├── test_list_chapters.py  # /漫画 章节 封面逻辑单元测试
+│   ├── test_cards.py          # 卡片模块单元测试（数据准备/封面嵌入/渲染/缓存）
+│   ├── test_card_commands.py  # 命令卡片路径回归测试
 │   ├── test_live_skip.py      # live 探活助手单元测试
 │   ├── test_live_api.py       # Suwayomi 客户端集成测试
 │   └── test_live_web_api.py   # WebUI API handler 集成测试
@@ -145,9 +148,18 @@ astrbot_suwayomi_server/
 
 #### `suwayomi/updater.py` — 更新引擎
 
-- `check_updates(client, sub_mgr, context, config, get_kv_data, put_kv_data, update_lock, push_chapter_images_fn, push_chapter_file_fn, force)` — 全部订阅检查，同步标题，检测新章节，推送通知，自动推送内容。`update_library()` 调用有 30 秒超时，避免挂死。逐订阅检查通过 `asyncio.Semaphore(_UPDATE_CONCURRENCY=5)` 并行执行（`_check_one_manga`），单条损坏/失败不中断整轮；完成时写入 `suwayomi_last_update_check` 时间戳
+- `check_updates(client, sub_mgr, context, config, get_kv_data, put_kv_data, update_lock, push_chapter_images_fn, push_chapter_file_fn, force, render_update_card_fn)` — 全部订阅检查，同步标题，检测新章节，推送通知，自动推送内容。`update_library()` 调用有 30 秒超时，避免挂死。逐订阅检查通过 `asyncio.Semaphore(_UPDATE_CONCURRENCY=5)` 并行执行（`_check_one_manga`），单条损坏/失败不中断整轮；完成时写入 `suwayomi_last_update_check` 时间戳。`_check_one_manga` 返回 6 元组（含 `manga_obj`，供更新卡片使用封面/状态）；`render_update_card_fn` 注入后，推送通知优先渲染为多部更新卡片，失败回退文本
 - `run_update_loop(interval, check_fn)` — 后台循环包装器，被 `main.py` 的 `_start_bg_task` 启动。正确处理 `CancelledError`，Task 异常退出时有日志记录。
 - 所有依赖通过参数注入，`push_chapter_images_fn` 和 `push_chapter_file_fn` 在 `main.py` 的 `_build_check_updates_fn` 中预绑定
+
+#### `suwayomi/cards.py` — 指令结果卡片（T2I 渲染）
+
+- `CARD_TEMPLATE` — 单个 Jinja2 HTML 模板字符串，含 7 种卡片变体（搜索/订阅确认/批量订阅/我的订阅/更新/章节头部/章节续卡），远程 T2I 服务端原生渲染
+- `build_*` 数据准备纯函数 — 生成 `tmpldata`，标题/章节名等用户可控文本统一 `html.escape()`；`build_chapter_cards(manga, lines)` 按 `CHAPTER_LINES_PER_CARD=130` 切块（三列，最多 `MAX_CHAPTER_CARDS=4` 张），超限行原样返回作文本尾部
+- `embed_covers(client, items)` — 复用 `utils/downloader.download_images` 并发下载封面（带认证头，同源策略与 `download_cover` 一致），PIL 压缩为 120px 宽 JPEG 后以 base64 data URL 嵌入；失败置 `cover_data_url=None`（模板渲染占位块）
+- `render_card(html_render, tmpldata, timeout)` — `asyncio.wait_for` 包裹 `html_render(return_url=False)`，440px 宽 JPEG q85；任何异常/超时返回 `None`（调用方回退纯文本）
+- `CardCache` — 以 `sha1(tmpldata)` 为键的 TTL 内存缓存（默认 600s），避免相同查询重复渲染；缓存文件由 `schedule_cleanup_file` 延后清理
+- 命令接入统一套路：开关开 → `embed_covers` → `render_card_cached`（成功 `yield` 图片 / 失败回退原文本）
 
 #### `utils/downloader.py` — 图片下载管道
 

@@ -3,11 +3,12 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import time
 from pathlib import Path
 
 import astrbot.api.message_components as Comp
 from astrbot.api import AstrBotConfig, logger
-from astrbot.api.event import filter, AstrMessageEvent
+from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star
 
 from .suwayomi import PLUGIN_NAME
@@ -21,12 +22,24 @@ from .suwayomi.ai_service import (
     unsubscribe_manga_for_agent,
 )
 from .suwayomi.ai_tools import AI_TOOL_NAMES, build_ai_tools, effective_tool_timeout
+from .suwayomi.cards import (
+    CardCache,
+    build_batch_card,
+    build_chapter_cards,
+    build_search_card,
+    build_subscribe_confirm_card,
+    build_subscriptions_card,
+    build_update_card,
+    embed_covers,
+    render_card_cached,
+)
 from .suwayomi.client import SuwayomiClient, SuwayomiError
 from .suwayomi.models import Manga, SearchResult
 from .suwayomi.service import (
     STATUS_EMOJI,
     fmt_chapter_display,
     fmt_chapter_label,
+    fmt_chapter_num,
     fmt_delivery_failure_message,
     get_or_fetch_chapters,
     match_source_hint,
@@ -39,7 +52,8 @@ from .suwayomi.service import (
     ttl_cache_lookup,
     ttl_cache_store,
 )
-from .suwayomi.updater import check_updates as _check_updates, run_update_loop
+from .suwayomi.updater import check_updates as _check_updates
+from .suwayomi.updater import run_update_loop
 from .utils.downloader import download_cover, fetch_pages_local
 from .utils.pack import (
     build_chapter_output_path,
@@ -53,22 +67,29 @@ from .utils.pusher import (
     push_chapter_file,
     push_chapter_images,
     schedule_cleanup,
+    schedule_cleanup_file,
 )
 from .utils.subscription import SubscriptionManager
 from .web.api import (
     api_config_get,
     api_config_post,
-    api_sources as api_sources_handler,
     api_status,
     api_subscription_delete,
     api_subscription_push,
     api_subscriptions,
+)
+from .web.api import (
+    api_sources as api_sources_handler,
+)
+from .web.api import (
     api_update as api_update_handler,
 )
 
 _CACHE_TTL = 600
 _SEARCH_CACHE_MAX_ENTRIES = 64
 _AI_TOOL_REPAIR_KEY = "suwayomi_ai_tool_activation_repaired_v1"
+CARD_CACHE_TTL = 600
+CARD_FAIL_COOLDOWN = 300
 
 
 class SuwayomiPlugin(Star):
@@ -85,6 +106,8 @@ class SuwayomiPlugin(Star):
         self._search_cache: dict[str, tuple[float, dict[str, Manga]]] = {}
         self._ai_state = AiInteractionState(ttl=_CACHE_TTL)
         self._ai_send_locks: dict[tuple[str, str], asyncio.Lock] = {}
+        self._card_cache = CardCache(ttl=CARD_CACHE_TTL)
+        self._card_cooldown_until = 0.0
         self._update_lock = asyncio.Lock()
         self._bg_task: asyncio.Task | None = None
         self._check_updates_fn = None
@@ -569,13 +592,29 @@ class SuwayomiPlugin(Star):
                 ),
             )
 
+        async def _render_update_card(umo, items, heading):
+            try:
+                tmpldata = build_update_card(items, heading)
+                tmpldata["items"] = await embed_covers(
+                    client, tmpldata["items"],
+                    custom_tmp=config.get("temp_dir", "").strip(),
+                    retries=config.get("download_retries", 3),
+                    concurrency=config.get("download_concurrency", 6),
+                )
+                return await self._render_card_result(tmpldata)
+            except Exception as e:
+                logger.warning(f"[{PLUGIN_NAME}] 更新通知卡片渲染失败: {e}")
+                return None
+
         async def _check(force=False):
+            render_fn = _render_update_card if self._result_cards_enabled() else None
             return await _check_updates(
                 client, self.sub_mgr, context, config,
                 self.get_kv_data, self.put_kv_data,
                 self._update_lock,
                 _push_images, _push_file,
                 force=force,
+                render_update_card_fn=render_fn,
             )
         self._check_updates_fn = _check
 
@@ -591,6 +630,36 @@ class SuwayomiPlugin(Star):
         ttl_cache_store(
             self._search_cache, umo, cache, _SEARCH_CACHE_MAX_ENTRIES
         )
+
+    def _result_cards_enabled(self) -> bool:
+        if not self._config_bool(self.config.get("result_cards_enabled", True), True):
+            return False
+        if time.time() < getattr(self, "_card_cooldown_until", 0.0):
+            return False
+        return True
+
+    async def _render_card_result(self, tmpldata: dict) -> str | None:
+        """Render one card to a local file; return path or None on failure.
+
+        A failure starts a cooldown window (``CARD_FAIL_COOLDOWN``) during
+        which ``_result_cards_enabled`` returns False, so commands fall back
+        to text immediately instead of waiting for the render timeout again.
+        """
+        try:
+            timeout = float(self.config.get("card_render_timeout_sec", 30))
+        except (TypeError, ValueError):
+            timeout = 30.0
+        timeout = max(5.0, min(timeout, 120.0))
+        path = await render_card_cached(
+            self._card_cache, self.html_render, tmpldata, timeout=timeout
+        )
+        if path:
+            self._card_cooldown_until = 0.0
+        else:
+            self._card_cooldown_until = time.time() + CARD_FAIL_COOLDOWN
+        if path:
+            schedule_cleanup_file(path, delay=CARD_CACHE_TTL + 60)
+        return path
 
     async def _prepare_chapter_delivery(self, event: AstrMessageEvent, target):
         """Build one chapter result for command yield or direct AI-tool sending."""
@@ -695,7 +764,7 @@ class SuwayomiPlugin(Star):
 
     @manga_group.command("帮助", alias={"help"})
     async def help_cmd(self, event: AstrMessageEvent):
-        '''显示漫画助手使用帮助'''
+        """显示漫画助手使用帮助"""
         text = """📖 Suwayomi 漫画助手
 
 🔍 搜索与订阅
@@ -731,7 +800,7 @@ class SuwayomiPlugin(Star):
 
     @manga_group.command("源")
     async def list_sources(self, event: AstrMessageEvent):
-        '''列出所有已安装的漫画源'''
+        """列出所有已安装的漫画源"""
         try:
             sources = await self.client.get_sources()
             if not sources:
@@ -749,7 +818,7 @@ class SuwayomiPlugin(Star):
 
     @manga_group.command("搜索")
     async def search_manga(self, event: AstrMessageEvent, keyword: str):
-        '''搜索漫画。用法: /漫画 搜索 <关键词> [源名]'''
+        """搜索漫画。用法: /漫画 搜索 <关键词> [源名]"""
         try:
             # AstrBot splits args by spaces, so the trailing source name is lost
             # from the keyword param — parse it from the full message instead.
@@ -803,6 +872,7 @@ class SuwayomiPlugin(Star):
             lines = []
             idx = 1
             cache: dict[str, Manga] = {}
+            card_rows: list[dict] = []
             for source_name, result in all_results:
                 if result.mangas:
                     lines.append(f"\n🔍 搜索结果（源: {source_name}）:")
@@ -810,6 +880,13 @@ class SuwayomiPlugin(Star):
                         status = STATUS_EMOJI.get(m.status, "未知")
                         lines.append(f"  [{idx}] {m.title} - {status}")
                         cache[str(idx)] = m
+                        card_rows.append({
+                            "index": idx,
+                            "title": m.title,
+                            "status": m.status,
+                            "source": source_name,
+                            "thumbnail_url": m.thumbnail_url,
+                        })
                         idx += 1
 
             if idx == 1:
@@ -817,8 +894,34 @@ class SuwayomiPlugin(Star):
                 return
 
             lines.append("\n回复「漫画 订阅 <编号>」订阅，如「漫画 订阅 1」")
+            text = "\n".join(lines)
             self._set_search_cache(event.unified_msg_origin, cache)
-            yield event.plain_result("\n".join(lines))
+
+            if self._result_cards_enabled():
+                try:
+                    subtitle = (
+                        f"{' · '.join(dict.fromkeys(source_name for source_name, _ in all_results))}"
+                        f" · {len(card_rows)} 条"
+                    )
+                    tmpldata = build_search_card(
+                        card_rows,
+                        subtitle,
+                        "回复「漫画 订阅 编号」订阅，如「漫画 订阅 1」",
+                    )
+                    tmpldata["rows"] = await embed_covers(
+                        self.client, tmpldata["rows"],
+                        custom_tmp=self.config.get("temp_dir", "").strip(),
+                        retries=self.config.get("download_retries", 3),
+                        concurrency=self.config.get("download_concurrency", 6),
+                    )
+                    path = await self._render_card_result(tmpldata)
+                    if path:
+                        yield event.chain_result([Comp.Image.fromFileSystem(path)])
+                        return
+                except Exception as e:
+                    logger.warning(f"[{PLUGIN_NAME}] 搜索卡片渲染失败，回退文本: {e}")
+
+            yield event.plain_result(text)
 
         except SuwayomiError as e:
             yield event.plain_result(f"搜索失败: {e}")
@@ -828,7 +931,7 @@ class SuwayomiPlugin(Star):
 
     @manga_group.command("订阅")
     async def subscribe_manga(self, event: AstrMessageEvent, index: str):
-        '''订阅漫画。用法: /漫画 订阅 <搜索结果编号>'''
+        """订阅漫画。用法: /漫画 订阅 <搜索结果编号>"""
         try:
             manga = self._get_cached_manga(event.unified_msg_origin, index)
             if manga is None:
@@ -846,6 +949,27 @@ class SuwayomiPlugin(Star):
                     await self.sub_mgr.update_latest_chapter(manga.id, max_id)
             except Exception as e:
                 logger.warning(f"[{PLUGIN_NAME}] 拉取「{manga.title}」章节失败: {e}")
+
+            if self._result_cards_enabled():
+                try:
+                    tmpldata = build_subscribe_confirm_card(
+                        {"id": manga.id, "title": manga.title,
+                         "status": manga.status, "thumbnail_url": manga.thumbnail_url},
+                        source_name="",
+                        footer="有新章节时会推送通知",
+                    )
+                    card = (await embed_covers(
+                        self.client, [tmpldata],
+                        custom_tmp=self.config.get("temp_dir", "").strip(),
+                        retries=self.config.get("download_retries", 3),
+                        concurrency=self.config.get("download_concurrency", 6),
+                    ))[0]
+                    path = await self._render_card_result(card)
+                    if path:
+                        yield event.chain_result([Comp.Image.fromFileSystem(path)])
+                        return
+                except Exception as e:
+                    logger.warning(f"[{PLUGIN_NAME}] 订阅确认卡片渲染失败，回退文本: {e}")
             yield event.plain_result(f"✅ 已订阅「{manga.title}」，有新章节时会推送。")
         except Exception as e:
             logger.error(f"[{PLUGIN_NAME}] subscribe error: {e}")
@@ -853,7 +977,7 @@ class SuwayomiPlugin(Star):
 
     @manga_group.command("批量订阅")
     async def batch_subscribe(self, event: AstrMessageEvent):
-        '''批量订阅漫画。用法: /漫画 批量订阅 <名称1>, <名称2>, ... [源名]'''
+        """批量订阅漫画。用法: /漫画 批量订阅 <名称1>, <名称2>, ... [源名]"""
         try:
             raw = event.message_str.strip()
             prefix = "漫画 批量订阅"
@@ -879,7 +1003,7 @@ class SuwayomiPlugin(Star):
                         search_str = args_str[:last_space]
                         break
 
-            raw_names = [n.strip() for n in re.split(r'[,，;；]', search_str) if n.strip()]
+            raw_names = [n.strip() for n in re.split(r"[,，;；]", search_str) if n.strip()]
             if not raw_names:
                 yield event.plain_result("请提供漫画名称，用逗号分隔。")
                 return
@@ -894,17 +1018,23 @@ class SuwayomiPlugin(Star):
             existing_ids = {s["manga_id"] for s in existing_subs}
 
             results: list[tuple[str, str, str]] = []
+            card_rows: list[dict] = []
             for i, name in enumerate(raw_names, 1):
                 await event.send(event.plain_result(f"正在处理 [{i}/{len(raw_names)}] {name}..."))
                 manga, error = await search_best_match(self.client, self.config, name, source_filter)
                 if error or manga is None:
                     results.append((name, "fail", error or "未找到匹配结果"))
+                    card_rows.append({"status": "fail", "title": name,
+                                      "detail": error or "未找到匹配结果", "thumbnail_url": None})
                     continue
 
                 if manga.id in existing_ids:
                     status_text = STATUS_EMOJI.get(manga.status, "未知")
                     source_name = src_map.get(str(manga.source_id), "")
                     results.append((name, "exists", f"{manga.title} - {status_text} - {source_name}"))
+                    card_rows.append({"status": "exists", "title": manga.title,
+                                      "detail": f"{status_text} - {source_name}（已订阅）",
+                                      "thumbnail_url": manga.thumbnail_url})
                     continue
 
                 await self.sub_mgr.subscribe(manga.id, manga.title, manga.source_id, umo)
@@ -922,6 +1052,9 @@ class SuwayomiPlugin(Star):
                 status_text = STATUS_EMOJI.get(manga.status, "未知")
                 source_name = src_map.get(str(manga.source_id), "")
                 results.append((name, "ok", f"{manga.title} - {status_text} - {source_name}"))
+                card_rows.append({"status": "ok", "title": manga.title,
+                                  "detail": f"{status_text} - {source_name}",
+                                  "thumbnail_url": manga.thumbnail_url})
 
             ok_count = sum(1 for _, s, _ in results if s == "ok")
             exist_count = sum(1 for _, s, _ in results if s == "exists")
@@ -935,7 +1068,28 @@ class SuwayomiPlugin(Star):
                     lines.append(f"  ⏭ {info} (已订阅)")
                 else:
                     lines.append(f"  ❌ {name} - {info}")
-            yield event.plain_result("\n".join(lines))
+            summary_text = "\n".join(lines)
+
+            if self._result_cards_enabled():
+                try:
+                    tmpldata = build_batch_card(
+                        card_rows,
+                        f"{ok_count} 新增, {exist_count} 已存在, {fail_count} 失败",
+                    )
+                    tmpldata["rows"] = await embed_covers(
+                        self.client, tmpldata["rows"],
+                        custom_tmp=self.config.get("temp_dir", "").strip(),
+                        retries=self.config.get("download_retries", 3),
+                        concurrency=self.config.get("download_concurrency", 6),
+                    )
+                    path = await self._render_card_result(tmpldata)
+                    if path:
+                        yield event.chain_result([Comp.Image.fromFileSystem(path)])
+                        return
+                except Exception as e:
+                    logger.warning(f"[{PLUGIN_NAME}] 批量订阅卡片渲染失败，回退文本: {e}")
+
+            yield event.plain_result(summary_text)
 
         except Exception as e:
             logger.error(f"[{PLUGIN_NAME}] batch_subscribe error: {e}")
@@ -943,7 +1097,7 @@ class SuwayomiPlugin(Star):
 
     @manga_group.command("取消订阅")
     async def unsubscribe_manga(self, event: AstrMessageEvent, manga_id_or_name: str):
-        '''取消订阅。用法: /漫画 取消订阅 <漫画ID或名称>'''
+        """取消订阅。用法: /漫画 取消订阅 <漫画ID或名称>"""
         try:
             umo = event.unified_msg_origin
             manga_id = None
@@ -971,7 +1125,7 @@ class SuwayomiPlugin(Star):
 
     @manga_group.command("我的订阅")
     async def my_subscriptions(self, event: AstrMessageEvent):
-        '''查看当前会话的订阅列表'''
+        """查看当前会话的订阅列表"""
         try:
             subs = await self.sub_mgr.get_subscriptions(event.unified_msg_origin)
             if not subs:
@@ -979,6 +1133,43 @@ class SuwayomiPlugin(Star):
                 return
             sources = await self.client.get_sources()
             src_map = {str(s.id): s.display_name for s in sources}
+
+            if self._result_cards_enabled():
+                try:
+                    sem = asyncio.Semaphore(8)
+                    async def _fetch_manga(s):
+                        async with sem:
+                            return await self.client.get_manga(s["manga_id"])
+                    metadatas = await asyncio.gather(
+                        *(_fetch_manga(s) for s in subs),
+                        return_exceptions=True,
+                    )
+                    card_rows = []
+                    for s, meta in zip(subs, metadatas):
+                        thumbnail = meta.thumbnail_url if not isinstance(meta, Exception) else None
+                        status = meta.status if not isinstance(meta, Exception) else "UNKNOWN"
+                        src_name = src_map.get(str(s["source_id"]), "")
+                        push = "🔔 推送开" if s.get("push_enabled") else "🔕 推送关"
+                        tag = f" - {src_name}" if src_name else ""
+                        card_rows.append({
+                            "title": s["title"],
+                            "detail": f"{STATUS_EMOJI.get(status, '未知')}{tag} · {push} · ID: {s['manga_id']}",
+                            "thumbnail_url": thumbnail,
+                        })
+                    tmpldata = build_subscriptions_card(card_rows)
+                    tmpldata["rows"] = await embed_covers(
+                        self.client, tmpldata["rows"],
+                        custom_tmp=self.config.get("temp_dir", "").strip(),
+                        retries=self.config.get("download_retries", 3),
+                        concurrency=self.config.get("download_concurrency", 6),
+                    )
+                    path = await self._render_card_result(tmpldata)
+                    if path:
+                        yield event.chain_result([Comp.Image.fromFileSystem(path)])
+                        return
+                except Exception as e:
+                    logger.warning(f"[{PLUGIN_NAME}] 订阅列表卡片渲染失败，回退文本: {e}")
+
             lines = ["📋 你的订阅列表:"]
             for s in subs:
                 source_name = src_map.get(str(s["source_id"]), "")
@@ -997,7 +1188,7 @@ class SuwayomiPlugin(Star):
 
     @push_group.command("开")
     async def push_enable(self, event: AstrMessageEvent):
-        '''开启当前会话的漫画自动推送'''
+        """开启当前会话的漫画自动推送"""
         try:
             umo = event.unified_msg_origin
             subs = await self.sub_mgr.get_subscriptions(umo)
@@ -1013,7 +1204,7 @@ class SuwayomiPlugin(Star):
 
     @push_group.command("关")
     async def push_disable(self, event: AstrMessageEvent):
-        '''关闭当前会话的漫画自动推送'''
+        """关闭当前会话的漫画自动推送"""
         try:
             umo = event.unified_msg_origin
             subs = await self.sub_mgr.get_subscriptions(umo)
@@ -1029,7 +1220,7 @@ class SuwayomiPlugin(Star):
 
     @push_group.command("状态")
     async def push_status(self, event: AstrMessageEvent):
-        '''查看当前会话的自动推送状态'''
+        """查看当前会话的自动推送状态"""
         try:
             umo = event.unified_msg_origin
             subs = await self.sub_mgr.get_subscriptions(umo)
@@ -1051,7 +1242,7 @@ class SuwayomiPlugin(Star):
 
     @manga_group.command("章节")
     async def list_chapters(self, event: AstrMessageEvent, manga_name_or_id: str):
-        '''查看漫画章节列表。用法: /漫画 章节 <漫画名或ID> [--刷新]'''
+        """查看漫画章节列表。用法: /漫画 章节 <漫画名或ID> [--刷新]"""
         try:
             tokens = event.message_str.strip().split()
             try:
@@ -1072,10 +1263,13 @@ class SuwayomiPlugin(Star):
                 return
 
             show_cover = self.config.get("chapter_list_show_cover", True)
+            cards_active = self._result_cards_enabled() and show_cover
             cover_path: str | None = None
             cover_tmp: Path | None = None
 
-            if show_cover and manga.thumbnail_url:
+            if show_cover and manga.thumbnail_url and not cards_active:
+                # 卡片模式下封面由 embed_covers 统一下载，避免与 download_cover 双重下载；
+                # 卡片渲染失败回退时直接走纯文本（无封面）。
                 chapters_result, cover_result = await asyncio.gather(
                     get_or_fetch_chapters(
                         self.client, self.get_kv_data, self.put_kv_data, self.config, manga.id, force=force
@@ -1122,6 +1316,60 @@ class SuwayomiPlugin(Star):
             except Exception:
                 src_name = None
             src_tag = f" - {src_name}" if src_name else ""
+
+            if cards_active:
+                try:
+                    lines_card: list[str] = []
+                    dl_count = 0
+                    for ch in chapters:
+                        dl_mark = " 📥" if ch.is_downloaded else ""
+                        if ch.is_downloaded:
+                            dl_count += 1
+                        lines_card.append(f"{fmt_chapter_label(ch, num_count)}{dl_mark}")
+
+                    latest = fmt_chapter_num(chapters[-1].chapter_number) if chapters else "?"
+                    meta = f"{src_name or '未知源'} · 共 {len(chapters)} 话"
+                    if dl_count:
+                        meta += f" · 本地 {dl_count}"
+                    card_base = {
+                        "title": manga.title,
+                        "thumbnail_url": manga.thumbnail_url,
+                        "meta": meta,
+                        "tags": [{"text": f"最近更新 #{latest}"}],
+                        "hint": f"「漫画 章节 {manga.title} --刷新」强制刷新",
+                    }
+                    (card_base,) = await embed_covers(
+                        self.client, [card_base],
+                        custom_tmp=self.config.get("temp_dir", "").strip(),
+                        retries=self.config.get("download_retries", 3),
+                        concurrency=self.config.get("download_concurrency", 6),
+                    )
+                    cards_tmpldata, tail_lines = build_chapter_cards(card_base, lines_card)
+                    rendered: list[str] = []
+                    for card_data in cards_tmpldata:
+                        path = await self._render_card_result(card_data)
+                        if path is None:
+                            rendered = []
+                            break
+                        rendered.append(path)
+                    if rendered:
+                        yield event.chain_result([Comp.Image.fromFileSystem(rendered[0])])
+                        for path in rendered[1:]:
+                            await event.send(event.chain_result([Comp.Image.fromFileSystem(path)]))
+                        if tail_lines:
+                            tail_text = "\n".join(tail_lines)
+                            for i in range(0, len(tail_text), 1500):
+                                chunk = tail_text[i:i + 1500]
+                                if i == 0:
+                                    yield event.plain_result(chunk)
+                                else:
+                                    await event.send(event.plain_result(chunk))
+                        if cover_tmp is not None:
+                            schedule_cleanup(cover_tmp, delay=60)
+                        return
+                except Exception as e:
+                    logger.warning(f"[{PLUGIN_NAME}] 章节卡片渲染失败，回退旧路径: {e}")
+
             header = f"📖「{manga.title}」{src_tag} 章节列表（共 {len(chapters)} 话）:"
             chunks: list[list[str]] = [[]]
             for ch in chapters:
@@ -1153,7 +1401,7 @@ class SuwayomiPlugin(Star):
 
     @manga_group.command("阅读")
     async def read_chapter(self, event: AstrMessageEvent, manga_name_or_id: str, chapter_num: str = ""):
-        '''阅读漫画章节。用法: /漫画 阅读 <漫画名或ID> <章节号或ID:数字>'''
+        """阅读漫画章节。用法: /漫画 阅读 <漫画名或ID> <章节号或ID:数字>"""
         if not chapter_num:
             yield event.plain_result("用法: /漫画 阅读 <漫画名或ID> <章节号>\n示例: /漫画 阅读 一拳超人 1\n指定章节 ID: /漫画 阅读 一拳超人 ID:123")
             return
@@ -1206,7 +1454,7 @@ class SuwayomiPlugin(Star):
 
     @manga_group.command("下载")
     async def download_chapter(self, event: AstrMessageEvent, manga_name_or_id: str, chapter_num: str = ""):
-        '''下载漫画章节并打包发送。用法: /漫画 下载 <漫画名或ID> <章节号或ID:数字> [zip/pdf/cbz]'''
+        """下载漫画章节并打包发送。用法: /漫画 下载 <漫画名或ID> <章节号或ID:数字> [zip/pdf/cbz]"""
         default_fmt = self.config.get("download_format", "pdf")
         manga_name_or_id, chapter_num, fmt = parse_download_args(event.message_str, default_fmt)
 
@@ -1298,7 +1546,7 @@ class SuwayomiPlugin(Star):
 
     @manga_group.command("更新")
     async def manual_update(self, event: AstrMessageEvent):
-        '''手动检查漫画更新'''
+        """手动检查漫画更新"""
         if not self._check_updates_fn:
             yield event.plain_result("⏳ 更新引擎尚未就绪，请稍后重试。")
             return

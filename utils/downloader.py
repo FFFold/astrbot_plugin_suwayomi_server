@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from ..suwayomi.client import SuwayomiClient
 
 from ..suwayomi import PLUGIN_NAME
+
 _PLUGIN_NAME = PLUGIN_NAME
 
 
@@ -94,23 +95,18 @@ async def download_images(
         raise
 
 
-async def download_cover(
+def resolve_image_url(
     client: SuwayomiClient,
     thumbnail_url: str | None,
-    custom_tmp: str = "",
-    retries: int = 3,
-    headers: dict[str, str] | None = None,
-) -> tuple[str | None, Path | None]:
-    """Download a single manga cover to a temporary directory.
+    auth_headers: dict[str, str] | None,
+) -> tuple[str | None, dict[str, str] | None]:
+    """Resolve a thumbnail URL to a fetchable URL plus the auth headers to use.
 
-    Returns ``(local_path, tmp_dir)`` on success, or ``(None, None)`` when the
-    cover is unavailable or cannot be downloaded. On success the caller is
-    responsible for cleaning ``tmp_dir`` (e.g. via ``schedule_cleanup``).
-
-    Suwayomi's GraphQL ``thumbnailUrl`` is normally a server-relative path like
-    ``/api/v1/manga/{id}/thumbnail``. For such same-origin URLs the caller's
-    auth ``headers`` are forwarded; for external absolute URLs they are not, to
-    avoid leaking Suwayomi credentials to third-party hosts.
+    Suwayomi's GraphQL ``thumbnailUrl`` is normally a server-relative path
+    like ``/api/v1/manga/{id}/thumbnail``. Relative paths always carry the
+    given ``auth_headers``; absolute URLs only when they point at the same
+    server (scheme + host + port), to avoid leaking Suwayomi credentials to
+    third-party hosts. Returns ``(None, None)`` for empty input.
     """
     if not thumbnail_url:
         return None, None
@@ -128,10 +124,33 @@ async def download_cover(
                 and server.hostname == target.hostname
                 and server_port == target_port
             ):
-                use_headers = headers
+                use_headers = auth_headers
     else:
         url = client.build_image_url(thumbnail_url)
-        use_headers = headers
+        use_headers = auth_headers
+
+    return url, use_headers
+
+
+async def download_cover(
+    client: SuwayomiClient,
+    thumbnail_url: str | None,
+    custom_tmp: str = "",
+    retries: int = 3,
+    headers: dict[str, str] | None = None,
+) -> tuple[str | None, Path | None]:
+    """Download a single manga cover to a temporary directory.
+
+    Returns ``(local_path, tmp_dir)`` on success, or ``(None, None)`` when the
+    cover is unavailable or cannot be downloaded. On success the caller is
+    responsible for cleaning ``tmp_dir`` (e.g. via ``schedule_cleanup``).
+
+    URL/auth resolution is delegated to ``resolve_image_url`` (single source
+    of truth shared with the card renderer).
+    """
+    url, use_headers = resolve_image_url(client, thumbnail_url, headers)
+    if url is None:
+        return None, None
 
     try:
         paths, tmp_dir = await download_images(

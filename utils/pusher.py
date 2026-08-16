@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import shutil
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 import astrbot.api.message_components as Comp
 from astrbot.api import logger
@@ -19,6 +20,7 @@ if TYPE_CHECKING:
     from ..suwayomi.client import SuwayomiClient
 
 from ..suwayomi import PLUGIN_NAME
+
 _PLUGIN_NAME = PLUGIN_NAME
 
 _cleanup_tasks: set[asyncio.Task] = set()
@@ -55,6 +57,24 @@ def cancel_pending_cleanups() -> int:
     for task in tasks:
         task.cancel()
     return len(tasks)
+
+
+def schedule_cleanup_file(path: str | None, delay: int = 60) -> asyncio.Task | None:
+    """Schedule deletion of a single rendered-card image file."""
+    if not path:
+        return None
+
+    async def _cleanup():
+        await asyncio.sleep(delay)
+        try:
+            Path(path).unlink(missing_ok=True)
+        except Exception:
+            pass
+
+    task = asyncio.create_task(_cleanup())
+    _cleanup_tasks.add(task)
+    task.add_done_callback(_cleanup_tasks.discard)
+    return task
 
 
 def build_image_chain(

@@ -60,11 +60,13 @@ async def test_list_chapters_first_message_uses_cover_chain(monkeypatch):
     monkeypatch.setattr(
         "plugin_pkg.main.get_or_fetch_chapters", AsyncMock(return_value=chapters)
     )
+    cover_tmp = MagicMock()
     monkeypatch.setattr(
         "plugin_pkg.main.download_cover",
-        AsyncMock(return_value=("/tmp/cover.jpg", MagicMock())),
+        AsyncMock(return_value=("/tmp/cover.jpg", cover_tmp)),
     )
-    monkeypatch.setattr("plugin_pkg.main.schedule_cleanup", MagicMock())
+    schedule_cleanup_mock = MagicMock()
+    monkeypatch.setattr("plugin_pkg.main.schedule_cleanup", schedule_cleanup_mock)
 
     results = [msg async for msg in plugin.list_chapters(event, "测试漫画")]
 
@@ -73,6 +75,10 @@ async def test_list_chapters_first_message_uses_cover_chain(monkeypatch):
     event.plain_result.assert_not_called()
     chain = event.chain_result.call_args[0][0]
     assert len(chain) == 2
+    schedule_cleanup_mock.assert_called_once()
+    cleanup_args = schedule_cleanup_mock.call_args
+    assert cleanup_args.args[0] is cover_tmp
+    assert cleanup_args.kwargs.get("delay") == 60
 
 
 @pytest.mark.asyncio
@@ -90,7 +96,8 @@ async def test_list_chapters_cover_disabled_uses_plain_text(monkeypatch):
         "plugin_pkg.main.get_or_fetch_chapters", AsyncMock(return_value=chapters)
     )
     monkeypatch.setattr("plugin_pkg.main.download_cover", cover_mock)
-    monkeypatch.setattr("plugin_pkg.main.schedule_cleanup", MagicMock())
+    schedule_cleanup_mock = MagicMock()
+    monkeypatch.setattr("plugin_pkg.main.schedule_cleanup", schedule_cleanup_mock)
 
     results = [msg async for msg in plugin.list_chapters(event, "测试漫画")]
 
@@ -99,6 +106,7 @@ async def test_list_chapters_cover_disabled_uses_plain_text(monkeypatch):
     event.plain_result.assert_called_once()
     event.chain_result.assert_not_called()
     cover_mock.assert_not_awaited()
+    schedule_cleanup_mock.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -113,11 +121,13 @@ async def test_list_chapters_no_chapters_still_shows_cover(monkeypatch):
     monkeypatch.setattr(
         "plugin_pkg.main.get_or_fetch_chapters", AsyncMock(return_value=[])
     )
+    cover_tmp = MagicMock()
     monkeypatch.setattr(
         "plugin_pkg.main.download_cover",
-        AsyncMock(return_value=("/tmp/cover.jpg", MagicMock())),
+        AsyncMock(return_value=("/tmp/cover.jpg", cover_tmp)),
     )
-    monkeypatch.setattr("plugin_pkg.main.schedule_cleanup", MagicMock())
+    schedule_cleanup_mock = MagicMock()
+    monkeypatch.setattr("plugin_pkg.main.schedule_cleanup", schedule_cleanup_mock)
 
     results = [msg async for msg in plugin.list_chapters(event, "测试漫画")]
 
@@ -126,6 +136,10 @@ async def test_list_chapters_no_chapters_still_shows_cover(monkeypatch):
     event.plain_result.assert_not_called()
     chain = event.chain_result.call_args[0][0]
     assert len(chain) == 2
+    schedule_cleanup_mock.assert_called_once()
+    cleanup_args = schedule_cleanup_mock.call_args
+    assert cleanup_args.args[0] is cover_tmp
+    assert cleanup_args.kwargs.get("delay") == 60
 
 
 @pytest.mark.asyncio
@@ -144,7 +158,8 @@ async def test_list_chapters_missing_cover_falls_back_to_plain_text(monkeypatch)
     monkeypatch.setattr(
         "plugin_pkg.main.download_cover", AsyncMock(return_value=(None, None))
     )
-    monkeypatch.setattr("plugin_pkg.main.schedule_cleanup", MagicMock())
+    schedule_cleanup_mock = MagicMock()
+    monkeypatch.setattr("plugin_pkg.main.schedule_cleanup", schedule_cleanup_mock)
 
     results = [msg async for msg in plugin.list_chapters(event, "测试漫画")]
 
@@ -152,3 +167,4 @@ async def test_list_chapters_missing_cover_falls_back_to_plain_text(monkeypatch)
     assert "章节列表" in results[0]
     event.plain_result.assert_called_once()
     event.chain_result.assert_not_called()
+    schedule_cleanup_mock.assert_not_called()

@@ -5,6 +5,7 @@ import shutil
 import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlparse
 
 import aiohttp
 
@@ -116,7 +117,16 @@ async def download_cover(
 
     if thumbnail_url.startswith(("http://", "https://")):
         url = thumbnail_url
-        use_headers = headers if client.server_url and thumbnail_url.startswith(client.server_url) else None
+        use_headers = None
+        if client.server_url:
+            server = urlparse(client.server_url)
+            target = urlparse(thumbnail_url)
+            if (
+                server.scheme == target.scheme
+                and server.hostname == target.hostname
+                and server.port == target.port
+            ):
+                use_headers = headers
     else:
         url = client.build_image_url(thumbnail_url)
         use_headers = headers

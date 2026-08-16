@@ -165,6 +165,36 @@ def test_build_chapter_cards_splits_id_tag():
     assert by_main["#1"] == "(ID:7)"
 
 
+def test_chapter_row_weight():
+    from plugin_pkg.suwayomi.cards import _row_weight
+    assert _row_weight("#1 普通章节") == 1
+    assert _row_weight("#1 单行本 (ID:2539)") == 2
+
+
+def test_split_columns_balances_id_row_weight():
+    from plugin_pkg.suwayomi.cards import _split_columns
+    # 4 个带 ID 行（权重 8）+ 2 个普通行（权重 2）= 10 → 每列目标 ceil(10/3)=4
+    lines = ["#1 卷 (ID:1)", "#2 卷 (ID:2)", "#3 卷 (ID:3)", "#4 卷 (ID:4)", "#5", "#6"]
+    cols = _split_columns(lines, 3)
+    weights = [sum(2 if "(ID:" in ln else 1 for ln in c) for c in cols]
+    assert sum(weights) == 10
+    assert max(weights) <= 4
+    # 阅读顺序保持（连续切片）
+    flat = [ln for c in cols for ln in c]
+    assert flat == lines
+
+
+def test_build_chapter_cards_chunks_by_weight():
+    # 每卡预算 130 权重；129 个普通行 + 1 个带 ID 行 = 131 权重 → 2 张卡
+    lines = [f"#{i}" for i in range(1, 130)] + ["#130 单行本 (ID:999)"]
+    cards, tail = build_chapter_cards({"title": "X", "cover_data_url": None}, lines)
+    assert len(cards) == 2
+    assert tail == []
+    # 第一张卡权重不超过预算
+    card0_weight = sum(2 if "(ID:" in x["main"] else 1 for col in cards[0]["chunks"] for x in col)
+    assert card0_weight <= CHAPTER_LINES_PER_CARD
+
+
 def test_build_chapter_cards_empty_lines_returns_header():
     cards, tail = build_chapter_cards({"title": "X", "cover_data_url": None}, [])
     assert len(cards) == 1

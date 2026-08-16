@@ -298,20 +298,66 @@ def build_subscriptions_card(rows: list[dict]) -> dict:
     return {"card_type": "subscriptions", "rows": cleaned}
 
 
-def _split_columns(lines: list[str], n: int = 3) -> list[list[str]]:
-    """Split lines into n columns preserving reading order.
+_ID_TAG_RE = re.compile(r"\s*\(ID:\d+\)\s*$")
 
-    Uses contiguous slices (column 1 gets the first chunk, column 2 the next,
-    ...) so each column reads top-to-bottom in the same order as the
-    plain-text list, instead of round-robin interleaving (1,4,7 / 2,5,8).
+
+def _row_weight(line: str | dict) -> int:
+    """Render-height units of a chapter line.
+
+    Rows carrying an ``(ID:xxx)`` tag render on two lines (title + gray ID
+    line) and take roughly 1.7x the height of a plain row; count them as 2
+    units so chunking/column splitting balances actual height, not line count.
+    Accepts raw line strings or the dict rows produced by ``_chapter_row``.
+    """
+    if isinstance(line, dict):
+        return 2 if line.get("id") else 1
+    return 2 if _ID_TAG_RE.search(line) else 1
+
+
+def _chunk_by_weight(lines: list[str], budget: int) -> list[list[str]]:
+    """Split lines into chunks whose total weight stays within ``budget``."""
+    chunks: list[list[str]] = []
+    cur: list[str] = []
+    weight = 0
+    for line in lines:
+        w = _row_weight(line)
+        if cur and weight + w > budget:
+            chunks.append(cur)
+            cur, weight = [], 0
+        cur.append(line)
+        weight += w
+    if cur:
+        chunks.append(cur)
+    return chunks
+
+
+def _split_columns(lines: list[str], n: int = 3) -> list[list[str]]:
+    """Split lines into n columns preserving reading order and height balance.
+
+    Each column gets a contiguous slice of lines (column 1 first, column 2
+    next, ...) so columns read top-to-bottom in the same order as the
+    plain-text list. Slicing is weighted by ``_row_weight`` so columns with
+    many two-line ID rows do not end up visibly taller than others.
     """
     if not lines:
         return [[] for _ in range(n)]
-    per = math.ceil(len(lines) / n)
-    return [lines[i * per:(i + 1) * per] for i in range(n)]
-
-
-_ID_TAG_RE = re.compile(r"\s*\(ID:\d+\)\s*$")
+    total = sum(_row_weight(line) for line in lines)
+    target = math.ceil(total / n)
+    cols: list[list[str]] = []
+    cur: list[str] = []
+    weight = 0
+    for line in lines:
+        w = _row_weight(line)
+        if cur and weight + w > target and len(cols) < n - 1:
+            cols.append(cur)
+            cur, weight = [], 0
+        cur.append(line)
+        weight += w
+    if cur:
+        cols.append(cur)
+    while len(cols) < n:
+        cols.append([])
+    return cols
 
 
 def _chapter_row(line: str) -> dict:
@@ -343,9 +389,12 @@ def build_chapter_cards(manga: dict, lines: list[str]) -> tuple[list[dict], list
     per_card = CHAPTER_LINES_PER_CARD
     if not lines:
         card_count = 1
+        chunks_by_weight = [[]]
+        tail: list[str] = []
     else:
-        card_count = min(MAX_CHAPTER_CARDS, math.ceil(len(lines) / per_card))
-    tail = lines[card_count * per_card:] if lines else []
+        chunks_by_weight = _chunk_by_weight(lines, per_card)
+        card_count = min(MAX_CHAPTER_CARDS, len(chunks_by_weight))
+        tail = lines[sum(len(c) for c in chunks_by_weight[:card_count]):]
 
     tags = []
     for t in manga.get("tags", []):
@@ -359,8 +408,11 @@ def build_chapter_cards(manga: dict, lines: list[str]) -> tuple[list[dict], list
         "title": html.escape(manga["title"]),
     }
     cards = []
+    offset = 0
     for i in range(card_count):
-        card_lines = safe_lines[i * per_card:(i + 1) * per_card]
+        chunk = chunks_by_weight[i]
+        card_lines = safe_lines[offset:offset + len(chunk)]
+        offset += len(chunk)
         chunks = _split_columns(card_lines)
         if i == 0:
             card = dict(base, is_continuation=False)

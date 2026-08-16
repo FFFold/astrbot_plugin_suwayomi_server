@@ -21,6 +21,16 @@ from .suwayomi.ai_service import (
     unsubscribe_manga_for_agent,
 )
 from .suwayomi.ai_tools import AI_TOOL_NAMES, build_ai_tools, effective_tool_timeout
+from .suwayomi.cards import (
+    CardCache,
+    build_batch_card,
+    build_chapter_cards,
+    build_search_card,
+    build_subscribe_confirm_card,
+    build_update_card,
+    embed_covers,
+    render_card_cached,
+)
 from .suwayomi.client import SuwayomiClient, SuwayomiError
 from .suwayomi.models import Manga, SearchResult
 from .suwayomi.service import (
@@ -53,6 +63,7 @@ from .utils.pusher import (
     push_chapter_file,
     push_chapter_images,
     schedule_cleanup,
+    schedule_cleanup_file,
 )
 from .utils.subscription import SubscriptionManager
 from .web.api import (
@@ -69,6 +80,7 @@ from .web.api import (
 _CACHE_TTL = 600
 _SEARCH_CACHE_MAX_ENTRIES = 64
 _AI_TOOL_REPAIR_KEY = "suwayomi_ai_tool_activation_repaired_v1"
+CARD_CACHE_TTL = 600
 
 
 class SuwayomiPlugin(Star):
@@ -85,6 +97,7 @@ class SuwayomiPlugin(Star):
         self._search_cache: dict[str, tuple[float, dict[str, Manga]]] = {}
         self._ai_state = AiInteractionState(ttl=_CACHE_TTL)
         self._ai_send_locks: dict[tuple[str, str], asyncio.Lock] = {}
+        self._card_cache = CardCache(ttl=CARD_CACHE_TTL)
         self._update_lock = asyncio.Lock()
         self._bg_task: asyncio.Task | None = None
         self._check_updates_fn = None
@@ -591,6 +604,23 @@ class SuwayomiPlugin(Star):
         ttl_cache_store(
             self._search_cache, umo, cache, _SEARCH_CACHE_MAX_ENTRIES
         )
+
+    def _result_cards_enabled(self) -> bool:
+        return self._config_bool(self.config.get("result_cards_enabled", True), True)
+
+    async def _render_card_result(self, tmpldata: dict) -> str | None:
+        """Render one card to a local file; return path or None on failure."""
+        try:
+            timeout = float(self.config.get("card_render_timeout_sec", 30))
+        except (TypeError, ValueError):
+            timeout = 30.0
+        timeout = max(5.0, min(timeout, 120.0))
+        path = await render_card_cached(
+            self._card_cache, self.html_render, tmpldata, timeout=timeout
+        )
+        if path:
+            schedule_cleanup_file(path, delay=CARD_CACHE_TTL + 60)
+        return path
 
     async def _prepare_chapter_delivery(self, event: AstrMessageEvent, target):
         """Build one chapter result for command yield or direct AI-tool sending."""

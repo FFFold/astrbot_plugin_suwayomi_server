@@ -57,6 +57,24 @@ def cancel_pending_cleanups() -> int:
     return len(tasks)
 
 
+def schedule_cleanup_file(path: str | None, delay: int = 60) -> asyncio.Task | None:
+    """Schedule deletion of a single rendered-card image file."""
+    if not path:
+        return None
+
+    async def _cleanup():
+        await asyncio.sleep(delay)
+        try:
+            Path(path).unlink(missing_ok=True)
+        except Exception:
+            pass
+
+    task = asyncio.create_task(_cleanup())
+    _cleanup_tasks.add(task)
+    task.add_done_callback(_cleanup_tasks.discard)
+    return task
+
+
 def build_image_chain(
     page_urls: list[str],
     local_paths: list[str],

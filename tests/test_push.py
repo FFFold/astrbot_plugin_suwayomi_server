@@ -307,3 +307,21 @@ class TestBuildImageChain:
         )
         assert Comp.Image.fromFileSystem.call_count == 1
         assert Comp.Image.fromURL.call_count == 0
+
+from pathlib import Path
+
+from plugin_pkg.utils.pusher import schedule_cleanup_file
+
+
+@pytest.mark.asyncio
+async def test_schedule_cleanup_file_deletes_file(tmp_path):
+    target = tmp_path / "card.jpg"
+    target.write_bytes(b"x")
+    schedule_cleanup_file(str(target), delay=0)
+    await asyncio.sleep(0.05)
+    assert not target.exists()
+
+
+@pytest.mark.asyncio
+async def test_schedule_cleanup_file_none_noop():
+    assert schedule_cleanup_file(None) is None

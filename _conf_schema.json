@@ -134,5 +134,19 @@
     "min": 10,
     "max": 300,
     "hint": "搜索、章节查询和阅读发送的插件内部超时；运行时会自动限制在 AstrBot 工具调用超时以内并预留回传时间"
+  },
+  "result_cards_enabled": {
+    "description": "指令结果卡片渲染",
+    "type": "bool",
+    "default": true,
+    "hint": "使用 T2I 服务把指令结果渲染为带封面的卡片（搜索/订阅/更新通知/章节列表等）；关闭或渲染失败时回退纯文本"
+  },
+  "card_render_timeout_sec": {
+    "description": "卡片渲染超时（秒）",
+    "type": "int",
+    "default": 30,
+    "min": 5,
+    "max": 120,
+    "hint": "单张卡片渲染的超时上限，超时自动回退纯文本"
   }
 }

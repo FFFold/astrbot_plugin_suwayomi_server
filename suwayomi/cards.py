@@ -300,18 +300,23 @@ def build_subscriptions_card(rows: list[dict]) -> dict:
 
 _ID_TAG_RE = re.compile(r"\s*\(ID:\d+\)\s*$")
 
+# ID 行渲染两行（标题 43.2px = 24px×1.8 + ID 行 30px = 20px×1.5），
+# 与普通单行的行高比 = 73.2 / 43.2 ≈ 1.694，取 1.7。
+_ROW_ID_WEIGHT = 1.7
 
-def _row_weight(line: str | dict) -> int:
+
+def _row_weight(line: str | dict) -> float:
     """Render-height units of a chapter line.
 
     Rows carrying an ``(ID:xxx)`` tag render on two lines (title + gray ID
-    line) and take roughly 1.7x the height of a plain row; count them as 2
-    units so chunking/column splitting balances actual height, not line count.
-    Accepts raw line strings or the dict rows produced by ``_chapter_row``.
+    line) and take ~1.7x the height of a plain row; the weight mirrors the
+    actual CSS height ratio so chunking/column splitting balances rendered
+    height, not line count. Accepts raw line strings or the dict rows
+    produced by ``_chapter_row``.
     """
     if isinstance(line, dict):
-        return 2 if line.get("id") else 1
-    return 2 if _ID_TAG_RE.search(line) else 1
+        return _ROW_ID_WEIGHT if line.get("id") else 1.0
+    return _ROW_ID_WEIGHT if _ID_TAG_RE.search(line) else 1.0
 
 
 def _chunk_by_weight(lines: list[str], budget: int) -> list[list[str]]:
@@ -345,12 +350,14 @@ def _split_columns(lines: list[str], n: int = 3) -> list[list[str]]:
     target = math.ceil(total / n)
     cols: list[list[str]] = []
     cur: list[str] = []
-    weight = 0
+    weight = 0.0
     for line in lines:
         w = _row_weight(line)
-        if cur and weight + w > target and len(cols) < n - 1:
+        # 达到或超过目标才切列（而不是"预测下一行会超就切"）：
+        # 单行权重大时后者会产出单行孤列，让尾列堆积。
+        if cur and weight >= target and len(cols) < n - 1:
             cols.append(cur)
-            cur, weight = [], 0
+            cur, weight = [], 0.0
         cur.append(line)
         weight += w
     if cur:

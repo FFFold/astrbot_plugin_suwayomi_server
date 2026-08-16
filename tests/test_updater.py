@@ -1,12 +1,11 @@
 """Tests for suwayomi/updater.py (no network)."""
 import asyncio
-
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from suwayomi.client import SuwayomiError
 from suwayomi.models import Chapter, Manga
-from suwayomi.updater import LAST_CHECK_KV_KEY, check_updates
+from suwayomi.updater import check_updates
 
 
 class FakePlugin:
@@ -233,7 +232,7 @@ async def test_check_updates_sends_card_when_render_fn_succeeds():
 
     with patch("suwayomi.updater.Comp.Image.fromFileSystem") as mock_img:
         mock_img.return_value = MagicMock()
-        summary = await check_updates(
+        await check_updates(
             client, sub_mgr, ctx, _config(),
             plugin.get_kv_data, plugin.put_kv_data, asyncio.Lock(),
             AsyncMock(), AsyncMock(),
@@ -258,7 +257,7 @@ async def test_check_updates_falls_back_to_text_when_render_fails():
 
     with patch("suwayomi.updater.Comp.Image.fromFileSystem") as mock_img:
         mock_img.return_value = MagicMock()
-        summary = await check_updates(
+        await check_updates(
             client, sub_mgr, ctx, _config(),
             plugin.get_kv_data, plugin.put_kv_data, asyncio.Lock(),
             AsyncMock(), AsyncMock(),

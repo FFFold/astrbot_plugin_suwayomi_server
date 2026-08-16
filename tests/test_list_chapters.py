@@ -2,7 +2,6 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from plugin_pkg.main import SuwayomiPlugin
 from plugin_pkg.suwayomi.models import Chapter, Manga
 
@@ -309,7 +308,7 @@ async def test_list_chapters_cards_success_multiple_images(monkeypatch):
     schedule_cleanup_mock = MagicMock()
     monkeypatch.setattr("plugin_pkg.main.schedule_cleanup", schedule_cleanup_mock)
 
-    results = [msg async for msg in plugin.list_chapters(event, "测试漫画")]
+    _ = [msg async for msg in plugin.list_chapters(event, "测试漫画")]
 
     # 3 张卡：第 1 张 yield，后续 2 张 event.send
     assert event.chain_result.call_count == 3

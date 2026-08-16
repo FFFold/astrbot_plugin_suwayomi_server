@@ -6,12 +6,14 @@ CompSpy tracks what Comp types were created to avoid MagicMock ambiguity.
 
 import asyncio
 from dataclasses import dataclass, field
-import pytest
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
-from suwayomi.models import Chapter
 
 import plugin_pkg.utils.pusher as pusher_module
-from plugin_pkg.utils.pusher import build_image_chain
+import pytest
+from plugin_pkg.utils.pusher import build_image_chain, schedule_cleanup_file
+from suwayomi.models import Chapter
+
 from astrbot.api import message_components as Comp
 
 
@@ -307,10 +309,6 @@ class TestBuildImageChain:
         )
         assert Comp.Image.fromFileSystem.call_count == 1
         assert Comp.Image.fromURL.call_count == 0
-
-from pathlib import Path
-
-from plugin_pkg.utils.pusher import schedule_cleanup_file
 
 
 @pytest.mark.asyncio

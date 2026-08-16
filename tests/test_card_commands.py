@@ -2,7 +2,6 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from plugin_pkg.main import SuwayomiPlugin
 from plugin_pkg.suwayomi.models import Manga, SearchResult, Source
 
@@ -168,7 +167,7 @@ async def test_batch_subscribe_card_success(monkeypatch):
     event = _event()
     event.message_str = "漫画 批量订阅 咒术回战"
 
-    results = [msg async for msg in plugin.batch_subscribe(event)]
+    _ = [msg async for msg in plugin.batch_subscribe(event)]
     assert event.chain_result.call_count >= 1
 
 

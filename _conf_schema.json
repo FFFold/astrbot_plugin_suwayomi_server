@@ -191,5 +191,34 @@
         "hint": "留空使用系统默认临时目录。Docker 环境请设置为 AstrBot 和聊天平台容器共享的目录，例如 /AstrBot/data/temp"
       }
     }
+  },
+  "server_url": { "type": "string", "default": "", "invisible": true },
+  "auth_mode": { "type": "string", "default": "", "invisible": true },
+  "username": { "type": "string", "default": "", "invisible": true },
+  "password": { "type": "string", "default": "", "invisible": true },
+  "result_cards_enabled": { "type": "bool", "default": false, "invisible": true },
+  "card_render_timeout_sec": { "type": "int", "default": 30, "invisible": true },
+  "max_pages": { "type": "int", "default": 30, "invisible": true },
+  "send_mode": { "type": "string", "default": "", "invisible": true },
+  "image_fetch_mode": { "type": "string", "default": "", "invisible": true },
+  "download_format": { "type": "string", "default": "", "invisible": true },
+  "download_concurrency": { "type": "int", "default": 6, "invisible": true },
+  "download_retries": { "type": "int", "default": 3, "invisible": true },
+  "auto_push_mode": { "type": "string", "default": "", "invisible": true },
+  "enable_ai_tools": { "type": "bool", "default": true, "invisible": true },
+  "allow_ai_send": { "type": "bool", "default": true, "invisible": true },
+  "ai_max_sources": { "type": "int", "default": 5, "invisible": true },
+  "ai_results_per_source": { "type": "int", "default": 5, "invisible": true },
+  "ai_tool_timeout_sec": { "type": "int", "default": 60, "invisible": true },
+  "check_interval": { "type": "int", "default": 60, "invisible": true },
+  "chapter_cache_hours": { "type": "int", "default": 6, "invisible": true },
+  "chapter_list_show_cover": { "type": "bool", "default": true, "invisible": true },
+  "default_source_id": { "type": "int", "default": 0, "invisible": true },
+  "temp_dir": { "type": "string", "default": "", "invisible": true },
+  "_config_migrated_v1": {
+    "description": "旧版平铺配置迁移标记（内部使用）",
+    "type": "bool",
+    "default": false,
+    "invisible": true
   }
 }

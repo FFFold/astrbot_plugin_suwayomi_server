@@ -1,6 +1,7 @@
 """Tests for suwayomi/config.py — grouped config helpers and legacy migration."""
 from suwayomi.config import (
     CONFIG_GROUPS,
+    MIGRATE_FLAG_KEY,
     flatten_config,
     get_config_value,
     migrate_legacy_config,
@@ -73,6 +74,7 @@ def test_migrate_legacy_config_moves_flat_keys():
     assert "server_url" not in cfg
     assert "max_pages" not in cfg
     assert cfg["already_grouped"] is True
+    assert cfg[MIGRATE_FLAG_KEY] is True  # migration flag set
 
 
 def test_migrate_legacy_config_overrides_group_defaults():
@@ -80,9 +82,22 @@ def test_migrate_legacy_config_overrides_group_defaults():
     cfg = {"server_url": "http://custom:4567", "server": {"server_url": "http://default:4567"}}
     assert migrate_legacy_config(cfg) is True
     assert cfg["server"]["server_url"] == "http://custom:4567"
+    assert cfg[MIGRATE_FLAG_KEY] is True
 
 
 def test_migrate_legacy_config_noop_when_already_grouped():
     cfg = {"server": {"server_url": "http://x:4567"}}
     assert migrate_legacy_config(cfg) is False
     assert cfg == {"server": {"server_url": "http://x:4567"}}
+
+
+def test_migrate_legacy_config_noop_after_flag_set():
+    """Once migrated, Core re-added legacy defaults must never override groups."""
+    cfg = {
+        "server": {"server_url": "http://grouped:4567"},
+        "server_url": "http://refilled-default:4567",  # re-added by Core sync
+        MIGRATE_FLAG_KEY: True,
+    }
+    assert migrate_legacy_config(cfg) is False
+    assert cfg["server"]["server_url"] == "http://grouped:4567"  # untouched
+    assert cfg["server_url"] == "http://refilled-default:4567"  # legacy key kept as-is

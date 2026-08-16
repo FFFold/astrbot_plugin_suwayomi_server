@@ -97,6 +97,8 @@ class SuwayomiPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
         self.config = config
+        # _conf_schema.json 中保留的 invisible 旧键使 Core 不会删掉用户旧配置，
+        # 此处把旧平铺值迁入分组并置迁移标记（已迁移过的实例直接跳过）。
         if migrate_legacy_config(config):
             try:
                 config.save_config()

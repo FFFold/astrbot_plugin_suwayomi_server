@@ -38,6 +38,7 @@ from .suwayomi.service import (
     STATUS_EMOJI,
     fmt_chapter_display,
     fmt_chapter_label,
+    fmt_chapter_num,
     fmt_delivery_failure_message,
     get_or_fetch_chapters,
     match_source_hint,
@@ -1271,6 +1272,58 @@ class SuwayomiPlugin(Star):
             except Exception:
                 src_name = None
             src_tag = f" - {src_name}" if src_name else ""
+
+            if self._result_cards_enabled() and show_cover:
+                try:
+                    lines_card: list[str] = []
+                    dl_count = 0
+                    for ch in chapters:
+                        dl_mark = " 📥" if ch.is_downloaded else ""
+                        if ch.is_downloaded:
+                            dl_count += 1
+                        lines_card.append(f"{fmt_chapter_label(ch, num_count)}{dl_mark}")
+
+                    latest = fmt_chapter_num(chapters[-1].chapter_number) if chapters else "?"
+                    meta = f"{src_name or '未知源'} · 共 {len(chapters)} 话"
+                    if dl_count:
+                        meta += f" · 本地 {dl_count}"
+                    card_base = {
+                        "title": manga.title,
+                        "thumbnail_url": manga.thumbnail_url,
+                        "meta": meta,
+                        "tags": [{"text": f"最近更新 #{latest}"}],
+                        "hint": f"「漫画 章节 {manga.title} --刷新」强制刷新",
+                    }
+                    (card_base,) = await embed_covers(
+                        self.client, [card_base],
+                        custom_tmp=self.config.get("temp_dir", "").strip(),
+                        retries=self.config.get("download_retries", 3),
+                        concurrency=self.config.get("download_concurrency", 6),
+                    )
+                    cards_tmpldata, tail_lines = build_chapter_cards(card_base, lines_card)
+                    rendered: list[str] = []
+                    for card_data in cards_tmpldata:
+                        path = await self._render_card_result(card_data)
+                        if path is None:
+                            rendered = []
+                            break
+                        rendered.append(path)
+                    if rendered:
+                        yield event.chain_result([Comp.Image.fromFileSystem(rendered[0])])
+                        for path in rendered[1:]:
+                            await event.send(event.chain_result([Comp.Image.fromFileSystem(path)]))
+                        if tail_lines:
+                            tail_text = "\n".join(tail_lines)
+                            for i in range(0, len(tail_text), 1500):
+                                chunk = tail_text[i:i + 1500]
+                                if i == 0:
+                                    yield event.plain_result(chunk)
+                                else:
+                                    await event.send(event.plain_result(chunk))
+                        return
+                except Exception as e:
+                    logger.warning(f"[{PLUGIN_NAME}] 章节卡片渲染失败，回退旧路径: {e}")
+
             header = f"📖「{manga.title}」{src_tag} 章节列表（共 {len(chapters)} 话）:"
             chunks: list[list[str]] = [[]]
             for ch in chapters:

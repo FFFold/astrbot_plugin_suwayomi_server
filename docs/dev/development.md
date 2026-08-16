@@ -13,6 +13,7 @@ astrbot_suwayomi_server/
 ├── suwayomi/
 │   ├── __init__.py            # PLUGIN_NAME 常量
 │   ├── client.py              # Suwayomi GraphQL 异步 HTTP 客户端
+│   ├── config.py              # 分组配置读写、旧版平铺配置迁移（get/set/flatten/migrate）
 │   ├── models.py              # 数据模型定义
 │   ├── service.py             # 业务逻辑层（漫画/章节解析、缓存策略、格式化）
 │   ├── cards.py               # 指令结果卡片（T2I 模板、数据准备、封面嵌入、渲染缓存）
@@ -48,6 +49,7 @@ astrbot_suwayomi_server/
 │   ├── test_ai_service.py     # Agent Tool 服务层单元测试
 │   ├── test_ai_tools.py       # AstrBot Tool call() 调度回归测试
 │   ├── test_list_chapters.py  # /漫画 章节 封面逻辑单元测试
+│   ├── test_config.py         # 分组配置读写与旧版配置迁移单元测试
 │   ├── test_cards.py          # 卡片模块单元测试（数据准备/封面嵌入/渲染/缓存）
 │   ├── test_card_commands.py  # 命令卡片路径回归测试
 │   ├── test_live_skip.py      # live 探活助手单元测试
@@ -122,6 +124,13 @@ astrbot_suwayomi_server/
 - WebUI 保存配置时 (`rebuild_client`) 取消旧后台任务、按新间隔重启循环，并清除搜索缓存
 - 搜索缓存使用 `(timestamp, {index: Manga})` 结构，10 分钟 TTL 自动过期，并按会话数上限（64）淘汰最旧条目（`ttl_cache_store` / `ttl_cache_lookup`）
 - 所有业务逻辑委托给 `suwayomi/service.py`、`suwayomi/updater.py`、`utils/downloader.py`、`utils/pusher.py`
+
+#### `suwayomi/config.py` — 分组配置与旧版配置迁移
+
+- 配置项按功能分组存储（`server` / `cards` / `reading` / `pack` / `push` / `ai` / `advanced` 七组），与 `_conf_schema.json`、WebUI 设置页一致
+- `get_config_value(config, key, default)` — 读取（分组优先，回退旧版平铺键）；`set_config_value(config, key, value)` — 写入分组（旧平铺键仅在值为非默认时清理，默认占位键保留避免 Core 补键日志）；`flatten_config(config, keys)` — WebUI API 平铺展开
+- `migrate_legacy_config(config)` — 插件每次加载在 `__init__` 中调用，无状态幂等：非默认值的平铺键（升级残留或手改）同步进分组并清理，等于 `_LEGACY_KEY_DEFAULTS` 的占位键（Core 补回的无意义默认值）原样保留、永不覆盖分组；无变更时不触发保存
+- `_conf_schema.json` 保留全部旧键为 `invisible: true`，使 AstrBot Core 的配置同步不会删除用户旧值；`test_legacy_defaults_match_schema` 双向校验 schema 与代码定义一致
 
 #### `suwayomi/service.py` — 业务逻辑层
 
@@ -355,7 +364,7 @@ uv add --dev pytest pytest-asyncio
 
 ```bash
 # 全部单元测试（无需网络）
-uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_subscription.py tests/test_web_api.py tests/test_batch_subscribe.py tests/test_push.py tests/test_service.py tests/test_ai_service.py tests/test_ai_tools.py -v
+uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_downloader.py tests/test_list_chapters.py tests/test_cards.py tests/test_card_commands.py tests/test_subscription.py tests/test_web_api.py tests/test_batch_subscribe.py tests/test_push.py tests/test_service.py tests/test_updater.py tests/test_ai_service.py tests/test_ai_tools.py tests/test_live_skip.py tests/test_config.py -v
 
 # 实时 API 集成测试（需要 Suwayomi-Server 可访问）
 uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s

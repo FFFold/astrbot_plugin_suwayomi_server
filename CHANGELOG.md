@@ -7,17 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 ## [Unreleased]
 
-### Fixed
-
-- **旧配置迁移覆盖新填值** — 配置曾被 Core 清空后重新填写分组配置的用户，重载插件时 Core 补回的 invisible 旧键默认值会被迁移逻辑误当作"用户旧值"覆盖分组中的真实配置；迁移改为**仅迁移非默认值的旧键**（等于 `_LEGACY_KEY_DEFAULTS` 的旧键视为无意义占位，原样保留）
-- **迁移机制简化为无状态幂等同步** — 移除 `_config_migrated_v1` 迁移标记（schema 键与守卫逻辑）：Core 补回的占位永远是默认值、天然不会被迁移，非默认平铺键（升级残留或手改）在任何一次加载后都会被同步进分组；幂等（无变更不保存），无需持久化标记状态
-- **WebUI 保存不再触发补键日志** — `set_config_value` 仅在旧平铺键值为非默认（手改/升级残留）时清理；默认占位键保留原样，WebUI 保存后重启不再出现 "Config key missing" 日志与多余写盘
-- **卡片渲染兜底默认对齐 schema** — `_result_cards_enabled()` 兜底默认从 `True` 修正为 `False`（与 `result_cards_enabled` 的 schema 默认一致），避免未来移除兼容旧键后静默开启卡片渲染
-- **WebUI 配置 API 精简** — 删除 `AI_CONFIG_DEFAULTS` 与 `api_config_get` 的 `setdefault` 兜底循环（Core 保证分组键始终存在，属死代码）；`test_legacy_defaults_match_schema` 升级为双向校验（schema invisible 键 / 分组子键与代码定义严格对齐）
-- **首装用户配置稳态** — 默认值旧键不再被清理删除（删除会使 Core 每次加载重新补键、打 23 条 "Config key missing" 日志并多余写盘）；占位键原样保留，首装与升级用户磁盘结构一致、加载零噪音
-- **迁移数值旧键类型规范化** — 手改配置文件产生的字符串旧值（如 `"check_interval": "30"`）在迁入分组时规范化为 `int` / `bool`，避免下游 `cache_hours < -1` 等比较抛 `TypeError`；无法转换的值不迁移（留在旧键位），等于默认值的字符串值同样视为占位
-- **WebUI 配置 API 一致性** — `api_config_get` 的 AI 默认值兜底改走 `get_config_value`（与分组读取一致）；`web/api.py` 的兼容导入失败仅回退绝对导入，不再掩盖包内真实导入错误
-
 ### Added
 
 - **指令结果卡片渲染** — 搜索、订阅确认、批量订阅汇总、我的订阅、更新通知、章节列表可通过 AstrBot T2I 服务渲染为带封面的卡片（浅色主题，适配手机阅读）；封面本地下载压缩后以 base64 嵌入，失败显示占位块。新增配置 `result_cards_enabled`（全局开关，默认关闭）与 `card_render_timeout_sec`（渲染超时，默认 30s）；关闭或渲染失败/超时自动回退原有纯文本。章节列表按高度分块为多张卡片（每卡三列，最多 4 张，超出回退文本）。
@@ -25,15 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 ### Changed
 
-- **配置项按功能分组** — `_conf_schema.json` 配置改为七组嵌套结构（`server` 服务器连接 / `cards` 卡片渲染 / `reading` 阅读体验 / `pack` 下载打包 / `push` 自动推送 / `ai` AI 漫画工具 / `advanced` 高级），与 WebUI 设置页分组一致；新增 `suwayomi/config.py` 提供分组读写与兼容迁移
-- **旧版平铺配置无损迁移** — `_conf_schema.json` 中保留全部旧配置键（`invisible: true`，对用户不可见），使 AstrBot Core 的配置同步不会删除旧键、用户配置值得以保留；插件每次加载时 `migrate_legacy_config()` 把非默认值的旧键同步进分组（幂等，无变更不保存）。迁移完成的下一个大版本可移除 schema 中的兼容旧键
-- **卡片渲染配置前置并醒目提示** — `result_cards_enabled` / `card_render_timeout_sec` 从「高级」移至独立的「卡片渲染」分组（紧跟「服务器连接」之后），WebUI 设置页以警示样式突出显示并附行为说明，AstrBot 原生配置页同步加 `obvious_hint`；该开关会极大改变插件行为，默认保持关闭，引导用户自行决定
-- **WebUI 设置页补全缺失配置项** — 新增 `result_cards_enabled` / `card_render_timeout_sec` / `chapter_list_show_cover` 表单（此前仅存在于 `_conf_schema.json`，WebUI 无法修改）；`web/api.py` 配置白名单同步补全这三个键（含布尔转换、数值范围校验）
+- **配置项按功能分组** — 全部配置项改为七组嵌套结构（`server` 服务器连接 / `cards` 卡片渲染 / `reading` 阅读体验 / `pack` 下载打包 / `push` 自动推送 / `ai` AI 漫画工具 / `advanced` 高级），与 WebUI 设置页分组一致；旧版平铺配置在升级时自动无损迁移到分组，无需手动重配
+- **卡片渲染配置前置并醒目提示** — `result_cards_enabled` / `card_render_timeout_sec` 移至独立「卡片渲染」分组（紧跟「服务器连接」之后），WebUI 设置页以警示样式突出显示并附行为说明，引导用户决定是否开启（默认关闭，渲染失败或超时自动回退纯文本）
+- **WebUI 设置页补全缺失配置项** — 新增 `result_cards_enabled` / `card_render_timeout_sec` / `chapter_list_show_cover` 表单（此前仅存在于插件配置 schema，WebUI 无法修改）
 
 ### Dev
 
 - 新增 `tests/test_list_chapters.py`，并扩展 `tests/test_downloader.py`，覆盖封面下载、配置开关、无章节、封面缺失回退，以及封面下载/章节拉取的错误路径。
-- 新增 `tests/test_config.py`，覆盖分组配置读写、旧版平铺兼容与迁移逻辑。
+- 新增 `tests/test_config.py`，覆盖分组配置读写、旧版平铺配置迁移与 schema/定义一致性。
 
 ## [0.5.4] - 2026-08-10
 

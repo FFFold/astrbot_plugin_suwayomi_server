@@ -68,6 +68,7 @@ astrbot_plugin_suwayomi_server/
 ├── suwayomi/
 │   ├── __init__.py            # PLUGIN_NAME 常量
 │   ├── client.py              # Suwayomi GraphQL 异步 HTTP 客户端
+│   ├── config.py              # 分组配置读写、旧版平铺配置迁移
 │   ├── models.py              # 数据模型（Source, Manga, Chapter, SearchResult）
 │   ├── service.py             # 业务逻辑层（漫画/章节解析、缓存策略、格式化）
 │   ├── cards.py               # 指令结果卡片（T2I 模板、数据准备、封面嵌入、渲染缓存）

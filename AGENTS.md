@@ -18,7 +18,7 @@
 
 ```bash
 # Unit tests (no network needed)
-uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_downloader.py tests/test_list_chapters.py tests/test_cards.py tests/test_card_commands.py tests/test_subscription.py tests/test_web_api.py tests/test_batch_subscribe.py tests/test_push.py tests/test_service.py tests/test_updater.py tests/test_ai_service.py tests/test_ai_tools.py tests/test_live_skip.py -v
+uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_downloader.py tests/test_list_chapters.py tests/test_cards.py tests/test_card_commands.py tests/test_subscription.py tests/test_web_api.py tests/test_batch_subscribe.py tests/test_push.py tests/test_service.py tests/test_updater.py tests/test_ai_service.py tests/test_ai_tools.py tests/test_live_skip.py tests/test_config.py -v
 
 # Integration tests (requires live Suwayomi-Server)
 uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
@@ -146,7 +146,7 @@ main.py (SuwayomiPlugin — thin dispatch layer)
 - `_conf_schema.json`: AstrBot WebUI config form schema
 - `requirements.txt`: Runtime deps (currently `aiohttp>=3.9.0`, `img2pdf>=0.5.0`, `opencc-python-reimplemented>=0.1.7`, `pillow>=10.0.0`, and `pydantic>=2.12.5`)
 - `pyproject.toml`: Dev deps (pytest, pytest-asyncio), gitignored
-- Tests in `tests/` - unit tests are synchronous or use `@pytest.mark.asyncio`; `test_ai_service.py` covers structured Agent search, chapter selection, and subscription management, while `test_ai_tools.py` guards `call()` dispatch across initial load and config re-sync for all six tools; `test_downloader.py` covers image/cover download helpers; `test_list_chapters.py` covers `/漫画 章节` cover logic and error paths
+- Tests in `tests/` - unit tests are synchronous or use `@pytest.mark.asyncio`; `test_ai_service.py` covers structured Agent search, chapter selection, and subscription management, while `test_ai_tools.py` guards `call()` dispatch across initial load and config re-sync for all six tools; `test_downloader.py` covers image/cover download helpers; `test_list_chapters.py` covers `/漫画 章节` cover logic and error paths; `test_config.py` covers grouped config read/write, legacy flat migration and schema/definition consistency
 - `test_live_api.py`: Integration tests for Suwayomi client, auto-skipped when server unreachable. Covers sources/search/chapters/pages, AI search & chapter selection, plus the real command main path (`test_download_and_pack_chapter`: fetch pages → download images → pack zip/pdf/cbz; `test_check_updates_detects_new_chapters_live`: real scan → notify → watermark → last-check timestamp). Manga sources rate-limit consecutive fetches, so AI-search tests retry once and skip when throttled (`_search_zh_for_agent`)
 - `test_live_web_api.py`: Integration tests for WebUI API handlers, auto-skipped when server unreachable
 - Version is in `metadata.yaml`, not `pyproject.toml`

@@ -53,7 +53,7 @@ main.py (SuwayomiPlugin — thin dispatch layer)
 
 - `main.py`: Plugin entry, all commands under `@filter.command_group("漫画")`, six AstrBot Agent tools, background update loop, WebUI API registration. Thin dispatch layer — all business logic delegated to service/updater/downloader/pusher modules.
   - `suwayomi/client.py`: All Suwayomi interaction via `POST /api/graphql`; supports none/basic/jwt auth. Exposes `auth_headers` property for image download auth.
-- `suwayomi/cards.py`: T2I 结果卡片渲染。`CARD_TEMPLATE` 为单个 Jinja2 模板（远程 T2I 端点原生渲染）；`build_*` 纯函数准备 tmpldata（用户文本统一 `html.escape`）；`embed_covers` 复用 `download_images` 并发下载封面→PIL 压缩 120px→base64 嵌入（失败显示占位块）；`render_card` 用 `asyncio.wait_for` 包裹 `html_render(return_url=False)`（440px JPEG q85），异常/超时返回 None 供调用方回退纯文本；`CardCache` 以 sha1(tmpldata) 为键 TTL 缓存。`main.py` 的 `_result_cards_enabled()` 在渲染失败后进入 5 分钟冷却（`_card_cooldown_until`），期间命令直接回退文本。
+- `suwayomi/cards.py`: T2I 结果卡片渲染（`result_cards_enabled` 配置，默认关闭）。`CARD_TEMPLATE` 为单个 Jinja2 模板（远程 T2I 端点原生渲染）；`build_*` 纯函数准备 tmpldata（用户文本统一 `html.escape`）；`embed_covers` 复用 `download_images` 并发下载封面→PIL 压缩→base64 嵌入（失败显示占位块）；`render_card` 用 `asyncio.wait_for` 包裹 `html_render(return_url=False)`（880px 画布 × 1.8 设备像素比输出高清图），异常/超时返回 None 供调用方回退纯文本；`CardCache` 以 sha1(tmpldata) 为键 TTL 缓存。`main.py` 的 `_result_cards_enabled()` 在渲染失败后进入 5 分钟冷却（`_card_cooldown_until`），期间命令直接回退文本。
 - `suwayomi/models.py`: Pure dataclasses with `from_dict()` factory methods
 - `suwayomi/service.py`: Business logic — manga/chapter resolution, chapter fetching/caching, text normalization, status emoji mapping. All functions are standalone with dependency-injected parameters (client, sub_mgr, get_kv_data, etc.)
 - `suwayomi/ai_service.py`: Structured AI-facing search, chapter lookup, subscribe/unsubscribe, and subscription listing. Returns stable manga/chapter IDs and never sends messages.
@@ -142,7 +142,7 @@ main.py (SuwayomiPlugin — thin dispatch layer)
 
 - `metadata.yaml`: AstrBot plugin metadata (name, version, platforms)
 - `_conf_schema.json`: AstrBot WebUI config form schema
-- `requirements.txt`: Runtime deps (currently `aiohttp>=3.9.0`, `img2pdf>=0.5.0`, `opencc-python-reimplemented>=0.1.7`, and `pydantic>=2.12.5`)
+- `requirements.txt`: Runtime deps (currently `aiohttp>=3.9.0`, `img2pdf>=0.5.0`, `opencc-python-reimplemented>=0.1.7`, `pillow>=10.0.0`, and `pydantic>=2.12.5`)
 - `pyproject.toml`: Dev deps (pytest, pytest-asyncio), gitignored
 - Tests in `tests/` - unit tests are synchronous or use `@pytest.mark.asyncio`; `test_ai_service.py` covers structured Agent search, chapter selection, and subscription management, while `test_ai_tools.py` guards `call()` dispatch across initial load and config re-sync for all six tools; `test_downloader.py` covers image/cover download helpers; `test_list_chapters.py` covers `/漫画 章节` cover logic and error paths
 - `test_live_api.py`: Integration tests for Suwayomi client, auto-skipped when server unreachable. Covers sources/search/chapters/pages, AI search & chapter selection, plus the real command main path (`test_download_and_pack_chapter`: fetch pages → download images → pack zip/pdf/cbz; `test_check_updates_detects_new_chapters_live`: real scan → notify → watermark → last-check timestamp). Manga sources rate-limit consecutive fetches, so AI-search tests retry once and skip when throttled (`_search_zh_for_agent`)

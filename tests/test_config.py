@@ -123,19 +123,25 @@ def test_migrate_legacy_config_keeps_grouped_values_vs_refilled_defaults():
         "auth_mode": "none",  # Core-refilled default
         "max_pages": 30,  # Core-refilled default
     }
-    assert migrate_legacy_config(cfg) is True  # defaults cleaned + flag set
+    assert migrate_legacy_config(cfg) is True  # flag set
     assert cfg["server"]["server_url"] == "http://grouped:4567"  # untouched
     assert cfg["server"]["auth_mode"] == "jwt"  # untouched
-    assert "server_url" not in cfg
-    assert "auth_mode" not in cfg
-    assert "max_pages" not in cfg
+    # Refilled defaults are kept as inert placeholders (dropping them would
+    # make Core re-add them every load, logging "Config key missing").
+    assert cfg["server_url"] == "http://localhost:4567"
+    assert cfg["auth_mode"] == "none"
+    assert cfg["max_pages"] == 30
 
 
-def test_migrate_legacy_config_cleans_all_default_legacy_keys():
-    """No real legacy values: defaults are dropped, only the flag remains."""
+def test_migrate_legacy_config_defaults_kept_when_no_real_values():
+    """Fresh install: all-default legacy keys stay as placeholders, flag set."""
     cfg = {"server_url": "http://localhost:4567", "auth_mode": "none"}
     assert migrate_legacy_config(cfg) is True
-    assert cfg == {MIGRATE_FLAG_KEY: True}
+    assert cfg == {
+        "server_url": "http://localhost:4567",
+        "auth_mode": "none",
+        MIGRATE_FLAG_KEY: True,
+    }
 
 
 def test_migrate_legacy_config_noop_when_already_grouped():

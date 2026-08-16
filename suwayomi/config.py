@@ -125,13 +125,13 @@ def migrate_legacy_config(config: dict) -> bool:
 
     `_conf_schema.json` 中保留的全部旧键（`invisible: true`）使 AstrBot
     Core 的配置同步不会删除它们，用户旧值得以保留；本函数在插件
-    `__init__` 中把旧值迁入分组并删除旧键，置迁移标记后保存。规则：
+    `__init__` 中把旧值迁入分组并置迁移标记后保存。规则：
 
     - 旧键值**等于默认值**（`_LEGACY_KEY_DEFAULTS`）：视为 Core 补回的
-      无意义占位（用户从未设置过），直接清理，**不得覆盖**分组中可能
-      存在的真实配置。
+      无意义占位（用户从未设置过），**原样保留**（不迁移、不覆盖分组，
+      也不删除——删除会导致 Core 每次加载重新补键并打日志）。
     - 旧键值**非默认**：用户确实设置过的旧值，迁入分组（优先于分组内
-      刚被 Schema 补的默认值）。
+      刚被 Schema 补的默认值），并删除顶层旧键。
     - 迁移标记已置位：跳过（防止 Core 补回的默认值再次污染分组）。
     """
     if config.get(MIGRATE_FLAG_KEY):
@@ -141,7 +141,6 @@ def migrate_legacy_config(config: dict) -> bool:
             continue
         value = config[key]
         if value == _LEGACY_KEY_DEFAULTS.get(key):
-            config.pop(key, None)
             continue
         set_config_value(config, key, value)
     config[MIGRATE_FLAG_KEY] = True

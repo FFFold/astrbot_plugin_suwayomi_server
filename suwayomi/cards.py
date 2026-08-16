@@ -15,7 +15,7 @@ import json
 import math
 import re
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypedDict
 from urllib.parse import urlparse
 
 from astrbot.api import logger
@@ -304,8 +304,13 @@ _ID_TAG_RE = re.compile(r"\s*\(ID:\d+\)\s*$")
 # 与普通单行的行高比 = 73.2 / 43.2 ≈ 1.694，取 1.7。
 _ROW_ID_WEIGHT = 1.7
 
+# 章节卡一行：main 为标题（可省略号截断），id 为行尾灰色 ID 标注（可空）。
+class CardLine(TypedDict):
+    main: str
+    id: str
 
-def _row_weight(line: str | dict) -> float:
+
+def _row_weight(line: str | CardLine) -> float:
     """Render-height units of a chapter line.
 
     Rows carrying an ``(ID:xxx)`` tag render on two lines (title + gray ID
@@ -336,8 +341,8 @@ def _chunk_by_weight(lines: list[str], budget: int) -> list[list[str]]:
     return chunks
 
 
-def _split_columns(lines: list[str], n: int = 3) -> list[list[str]]:
-    """Split lines into n columns preserving reading order and height balance.
+def _split_columns(lines: list[CardLine], n: int = 3) -> list[list[CardLine]]:
+    """Split card lines into n columns preserving reading order and height balance.
 
     Each column gets a contiguous slice of lines (column 1 first, column 2
     next, ...) so columns read top-to-bottom in the same order as the
@@ -348,8 +353,8 @@ def _split_columns(lines: list[str], n: int = 3) -> list[list[str]]:
         return [[] for _ in range(n)]
     total = sum(_row_weight(line) for line in lines)
     target = math.ceil(total / n)
-    cols: list[list[str]] = []
-    cur: list[str] = []
+    cols: list[list[CardLine]] = []
+    cur: list[CardLine] = []
     weight = 0.0
     for line in lines:
         w = _row_weight(line)
@@ -367,7 +372,7 @@ def _split_columns(lines: list[str], n: int = 3) -> list[list[str]]:
     return cols
 
 
-def _chapter_row(line: str) -> dict:
+def _chapter_row(line: str) -> CardLine:
     """Split a chapter line into (main, id_tag) for single-line truncation.
 
     Lines like ``#1 单行本：第01卷 (ID:2539)`` become main ``#1 单行本：第01卷``
@@ -392,7 +397,7 @@ def build_chapter_cards(manga: dict, lines: list[str]) -> tuple[list[dict], list
     NOT escaped); this function HTML-escapes the ones placed into cards and
     returns the unescaped overflow as ``tail``.
     """
-    safe_lines = [_chapter_row(line) for line in lines]
+    safe_lines: list[CardLine] = [_chapter_row(line) for line in lines]
     per_card = CHAPTER_LINES_PER_CARD
     if not lines:
         card_count = 1

@@ -229,6 +229,24 @@ def test_resolve_cover_url_relative_uses_auth():
     assert headers == {"Authorization": "Bearer tok"}
 
 
+def test_resolve_cover_url_same_origin_absolute_uses_auth():
+    client = FakeClient()
+    url, headers = resolve_cover_url(
+        client, "http://localhost:4567/api/v1/manga/1/thumbnail"
+    )
+    assert url == "http://localhost:4567/api/v1/manga/1/thumbnail"
+    assert headers == {"Authorization": "Bearer tok"}
+
+
+def test_resolve_cover_url_cross_origin_port_no_auth():
+    client = FakeClient()
+    url, headers = resolve_cover_url(
+        client, "http://localhost:4568/api/v1/manga/1/thumbnail"
+    )
+    assert url == "http://localhost:4568/api/v1/manga/1/thumbnail"
+    assert headers is None
+
+
 def test_resolve_cover_url_external_no_auth():
     client = FakeClient()
     url, headers = resolve_cover_url(client, "https://cdn.example.com/c.jpg")

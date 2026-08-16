@@ -205,9 +205,9 @@ uv pip install -r astrbot_suwayomi_server/requirements.txt
 
 ## ⚙️ 配置
 
-在 AstrBot WebUI 的插件设置页面中配置。
+在 AstrBot WebUI 的插件设置页面中配置。配置项按功能分组（与 WebUI 设置页、`_conf_schema.json` 一致）。
 
-### 基本设置
+### 服务器连接
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
@@ -215,29 +215,30 @@ uv pip install -r astrbot_suwayomi_server/requirements.txt
 | `auth_mode` | string | `none` | 认证模式：`none` / `basic` / `jwt` |
 | `username` | string | `""` | 认证用户名（basic / jwt 模式） |
 | `password` | string | `""` | 认证密码（basic / jwt 模式） |
-| `check_interval` | int | `60` | 更新检查间隔（分钟） |
-| `default_source_id` | int | `0` | 默认搜索源 ID，`0` 搜索全部已安装源 |
-| `result_cards_enabled` | bool | `false` | 指令结果卡片渲染：搜索/订阅确认/批量订阅/我的订阅/更新通知/章节列表通过 AstrBot T2I 服务渲染为带封面的卡片；关闭或渲染失败时回退纯文本 |
-| `card_render_timeout_sec` | int | `30` | 单张卡片渲染超时（5-120 秒），超时自动回退纯文本；T2I 服务不可用时命令会等待该时长后回退，且之后 5 分钟内不再尝试渲染 |
 
-> 💡 **卡片渲染**：插件默认以纯文本回复。如需将指令结果渲染为带封面的精美卡片（依赖 AstrBot 的 T2I 服务，通常随 AstrBot 内置可用），在 WebUI 插件设置中将 `result_cards_enabled` 开启即可；T2I 服务不可用时所有命令自动回退纯文本，不会报错。
-
-### 阅读设置
+### 阅读体验
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
+| `max_pages` | int | `30` | 单次阅读最大发送页数 |
 | `send_mode` | string | `image` | 发图模式：`image`（逐张发送）/ `forward`（合并转发，仅 QQ） |
 | `image_fetch_mode` | string | `download` | 图源获取：`url`（直接引用，不兼容认证服务器）/ `download`（先下载到本地） |
-| `max_pages` | int | `30` | 单次阅读最大发送页数 |
+
+### 下载打包
+
+| 配置项 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `download_format` | string | `pdf` | 下载打包格式：`zip` / `pdf` / `cbz` |
 | `download_concurrency` | int | `6` | 并行下载图片数（仅 `download` 模式） |
 | `download_retries` | int | `3` | 图片下载失败重试次数（指数退避） |
-| `chapter_cache_hours` | int | `6` | 章节缓存时长（小时）。`0` = 不自动刷新，`-1` = 总是从源刷新 |
-| `chapter_list_show_cover` | bool | `true` | 「漫画 章节」列表顶部是否显示漫画封面；关闭后该命令不使用卡片渲染（回退纯文本） |
-| `download_format` | string | `pdf` | 下载打包格式：`zip` / `pdf` / `cbz` |
-| `temp_dir` | string | `""` | 临时文件目录。留空用系统默认，Docker 环境设置共享目录如 `/AstrBot/data/temp` |
+
+### 自动推送
+
+| 配置项 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
 | `auto_push_mode` | string | `image` | 自动推送模式：`image`（图片）/ `file`（文件） |
 
-### Agent Tool 设置
+### AI 漫画工具
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
@@ -246,6 +247,20 @@ uv pip install -r astrbot_suwayomi_server/requirements.txt
 | `ai_max_sources` | int | `5` | 单次 AI 搜索最多查询的漫画源数（1-10） |
 | `ai_results_per_source` | int | `5` | 每个漫画源最多返回的候选数（1-20） |
 | `ai_tool_timeout_sec` | int | `60` | 插件内部的搜索、章节查询或发送超时（10-300 秒）；运行时会自动限制在 AstrBot 工具调用超时以内并预留回传时间 |
+
+### 高级
+
+| 配置项 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `check_interval` | int | `60` | 更新检查间隔（分钟） |
+| `chapter_cache_hours` | int | `6` | 章节缓存时长（小时）。`0` = 不自动刷新，`-1` = 总是从源刷新 |
+| `chapter_list_show_cover` | bool | `true` | 「漫画 章节」列表顶部是否显示漫画封面；关闭后该命令不使用卡片渲染（回退纯文本） |
+| `default_source_id` | int | `0` | 默认搜索源 ID，`0` 搜索全部已安装源 |
+| `temp_dir` | string | `""` | 临时文件目录。留空用系统默认，Docker 环境设置共享目录如 `/AstrBot/data/temp` |
+| `result_cards_enabled` | bool | `false` | 指令结果卡片渲染：搜索/订阅确认/批量订阅/我的订阅/更新通知/章节列表通过 AstrBot T2I 服务渲染为带封面的卡片；关闭或渲染失败时回退纯文本 |
+| `card_render_timeout_sec` | int | `30` | 单张卡片渲染超时（5-120 秒），超时自动回退纯文本；T2I 服务不可用时命令会等待该时长后回退，且之后 5 分钟内不再尝试渲染 |
+
+> 💡 **卡片渲染**：插件默认以纯文本回复。如需将指令结果渲染为带封面的精美卡片（依赖 AstrBot 的 T2I 服务，通常随 AstrBot 内置可用），在 WebUI 插件设置中将 `result_cards_enabled` 开启即可；T2I 服务不可用时所有命令自动回退纯文本，不会报错。
 
 ### 认证模式说明
 

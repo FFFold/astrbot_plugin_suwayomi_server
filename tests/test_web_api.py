@@ -239,7 +239,8 @@ async def test_config_post_save():
 
     result = await api_config_post(cfg, {"server_url": "http://new:4567"}, rebuild)
     assert result["success"] is True
-    assert cfg["server_url"] == "http://new:4567"
+    assert cfg["server"]["server_url"] == "http://new:4567"
+    assert "server_url" not in cfg  # legacy flat key removed
     cfg.save_config.assert_called_once()
     rebuild.assert_called_once()
 
@@ -274,7 +275,7 @@ async def test_config_post_skips_masked_password():
         "password": "***",
     }, AsyncMock())
     assert result["success"] is True
-    assert cfg["password"] == "real_pw"  # not overwritten
+    assert cfg.get("password", cfg.get("server", {}).get("password")) == "real_pw"  # not overwritten
 
 
 @pytest.mark.asyncio
@@ -287,7 +288,7 @@ async def test_config_post_allows_real_password():
         "password": "new_pw",
     }, AsyncMock())
     assert result["success"] is True
-    assert cfg["password"] == "new_pw"
+    assert cfg["server"]["password"] == "new_pw"
 
 
 @pytest.mark.asyncio
@@ -316,8 +317,8 @@ async def test_config_post_rejects_invalid_enum():
         "download_format": "exe",
     }, AsyncMock())
     assert result["success"] is True
-    assert cfg.get("send_mode") != "weird"
-    assert cfg.get("download_format") != "exe"
+    assert cfg.get("reading", {}).get("send_mode") != "weird"
+    assert cfg.get("pack", {}).get("download_format") != "exe"
 
 
 @pytest.mark.asyncio
@@ -332,10 +333,10 @@ async def test_config_post_accepts_valid_enum():
         "download_format": "cbz",
     }, AsyncMock())
     assert result["success"] is True
-    assert cfg["send_mode"] == "forward"
-    assert cfg["image_fetch_mode"] == "download"
-    assert cfg["auto_push_mode"] == "file"
-    assert cfg["download_format"] == "cbz"
+    assert cfg["reading"]["send_mode"] == "forward"
+    assert cfg["reading"]["image_fetch_mode"] == "download"
+    assert cfg["push"]["auto_push_mode"] == "file"
+    assert cfg["pack"]["download_format"] == "cbz"
 
 
 @pytest.mark.asyncio
@@ -348,7 +349,7 @@ async def test_config_post_validates_numeric_fields():
         "check_interval": "0",  # below min of 1
     }, AsyncMock())
     assert result["success"] is True
-    assert cfg["check_interval"] == 1  # clamped to minimum
+    assert cfg["advanced"]["check_interval"] == 1  # clamped to minimum
 
 
 @pytest.mark.asyncio
@@ -361,7 +362,7 @@ async def test_config_post_validates_numeric_string():
         "max_pages": "50",
     }, AsyncMock())
     assert result["success"] is True
-    assert cfg["max_pages"] == 50
+    assert cfg["reading"]["max_pages"] == 50
 
 
 @pytest.mark.asyncio
@@ -378,11 +379,11 @@ async def test_config_post_coerces_ai_tool_booleans_and_limits():
     }, AsyncMock())
 
     assert result["success"] is True
-    assert cfg["enable_ai_tools"] is False
-    assert cfg["allow_ai_send"] is True
-    assert cfg["ai_max_sources"] == 10
-    assert cfg["ai_results_per_source"] == 1
-    assert cfg["ai_tool_timeout_sec"] == 300
+    assert cfg["ai"]["enable_ai_tools"] is False
+    assert cfg["ai"]["allow_ai_send"] is True
+    assert cfg["ai"]["ai_max_sources"] == 10
+    assert cfg["ai"]["ai_results_per_source"] == 1
+    assert cfg["ai"]["ai_tool_timeout_sec"] == 300
 
 
 @pytest.mark.asyncio
@@ -395,7 +396,7 @@ async def test_config_post_accepts_chapter_list_show_cover():
     }, AsyncMock())
 
     assert result["success"] is True
-    assert cfg["chapter_list_show_cover"] is False
+    assert cfg["advanced"]["chapter_list_show_cover"] is False
 
 
 def test_config_get_only_returns_allowed_keys():

@@ -319,10 +319,10 @@ async def test_config_post_save(config):
     }, rebuild)
 
     assert result["success"] is True
-    assert config["max_pages"] == 50
+    assert config["reading"]["max_pages"] == 50
     assert config._saved is True
     assert rebuild_called is True
-    print(f"\n  config after save: max_pages={config['max_pages']}")
+    print(f"\n  config after save: max_pages={config['reading']['max_pages']}")
 
 
 @pytest.mark.asyncio

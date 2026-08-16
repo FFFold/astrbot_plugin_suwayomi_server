@@ -5,6 +5,7 @@ import re
 import time
 from typing import Any
 
+from .config import get_config_value
 from .models import Chapter, Manga, Source
 from .service import (
     _bounded_int,
@@ -154,9 +155,9 @@ async def search_manga_for_agent(
         return {"success": False, "error": "query 不能为空", "results": []}
 
     sources = await client.get_sources()
-    max_sources = _bounded_int(config.get("ai_max_sources", 5), 5, 1, 10)
+    max_sources = _bounded_int(get_config_value(config, "ai_max_sources", 5), 5, 1, 10)
     per_source_limit = _bounded_int(
-        config.get("ai_results_per_source", 5), 5, 1, 20
+        get_config_value(config, "ai_results_per_source", 5), 5, 1, 20
     )
     available_sources = [
         source_to_agent_dict(source)
@@ -169,7 +170,7 @@ async def search_manga_for_agent(
         target_sources = select_search_sources(
             sources,
             source_hint,
-            config.get("default_source_id", 0),
+            get_config_value(config, "default_source_id", 0),
             max_sources,
         )
     if not target_sources:

@@ -34,6 +34,7 @@ from .suwayomi.cards import (
     render_card_cached,
 )
 from .suwayomi.client import SuwayomiClient, SuwayomiError
+from .suwayomi.config import get_config_value, migrate_legacy_config
 from .suwayomi.models import Manga, SearchResult
 from .suwayomi.service import (
     STATUS_EMOJI,
@@ -96,11 +97,17 @@ class SuwayomiPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
         self.config = config
+        if migrate_legacy_config(config):
+            try:
+                config.save_config()
+                logger.info(f"[{PLUGIN_NAME}] 已迁移旧版平铺配置到分组结构")
+            except Exception as exc:
+                logger.warning(f"[{PLUGIN_NAME}] 旧版配置迁移保存失败: {exc}")
         self.client = SuwayomiClient(
-            server_url=config.get("server_url", "http://localhost:4567"),
-            auth_mode=config.get("auth_mode", "none"),
-            username=config.get("username", ""),
-            password=config.get("password", ""),
+            server_url=get_config_value(config, "server_url", "http://localhost:4567"),
+            auth_mode=get_config_value(config, "auth_mode", "none"),
+            username=get_config_value(config, "username", ""),
+            password=get_config_value(config, "password", ""),
         )
         self.sub_mgr = SubscriptionManager(self)
         self._search_cache: dict[str, tuple[float, dict[str, Manga]]] = {}
@@ -114,9 +121,9 @@ class SuwayomiPlugin(Star):
         self._build_check_updates_fn()
         self._try_start_bg_loop()
         logger.info(
-            f"[{PLUGIN_NAME}] 插件已加载 | 服务器: {config.get('server_url')} | "
-            f"缓存: {config.get('chapter_cache_hours', 6)}h | "
-            f"检查间隔: {config.get('check_interval', 60)}min"
+            f"[{PLUGIN_NAME}] 插件已加载 | 服务器: {get_config_value(config, 'server_url')} | "
+            f"缓存: {get_config_value(config, 'chapter_cache_hours', 6)}h | "
+            f"检查间隔: {get_config_value(config, 'check_interval', 60)}min"
         )
 
         context.register_web_api(
@@ -153,7 +160,7 @@ class SuwayomiPlugin(Star):
         return bool(value)
 
     def _sync_ai_tools(self):
-        enabled = self._config_bool(self.config.get("enable_ai_tools", True), True)
+        enabled = self._config_bool(get_config_value(self.config, "enable_ai_tools", True), True)
         previous_enabled = getattr(self, "_ai_tools_config_enabled", None)
         if enabled:
             self.context.add_llm_tools(*build_ai_tools(self))
@@ -181,7 +188,7 @@ class SuwayomiPlugin(Star):
         preferred_minimum: int | float = 0,
     ) -> float:
         try:
-            value = int(self.config.get("ai_tool_timeout_sec", 60))
+            value = int(get_config_value(self.config, "ai_tool_timeout_sec", 60))
         except (TypeError, ValueError):
             value = 60
         configured_timeout = max(10, min(value, 300))
@@ -250,7 +257,7 @@ class SuwayomiPlugin(Star):
         *,
         _astrbot_tool_timeout: int | float | None = None,
     ) -> str:
-        if not self._config_bool(self.config.get("enable_ai_tools", True), True):
+        if not self._config_bool(get_config_value(self.config, "enable_ai_tools", True), True):
             return self._tool_json({"success": False, "error": "AI 漫画工具已关闭"})
         try:
             async with asyncio.timeout(self._ai_timeout(_astrbot_tool_timeout)):
@@ -278,7 +285,7 @@ class SuwayomiPlugin(Star):
         *,
         _astrbot_tool_timeout: int | float | None = None,
     ) -> str:
-        if not self._config_bool(self.config.get("enable_ai_tools", True), True):
+        if not self._config_bool(get_config_value(self.config, "enable_ai_tools", True), True):
             return self._tool_json({"success": False, "error": "AI 漫画工具已关闭"})
         try:
             async with asyncio.timeout(self._ai_timeout(_astrbot_tool_timeout)):
@@ -320,9 +327,9 @@ class SuwayomiPlugin(Star):
         *,
         _astrbot_tool_timeout: int | float | None = None,
     ) -> str:
-        if not self._config_bool(self.config.get("enable_ai_tools", True), True):
+        if not self._config_bool(get_config_value(self.config, "enable_ai_tools", True), True):
             return self._tool_json({"success": False, "sent": False, "error": "AI 漫画工具已关闭"})
-        if not self._config_bool(self.config.get("allow_ai_send", True), True):
+        if not self._config_bool(get_config_value(self.config, "allow_ai_send", True), True):
             return self._tool_json({"success": False, "sent": False, "error": "管理员已禁止 AI 直接发送漫画"})
         if not self._config_bool(confirmed_user_intent):
             return self._tool_json({"success": False, "sent": False, "error": "用户尚未明确要求阅读或发送漫画，不能主动发送"})
@@ -416,7 +423,7 @@ class SuwayomiPlugin(Star):
         *,
         _astrbot_tool_timeout: int | float | None = None,
     ) -> str:
-        if not self._config_bool(self.config.get("enable_ai_tools", True), True):
+        if not self._config_bool(get_config_value(self.config, "enable_ai_tools", True), True):
             return self._tool_json({"success": False, "error": "AI 漫画工具已关闭"})
         if not self._config_bool(confirmed_user_intent):
             return self._tool_json({"success": False, "error": "用户尚未明确要求订阅，不能自动订阅"})
@@ -445,7 +452,7 @@ class SuwayomiPlugin(Star):
         *,
         _astrbot_tool_timeout: int | float | None = None,
     ) -> str:
-        if not self._config_bool(self.config.get("enable_ai_tools", True), True):
+        if not self._config_bool(get_config_value(self.config, "enable_ai_tools", True), True):
             return self._tool_json({"success": False, "error": "AI 漫画工具已关闭"})
         try:
             async with asyncio.timeout(self._ai_timeout(_astrbot_tool_timeout)):
@@ -468,7 +475,7 @@ class SuwayomiPlugin(Star):
         *,
         _astrbot_tool_timeout: int | float | None = None,
     ) -> str:
-        if not self._config_bool(self.config.get("enable_ai_tools", True), True):
+        if not self._config_bool(get_config_value(self.config, "enable_ai_tools", True), True):
             return self._tool_json({"success": False, "error": "AI 漫画工具已关闭"})
         if not self._config_bool(confirmed_user_intent):
             return self._tool_json({"success": False, "error": "用户尚未明确要求取消订阅，不能自动取消"})
@@ -495,7 +502,7 @@ class SuwayomiPlugin(Star):
             return
         if self._bg_task is not None:
             return
-        interval = float(self.config.get("check_interval", 60)) * 60
+        interval = float(get_config_value(self.config, "check_interval", 60)) * 60
         logger.info(
             f"[{PLUGIN_NAME}] 启动后台更新循环 | "
             f"间隔: {interval / 60:.0f}min ({interval}s)"
@@ -532,7 +539,7 @@ class SuwayomiPlugin(Star):
             await self.sub_mgr.run_migration()
         except Exception as e:
             logger.error(f"[{PLUGIN_NAME}] 订阅数据迁移失败: {e}")
-        if self._config_bool(self.config.get("enable_ai_tools", True), True):
+        if self._config_bool(get_config_value(self.config, "enable_ai_tools", True), True):
             repaired = await self.get_kv_data(_AI_TOOL_REPAIR_KEY, False)
             if not repaired:
                 repair_ok = True
@@ -547,7 +554,7 @@ class SuwayomiPlugin(Star):
                     await self.put_kv_data(_AI_TOOL_REPAIR_KEY, True)
                     logger.info(f"[{PLUGIN_NAME}] 已完成 AI Tool 激活状态一次性修复")
         if self._bg_task is None:
-            interval = float(self.config.get("check_interval", 60)) * 60
+            interval = float(get_config_value(self.config, "check_interval", 60)) * 60
             self._start_bg_task(interval)
 
     async def terminate(self):
@@ -572,9 +579,9 @@ class SuwayomiPlugin(Star):
                 umo, title, chapter,
                 lambda cid, mp=0: fetch_pages_local(
                     client, cid, max_pages=mp,
-                    concurrency=config.get("download_concurrency", 6),
-                    custom_tmp=config.get("temp_dir", "").strip(),
-                    retries=config.get("download_retries", 3),
+                    concurrency=get_config_value(config, "download_concurrency", 6),
+                    custom_tmp=get_config_value(config, "temp_dir", "").strip(),
+                    retries=get_config_value(config, "download_retries", 3),
                     headers=client.auth_headers,
                 ),
             )
@@ -585,9 +592,9 @@ class SuwayomiPlugin(Star):
                 umo, title, chapter,
                 lambda cid, mp=0: fetch_pages_local(
                     client, cid, max_pages=mp,
-                    concurrency=config.get("download_concurrency", 6),
-                    custom_tmp=config.get("temp_dir", "").strip(),
-                    retries=config.get("download_retries", 3),
+                    concurrency=get_config_value(config, "download_concurrency", 6),
+                    custom_tmp=get_config_value(config, "temp_dir", "").strip(),
+                    retries=get_config_value(config, "download_retries", 3),
                     headers=client.auth_headers,
                 ),
             )
@@ -597,9 +604,9 @@ class SuwayomiPlugin(Star):
                 tmpldata = build_update_card(items, heading)
                 tmpldata["items"] = await embed_covers(
                     client, tmpldata["items"],
-                    custom_tmp=config.get("temp_dir", "").strip(),
-                    retries=config.get("download_retries", 3),
-                    concurrency=config.get("download_concurrency", 6),
+                    custom_tmp=get_config_value(config, "temp_dir", "").strip(),
+                    retries=get_config_value(config, "download_retries", 3),
+                    concurrency=get_config_value(config, "download_concurrency", 6),
                 )
                 return await self._render_card_result(tmpldata)
             except Exception as e:
@@ -632,7 +639,7 @@ class SuwayomiPlugin(Star):
         )
 
     def _result_cards_enabled(self) -> bool:
-        if not self._config_bool(self.config.get("result_cards_enabled", True), True):
+        if not self._config_bool(get_config_value(self.config, "result_cards_enabled", True), True):
             return False
         if time.time() < getattr(self, "_card_cooldown_until", 0.0):
             return False
@@ -646,7 +653,7 @@ class SuwayomiPlugin(Star):
         to text immediately instead of waiting for the render timeout again.
         """
         try:
-            timeout = float(self.config.get("card_render_timeout_sec", 30))
+            timeout = float(get_config_value(self.config, "card_render_timeout_sec", 30))
         except (TypeError, ValueError):
             timeout = 30.0
         timeout = max(5.0, min(timeout, 120.0))
@@ -663,12 +670,12 @@ class SuwayomiPlugin(Star):
 
     async def _prepare_chapter_delivery(self, event: AstrMessageEvent, target):
         """Build one chapter result for command yield or direct AI-tool sending."""
-        max_pages = self.config.get("max_pages", 30)
-        send_mode = self.config.get("send_mode", "image")
-        fetch_mode = self.config.get("image_fetch_mode", "download")
-        concurrency = self.config.get("download_concurrency", 6)
-        custom_tmp = self.config.get("temp_dir", "").strip()
-        retries = self.config.get("download_retries", 3)
+        max_pages = get_config_value(self.config, "max_pages", 30)
+        send_mode = get_config_value(self.config, "send_mode", "image")
+        fetch_mode = get_config_value(self.config, "image_fetch_mode", "download")
+        concurrency = get_config_value(self.config, "download_concurrency", 6)
+        custom_tmp = get_config_value(self.config, "temp_dir", "").strip()
+        retries = get_config_value(self.config, "download_retries", 3)
 
         local_paths: list[str] = []
         tmp_dir: Path | None = None
@@ -720,9 +727,9 @@ class SuwayomiPlugin(Star):
         fmt: str,
     ):
         """Download all chapter pages and build a PDF/ZIP/CBZ file result."""
-        concurrency = self.config.get("download_concurrency", 6)
-        custom_tmp = self.config.get("temp_dir", "").strip()
-        retries = self.config.get("download_retries", 3)
+        concurrency = get_config_value(self.config, "download_concurrency", 6)
+        custom_tmp = get_config_value(self.config, "temp_dir", "").strip()
+        retries = get_config_value(self.config, "download_retries", 3)
         total_pages, page_urls, local_paths, tmp_dir = await fetch_pages_local(
             self.client,
             target.id,
@@ -853,7 +860,7 @@ class SuwayomiPlugin(Star):
                 target_sources = select_search_sources(
                     sources,
                     "",
-                    self.config.get("default_source_id", 0),
+                    get_config_value(self.config, "default_source_id", 0),
                     max_sources=5,
                 )
 
@@ -910,9 +917,9 @@ class SuwayomiPlugin(Star):
                     )
                     tmpldata["rows"] = await embed_covers(
                         self.client, tmpldata["rows"],
-                        custom_tmp=self.config.get("temp_dir", "").strip(),
-                        retries=self.config.get("download_retries", 3),
-                        concurrency=self.config.get("download_concurrency", 6),
+                        custom_tmp=get_config_value(self.config, "temp_dir", "").strip(),
+                        retries=get_config_value(self.config, "download_retries", 3),
+                        concurrency=get_config_value(self.config, "download_concurrency", 6),
                     )
                     path = await self._render_card_result(tmpldata)
                     if path:
@@ -960,9 +967,9 @@ class SuwayomiPlugin(Star):
                     )
                     card = (await embed_covers(
                         self.client, [tmpldata],
-                        custom_tmp=self.config.get("temp_dir", "").strip(),
-                        retries=self.config.get("download_retries", 3),
-                        concurrency=self.config.get("download_concurrency", 6),
+                        custom_tmp=get_config_value(self.config, "temp_dir", "").strip(),
+                        retries=get_config_value(self.config, "download_retries", 3),
+                        concurrency=get_config_value(self.config, "download_concurrency", 6),
                     ))[0]
                     path = await self._render_card_result(card)
                     if path:
@@ -1078,9 +1085,9 @@ class SuwayomiPlugin(Star):
                     )
                     tmpldata["rows"] = await embed_covers(
                         self.client, tmpldata["rows"],
-                        custom_tmp=self.config.get("temp_dir", "").strip(),
-                        retries=self.config.get("download_retries", 3),
-                        concurrency=self.config.get("download_concurrency", 6),
+                        custom_tmp=get_config_value(self.config, "temp_dir", "").strip(),
+                        retries=get_config_value(self.config, "download_retries", 3),
+                        concurrency=get_config_value(self.config, "download_concurrency", 6),
                     )
                     path = await self._render_card_result(tmpldata)
                     if path:
@@ -1159,9 +1166,9 @@ class SuwayomiPlugin(Star):
                     tmpldata = build_subscriptions_card(card_rows)
                     tmpldata["rows"] = await embed_covers(
                         self.client, tmpldata["rows"],
-                        custom_tmp=self.config.get("temp_dir", "").strip(),
-                        retries=self.config.get("download_retries", 3),
-                        concurrency=self.config.get("download_concurrency", 6),
+                        custom_tmp=get_config_value(self.config, "temp_dir", "").strip(),
+                        retries=get_config_value(self.config, "download_retries", 3),
+                        concurrency=get_config_value(self.config, "download_concurrency", 6),
                     )
                     path = await self._render_card_result(tmpldata)
                     if path:
@@ -1262,7 +1269,7 @@ class SuwayomiPlugin(Star):
                 yield event.plain_result(err or "未找到该漫画。")
                 return
 
-            show_cover = self.config.get("chapter_list_show_cover", True)
+            show_cover = get_config_value(self.config, "chapter_list_show_cover", True)
             cards_active = self._result_cards_enabled() and show_cover
             cover_path: str | None = None
             cover_tmp: Path | None = None
@@ -1277,8 +1284,8 @@ class SuwayomiPlugin(Star):
                     download_cover(
                         self.client,
                         manga.thumbnail_url,
-                        custom_tmp=self.config.get("temp_dir", "").strip(),
-                        retries=self.config.get("download_retries", 3),
+                        custom_tmp=get_config_value(self.config, "temp_dir", "").strip(),
+                        retries=get_config_value(self.config, "download_retries", 3),
                         headers=self.client.auth_headers,
                     ),
                     return_exceptions=True,
@@ -1340,9 +1347,9 @@ class SuwayomiPlugin(Star):
                     }
                     (card_base,) = await embed_covers(
                         self.client, [card_base],
-                        custom_tmp=self.config.get("temp_dir", "").strip(),
-                        retries=self.config.get("download_retries", 3),
-                        concurrency=self.config.get("download_concurrency", 6),
+                        custom_tmp=get_config_value(self.config, "temp_dir", "").strip(),
+                        retries=get_config_value(self.config, "download_retries", 3),
+                        concurrency=get_config_value(self.config, "download_concurrency", 6),
                     )
                     cards_tmpldata, tail_lines = build_chapter_cards(card_base, lines_card)
                     rendered: list[str] = []
@@ -1433,7 +1440,7 @@ class SuwayomiPlugin(Star):
             try:
                 result, total_pages, _, tmp_dir = await self._prepare_chapter_delivery(event, target)
                 if result is None:
-                    fetch_mode = self.config.get("image_fetch_mode", "download")
+                    fetch_mode = get_config_value(self.config, "image_fetch_mode", "download")
                     yield event.plain_result(
                         fmt_delivery_failure_message(
                             total_pages, fetch_mode, self.client.auth_mode
@@ -1455,7 +1462,7 @@ class SuwayomiPlugin(Star):
     @manga_group.command("下载")
     async def download_chapter(self, event: AstrMessageEvent, manga_name_or_id: str, chapter_num: str = ""):
         """下载漫画章节并打包发送。用法: /漫画 下载 <漫画名或ID> <章节号或ID:数字> [zip/pdf/cbz]"""
-        default_fmt = self.config.get("download_format", "pdf")
+        default_fmt = get_config_value(self.config, "download_format", "pdf")
         manga_name_or_id, chapter_num, fmt = parse_download_args(event.message_str, default_fmt)
 
         if not manga_name_or_id or not chapter_num:
@@ -1489,9 +1496,9 @@ class SuwayomiPlugin(Star):
             num_label = fmt_chapter_display(target)
             await event.send(event.plain_result(f"⏳ 正在下载「{manga.title}」{num_label}，请稍候..."))
 
-            concurrency = self.config.get("download_concurrency", 6)
-            custom_tmp = self.config.get("temp_dir", "").strip()
-            retries = self.config.get("download_retries", 3)
+            concurrency = get_config_value(self.config, "download_concurrency", 6)
+            custom_tmp = get_config_value(self.config, "temp_dir", "").strip()
+            retries = get_config_value(self.config, "download_retries", 3)
             _, page_urls, local_paths, tmp_dir = await fetch_pages_local(
                 self.client, target.id, concurrency=concurrency, custom_tmp=custom_tmp, retries=retries,
                 headers=self.client.auth_headers,
@@ -1605,10 +1612,10 @@ class SuwayomiPlugin(Star):
             except Exception:
                 pass
             self.client = SuwayomiClient(
-                server_url=cfg.get("server_url", "http://localhost:4567"),
-                auth_mode=cfg.get("auth_mode", "none"),
-                username=cfg.get("username", ""),
-                password=cfg.get("password", ""),
+                server_url=get_config_value(cfg, "server_url", "http://localhost:4567"),
+                auth_mode=get_config_value(cfg, "auth_mode", "none"),
+                username=get_config_value(cfg, "username", ""),
+                password=get_config_value(cfg, "password", ""),
             )
             self._build_check_updates_fn()
             self._search_cache.clear()

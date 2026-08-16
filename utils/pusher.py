@@ -10,6 +10,7 @@ import astrbot.api.message_components as Comp
 from astrbot.api import logger
 from astrbot.api.event import MessageChain
 
+from ..suwayomi.config import get_config_value
 from ..suwayomi.models import Chapter
 from ..suwayomi.service import fmt_chapter_display
 from .pack import build_chapter_output_path, normalize_pack_format, pack_images
@@ -144,9 +145,9 @@ async def push_chapter_images(
     fetch_pages_local_fn: Callable,
 ):
     ch_label = fmt_chapter_display(chapter)
-    max_pages = config.get("max_pages", 30)
-    fetch_mode = config.get("image_fetch_mode", "download")
-    send_mode = config.get("send_mode", "image")
+    max_pages = get_config_value(config, "max_pages", 30)
+    fetch_mode = get_config_value(config, "image_fetch_mode", "download")
+    send_mode = get_config_value(config, "send_mode", "image")
 
     local_paths: list[str] = []
     tmp_dir: Path | None = None
@@ -214,7 +215,7 @@ async def push_chapter_file(
     fetch_pages_local_fn: Callable,
 ):
     ch_label = fmt_chapter_display(chapter)
-    fmt = config.get("download_format", "pdf")
+    fmt = get_config_value(config, "download_format", "pdf")
 
     _, page_urls, local_paths, tmp_dir = await fetch_pages_local_fn(chapter.id)
     if not page_urls:

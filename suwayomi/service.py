@@ -11,6 +11,7 @@ import opencc
 from astrbot.api import logger
 
 from . import PLUGIN_NAME
+from .config import get_config_value
 from .client import SuwayomiError
 from .models import Chapter, Manga, Source
 
@@ -302,7 +303,7 @@ async def get_or_fetch_chapters(
     manga_id: int,
     force: bool = False,
 ) -> list[Chapter] | None:
-    cache_hours = config.get("chapter_cache_hours", 6)
+    cache_hours = get_config_value(config, "chapter_cache_hours", 6)
     if cache_hours < -1:
         cache_hours = 0
 
@@ -428,7 +429,7 @@ async def search_best_match(
         target_sources = select_search_sources(
             sources,
             "",
-            config.get("default_source_id", 0),
+            get_config_value(config, "default_source_id", 0),
             max_sources=3,
         )
 

@@ -157,26 +157,31 @@ git clone https://github.com/FFFold/astrbot_suwayomi_server.git
 
 ### 填写示例
 
+配置项在 WebUI 插件设置中按分组展示（服务器连接 / 阅读体验 / 下载打包 / 自动推送 / AI 漫画工具 / 高级）。
+
 **场景 1：同一台机器，无认证**
 ```
-server_url: http://localhost:4567
-auth_mode: none
+server:
+  server_url: http://localhost:4567
+  auth_mode: none
 ```
 
 **场景 2：Suwayomi 在另一台服务器，Basic 认证**
 ```
-server_url: http://192.168.1.100:4567
-auth_mode: basic
-username: admin
-password: mypassword123
+server:
+  server_url: http://192.168.1.100:4567
+  auth_mode: basic
+  username: admin
+  password: mypassword123
 ```
 
 **场景 3：Suwayomi 在公网，JWT 认证**
 ```
-server_url: https://manga.example.com
-auth_mode: jwt
-username: admin
-password: mypassword123
+server:
+  server_url: https://manga.example.com
+  auth_mode: jwt
+  username: admin
+  password: mypassword123
 ```
 
 ---

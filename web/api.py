@@ -14,6 +14,11 @@ from typing import Any, Awaitable, Callable
 
 from astrbot.api import logger
 
+try:
+    from ..suwayomi.config import flatten_config, set_config_value
+except ImportError:  # tests import web.api as top-level package
+    from suwayomi.config import flatten_config, set_config_value
+
 PLUGIN_NAME = "astrbot_plugin_suwayomi_server"
 
 # Whitelist of known config keys — shared by api_config_get and api_config_post
@@ -199,7 +204,7 @@ async def api_subscription_push(
 
 def api_config_get(config: Any) -> dict:
     """GET /config — 读取当前插件配置，仅返回白名单字段，掩码敏感字段"""
-    cfg = {k: config.get(k) for k in ALLOWED_CONFIG_KEYS if k in config}
+    cfg = flatten_config(config, sorted(ALLOWED_CONFIG_KEYS))
     for key, default in AI_CONFIG_DEFAULTS.items():
         cfg.setdefault(key, config.get(key, default))
     if cfg.get("password"):
@@ -247,7 +252,7 @@ async def api_config_post(
         if key in ENUM_CONFIG_KEYS:
             if not isinstance(value, str) or value not in ENUM_CONFIG_KEYS[key]:
                 continue
-        config[key] = value
+        set_config_value(config, key, value)
 
     try:
         config.save_config()

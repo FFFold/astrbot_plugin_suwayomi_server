@@ -10,6 +10,7 @@ from astrbot.api import logger
 from astrbot.api.event import MessageChain
 
 from . import PLUGIN_NAME
+from .config import get_config_value
 from .service import (
     fmt_chapter_display,
     fmt_chapter_label,
@@ -168,7 +169,7 @@ async def check_updates(
 
         updated_mangas: list[tuple[int, str, list[str], list, dict, Manga | None]] = []
 
-        cache_hours = config.get("chapter_cache_hours", 6)
+        cache_hours = get_config_value(config, "chapter_cache_hours", 6)
         if cache_hours < -1:
             cache_hours = 0
 
@@ -270,7 +271,7 @@ async def check_updates(
             f"[{_PLUGIN_NAME}] 更新推送到 {len(user_msgs)} 个会话"
         )
 
-        auto_push_mode = config.get("auto_push_mode", "image")
+        auto_push_mode = get_config_value(config, "auto_push_mode", "image")
         for manga_id, title, ch_info, new_chapters, subscribers, manga_obj in updated_mangas:
             for umo in subscribers:
                 if not sub_mgr.is_auto_push_enabled(

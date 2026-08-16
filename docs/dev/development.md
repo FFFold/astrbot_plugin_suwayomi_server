@@ -20,7 +20,7 @@ astrbot_suwayomi_server/
 │   └── updater.py             # 更新引擎（check_updates + run_update_loop）
 ├── utils/
 │   ├── __init__.py
-│   ├── downloader.py          # 图片下载管道（download_one/download_images/fetch_pages_local）
+│   ├── downloader.py          # 图片下载管道（download_one/download_images/download_cover/fetch_pages_local）
 │   ├── pack.py                # 图片打包工具（ZIP/CBZ/PDF）
 │   ├── pusher.py              # 推送投递（push_chapter_images/push_chapter_file）+ schedule_cleanup
 │   └── subscription.py        # 订阅管理器（AstrBot KV 存储封装）
@@ -38,12 +38,16 @@ astrbot_suwayomi_server/
 │   ├── test_pack.py           # 打包功能单元测试
 │   ├── test_models.py         # 数据模型单元测试
 │   ├── test_client.py         # 客户端单元测试（mocked HTTP）
+│   ├── test_downloader.py     # 图片下载/封面下载单元测试
 │   ├── test_subscription.py   # 订阅管理单元测试
 │   ├── test_web_api.py        # WebUI API handler 单元测试
 │   ├── test_batch_subscribe.py # 批量订阅参数解析单元测试
 │   ├── test_push.py           # 自动推送单元测试
+│   ├── test_updater.py        # 更新引擎单元测试
 │   ├── test_ai_service.py     # Agent Tool 服务层单元测试
 │   ├── test_ai_tools.py       # AstrBot Tool call() 调度回归测试
+│   ├── test_list_chapters.py  # /漫画 章节 封面逻辑单元测试
+│   ├── test_live_skip.py      # live 探活助手单元测试
 │   ├── test_live_api.py       # Suwayomi 客户端集成测试
 │   └── test_live_web_api.py   # WebUI API handler 集成测试
 ├── docs/
@@ -149,6 +153,7 @@ astrbot_suwayomi_server/
 
 - `download_one(session, url, dest, retries)` — 单图下载，指数退避重试
 - `download_images(urls, concurrency, custom_tmp, retries, headers)` — 并行批量下载，返回 `(paths, tmp_dir)`。`headers` 参数用于注入认证头（`client.auth_headers`），确保认证服务器下的图片下载正常
+- `download_cover(client, thumbnail_url, custom_tmp, retries, headers)` — 下载单张漫画封面到临时目录，返回 `(local_path, tmp_dir)`；失败返回 `(None, None)`，供 `/漫画 章节` 列表顶部展示封面
 - `fetch_pages_local(client, chapter_id, max_pages, concurrency, custom_tmp, retries, headers)` — 获取页面列表并下载到临时目录，返回 `(total_pages, page_urls, local_paths, tmp_dir)`。透传 `headers` 到 `download_images`
 
 #### `utils/pusher.py` — 推送投递

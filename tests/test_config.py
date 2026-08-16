@@ -1,12 +1,37 @@
 """Tests for suwayomi/config.py — grouped config helpers and legacy migration."""
+import json
+from pathlib import Path
+
 from suwayomi.config import (
     CONFIG_GROUPS,
     MIGRATE_FLAG_KEY,
+    _LEGACY_KEY_DEFAULTS,
     flatten_config,
     get_config_value,
     migrate_legacy_config,
     set_config_value,
 )
+
+
+def _schema() -> dict:
+    return json.loads(
+        (Path(__file__).resolve().parent.parent / "_conf_schema.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+
+def test_legacy_defaults_match_schema():
+    """_LEGACY_KEY_DEFAULTS must stay in sync with the invisible keys' defaults.
+
+    If they diverge, Core-refilled defaults would be mistaken for real user
+    values and clobber grouped config during migration.
+    """
+    schema = _schema()
+    for key, default in _LEGACY_KEY_DEFAULTS.items():
+        entry = schema[key]
+        assert entry.get("invisible") is True, f"{key} must be invisible"
+        assert entry.get("default") == default, f"{key} default mismatch"
 
 
 def test_group_layout_covers_all_keys():
@@ -85,10 +110,38 @@ def test_migrate_legacy_config_overrides_group_defaults():
     assert cfg[MIGRATE_FLAG_KEY] is True
 
 
+def test_migrate_legacy_config_keeps_grouped_values_vs_refilled_defaults():
+    """Core-refilled legacy defaults must never clobber real grouped config.
+
+    Regression: after the legacy config was once wiped by Core, the user
+    re-enters grouped values; on the next load Core refills invisible legacy
+    keys with defaults and a naive migration would overwrite those values.
+    """
+    cfg = {
+        "server": {"server_url": "http://grouped:4567", "auth_mode": "jwt"},
+        "server_url": "http://localhost:4567",  # Core-refilled default
+        "auth_mode": "none",  # Core-refilled default
+        "max_pages": 30,  # Core-refilled default
+    }
+    assert migrate_legacy_config(cfg) is True  # defaults cleaned + flag set
+    assert cfg["server"]["server_url"] == "http://grouped:4567"  # untouched
+    assert cfg["server"]["auth_mode"] == "jwt"  # untouched
+    assert "server_url" not in cfg
+    assert "auth_mode" not in cfg
+    assert "max_pages" not in cfg
+
+
+def test_migrate_legacy_config_cleans_all_default_legacy_keys():
+    """No real legacy values: defaults are dropped, only the flag remains."""
+    cfg = {"server_url": "http://localhost:4567", "auth_mode": "none"}
+    assert migrate_legacy_config(cfg) is True
+    assert cfg == {MIGRATE_FLAG_KEY: True}
+
+
 def test_migrate_legacy_config_noop_when_already_grouped():
     cfg = {"server": {"server_url": "http://x:4567"}}
-    assert migrate_legacy_config(cfg) is False
-    assert cfg == {"server": {"server_url": "http://x:4567"}}
+    assert migrate_legacy_config(cfg) is True  # flag set (nothing to migrate)
+    assert cfg == {"server": {"server_url": "http://x:4567"}, MIGRATE_FLAG_KEY: True}
 
 
 def test_migrate_legacy_config_noop_after_flag_set():

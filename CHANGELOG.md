@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 ## [Unreleased]
 
+### Fixed
+
+- **旧配置迁移覆盖新填值** — 配置曾被 Core 清空后重新填写分组配置的用户，重载插件时 Core 补回的 invisible 旧键默认值会被迁移逻辑误当作"用户旧值"覆盖分组中的真实配置；迁移改为**仅迁移非默认值的旧键**（等于 `_LEGACY_KEY_DEFAULTS` 的旧键视为无意义占位，直接清理），并保证迁移标记在首次评估时即持久化保存
+
 ### Added
 
 - **指令结果卡片渲染** — 搜索、订阅确认、批量订阅汇总、我的订阅、更新通知、章节列表可通过 AstrBot T2I 服务渲染为带封面的卡片（浅色主题，适配手机阅读）；封面本地下载压缩后以 base64 嵌入，失败显示占位块。新增配置 `result_cards_enabled`（全局开关，默认关闭）与 `card_render_timeout_sec`（渲染超时，默认 30s）；关闭或渲染失败/超时自动回退原有纯文本。章节列表按高度分块为多张卡片（每卡三列，最多 4 张，超出回退文本）。

@@ -7,13 +7,19 @@ delegated to utils.downloader via ``embed_covers``.
 """
 from __future__ import annotations
 
+import base64
 import html
 import math
+from typing import TYPE_CHECKING, Any
+from urllib.parse import urlparse
 
 from astrbot.api import logger
 
 from . import PLUGIN_NAME
 from .service import STATUS_EMOJI
+
+if TYPE_CHECKING:
+    from .client import SuwayomiClient
 
 CARD_WIDTH = 440
 COVER_WIDTH = 120
@@ -301,3 +307,106 @@ def build_chapter_cards(manga: dict, lines: list[str]) -> tuple[list[dict], list
             card["chunks"] = chunks
         cards.append(card)
     return cards, tail
+
+
+def resolve_cover_url(client: Any, thumbnail_url: str | None) -> tuple[str | None, dict | None]:
+    """Resolve a Suwayomi thumbnail URL to a fetchable URL plus auth headers.
+
+    Mirrors utils.downloader.download_cover's same-origin policy: relative
+    paths always carry auth headers; absolute URLs only when same-origin
+    (avoid leaking credentials to third-party hosts).
+    """
+    if not thumbnail_url:
+        return None, None
+    if thumbnail_url.startswith(("http://", "https://")):
+        url = thumbnail_url
+        use_headers = None
+        server = urlparse(client.server_url) if client.server_url else None
+        if server:
+            target = urlparse(thumbnail_url)
+            server_port = server.port or (443 if server.scheme == "https" else 80 if server.scheme == "http" else None)
+            target_port = target.port or (443 if target.scheme == "https" else 80 if target.scheme == "http" else None)
+            if (
+                server.scheme == target.scheme
+                and server.hostname == target.hostname
+                and server_port == target_port
+            ):
+                use_headers = client.auth_headers
+    else:
+        url = client.build_image_url(thumbnail_url)
+        use_headers = client.auth_headers
+    return url, use_headers
+
+
+def _cover_data_url(path: str) -> str | None:
+    """Downscale a local cover to a JPEG base64 data URL (or None on failure)."""
+    try:
+        from io import BytesIO
+
+        from PIL import Image
+
+        img = Image.open(path)
+        img = img.convert("RGB")
+        width = COVER_WIDTH
+        height = max(1, round(img.height * width / img.width))
+        img = img.resize((width, height), Image.LANCZOS)
+        buf = BytesIO()
+        img.save(buf, format="JPEG", quality=80)
+        return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+    except Exception:
+        return None
+
+
+async def embed_covers(
+    client: Any,
+    items: list[dict],
+    custom_tmp: str = "",
+    retries: int = 3,
+    concurrency: int = 6,
+) -> list[dict]:
+    """Download covers in parallel and attach ``cover_data_url`` to each item.
+
+    Returns new dicts (originals untouched). ``cover_data_url`` is None when
+    the cover is missing or failed — the template renders a placeholder.
+    """
+    from ..utils.downloader import download_images
+    from ..utils.pusher import schedule_cleanup
+
+    resolved = []
+    for item in items:
+        url, use_headers = resolve_cover_url(client, item.get("thumbnail_url"))
+        resolved.append((item, url, use_headers))
+
+    grouped: dict[tuple, list[tuple[int, str]]] = {}
+    for idx, (_item, url, use_headers) in enumerate(resolved):
+        key = tuple(sorted((use_headers or {}).items()))
+        grouped.setdefault(key, []).append((idx, url))
+
+    covers: dict[int, str | None] = {}
+    for key, entries in grouped.items():
+        urls = [url for _, url in entries]
+        if not urls:
+            continue
+        headers = dict(key) or None
+        try:
+            paths, tmp_dir = await download_images(
+                urls, concurrency=concurrency, custom_tmp=custom_tmp,
+                retries=retries, headers=headers,
+            )
+        except Exception as exc:
+            logger.warning(f"[{_PLUGIN_NAME}] 封面批量下载失败: {exc}")
+            for idx, _ in entries:
+                covers[idx] = None
+            continue
+        for (idx, _), path in zip(entries, paths):
+            covers[idx] = _cover_data_url(path) if path else None
+        if tmp_dir is not None:
+            schedule_cleanup(tmp_dir, delay=60)
+
+    result = []
+    for idx, (item, _url, _headers) in enumerate(resolved):
+        new_item = dict(item)
+        new_item["cover_data_url"] = covers.get(idx)
+        new_item.pop("thumbnail_url", None)
+        result.append(new_item)
+    return result

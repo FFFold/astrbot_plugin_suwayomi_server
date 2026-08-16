@@ -3,14 +3,22 @@ import math
 
 import pytest
 
-from suwayomi.cards import (
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import plugin_pkg.utils.downloader as downloader_mod
+import plugin_pkg.utils.pusher as pusher_mod
+
+from plugin_pkg.suwayomi.cards import (
     CHAPTER_LINES_PER_CARD,
     MAX_CHAPTER_CARDS,
+    COVER_WIDTH,
     build_batch_card,
     build_chapter_cards,
     build_search_card,
     build_subscribe_confirm_card,
     build_update_card,
+    embed_covers,
+    resolve_cover_url,
 )
 
 
@@ -131,3 +139,83 @@ def test_build_chapter_cards_empty_lines_returns_header():
     cards, tail = build_chapter_cards({"title": "X", "cover_data_url": None}, [])
     assert len(cards) == 1
     assert tail == []
+
+
+class FakeClient:
+    def __init__(self):
+        self.server_url = "http://localhost:4567"
+        self.auth_headers = {"Authorization": "Bearer tok"}
+
+    def build_image_url(self, rel):
+        return f"{self.server_url}{rel}"
+
+
+def _pillow_cover(path):
+    from PIL import Image
+    img = Image.new("RGB", (300, 400), (200, 100, 50))
+    img.save(path, format="JPEG")
+    return path
+
+
+def test_resolve_cover_url_relative_uses_auth():
+    client = FakeClient()
+    url, headers = resolve_cover_url(client, "/api/v1/manga/1/thumbnail")
+    assert url == "http://localhost:4567/api/v1/manga/1/thumbnail"
+    assert headers == {"Authorization": "Bearer tok"}
+
+
+def test_resolve_cover_url_external_no_auth():
+    client = FakeClient()
+    url, headers = resolve_cover_url(client, "https://cdn.example.com/c.jpg")
+    assert url == "https://cdn.example.com/c.jpg"
+    assert headers is None
+
+
+def test_resolve_cover_url_none():
+    client = FakeClient()
+    assert resolve_cover_url(client, None) == (None, None)
+
+
+@patch.object(downloader_mod, "download_images", new_callable=AsyncMock)
+@patch.object(pusher_mod, "schedule_cleanup")
+@pytest.mark.asyncio
+async def test_embed_covers_success(mock_cleanup, mock_download, tmp_path):
+    cover = tmp_path / "cover.jpg"
+    _pillow_cover(str(cover))
+    mock_download.return_value = ([str(cover), str(cover)], tmp_path)
+    client = FakeClient()
+    items = [{"title": "A", "thumbnail_url": "/a"}, {"title": "B", "thumbnail_url": "/b"}]
+    result = await embed_covers(client, items, custom_tmp="", retries=3, concurrency=2)
+    assert len(result) == 2
+    assert result[0]["cover_data_url"].startswith("data:image/jpeg;base64,")
+    assert result[1]["cover_data_url"].startswith("data:image/jpeg;base64,")
+    assert "thumbnail_url" not in result[0]
+    mock_cleanup.assert_called_once()
+
+
+@patch.object(downloader_mod, "download_images", new_callable=AsyncMock)
+@patch.object(pusher_mod, "schedule_cleanup")
+@pytest.mark.asyncio
+async def test_embed_covers_partial_failure_placeholder(mock_cleanup, mock_download):
+    mock_download.return_value = (["/missing.jpg", ""], MagicMock())
+    client = FakeClient()
+    result = await embed_covers(client, [{"title": "A", "thumbnail_url": "/a"}], retries=3)
+    assert result[0]["cover_data_url"] is None
+
+
+@patch.object(downloader_mod, "download_images", new_callable=AsyncMock)
+@patch.object(pusher_mod, "schedule_cleanup")
+@pytest.mark.asyncio
+async def test_embed_covers_download_error_no_raise(mock_cleanup, mock_download):
+    mock_download.side_effect = OSError("boom")
+    client = FakeClient()
+    items = [{"title": "A", "thumbnail_url": "/a"}, {"title": "B", "thumbnail_url": "/b"}]
+    result = await embed_covers(client, items, retries=3)
+    assert all(item["cover_data_url"] is None for item in result)
+
+
+def test_embed_covers_bad_image_no_raise(tmp_path):
+    from plugin_pkg.suwayomi.cards import _cover_data_url
+    bad = tmp_path / "bad.jpg"
+    bad.write_bytes(b"not an image")
+    assert _cover_data_url(str(bad)) is None

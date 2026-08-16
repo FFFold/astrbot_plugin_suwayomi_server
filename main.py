@@ -910,6 +910,27 @@ class SuwayomiPlugin(Star):
                     await self.sub_mgr.update_latest_chapter(manga.id, max_id)
             except Exception as e:
                 logger.warning(f"[{PLUGIN_NAME}] 拉取「{manga.title}」章节失败: {e}")
+
+            if self._result_cards_enabled():
+                try:
+                    tmpldata = build_subscribe_confirm_card(
+                        {"id": manga.id, "title": manga.title,
+                         "status": manga.status, "thumbnail_url": manga.thumbnail_url},
+                        source_name="",
+                        footer="有新章节时会推送通知",
+                    )
+                    card = (await embed_covers(
+                        self.client, [tmpldata],
+                        custom_tmp=self.config.get("temp_dir", "").strip(),
+                        retries=self.config.get("download_retries", 3),
+                        concurrency=self.config.get("download_concurrency", 6),
+                    ))[0]
+                    path = await self._render_card_result(card)
+                    if path:
+                        yield event.chain_result([Comp.Image.fromFileSystem(path)])
+                        return
+                except Exception as e:
+                    logger.warning(f"[{PLUGIN_NAME}] 订阅确认卡片渲染失败，回退文本: {e}")
             yield event.plain_result(f"✅ 已订阅「{manga.title}」，有新章节时会推送。")
         except Exception as e:
             logger.error(f"[{PLUGIN_NAME}] subscribe error: {e}")
@@ -958,17 +979,23 @@ class SuwayomiPlugin(Star):
             existing_ids = {s["manga_id"] for s in existing_subs}
 
             results: list[tuple[str, str, str]] = []
+            card_rows: list[dict] = []
             for i, name in enumerate(raw_names, 1):
                 await event.send(event.plain_result(f"正在处理 [{i}/{len(raw_names)}] {name}..."))
                 manga, error = await search_best_match(self.client, self.config, name, source_filter)
                 if error or manga is None:
                     results.append((name, "fail", error or "未找到匹配结果"))
+                    card_rows.append({"status": "fail", "title": name,
+                                      "detail": error or "未找到匹配结果", "thumbnail_url": None})
                     continue
 
                 if manga.id in existing_ids:
                     status_text = STATUS_EMOJI.get(manga.status, "未知")
                     source_name = src_map.get(str(manga.source_id), "")
                     results.append((name, "exists", f"{manga.title} - {status_text} - {source_name}"))
+                    card_rows.append({"status": "exists", "title": manga.title,
+                                      "detail": f"{status_text} - {source_name}（已订阅）",
+                                      "thumbnail_url": manga.thumbnail_url})
                     continue
 
                 await self.sub_mgr.subscribe(manga.id, manga.title, manga.source_id, umo)
@@ -986,6 +1013,9 @@ class SuwayomiPlugin(Star):
                 status_text = STATUS_EMOJI.get(manga.status, "未知")
                 source_name = src_map.get(str(manga.source_id), "")
                 results.append((name, "ok", f"{manga.title} - {status_text} - {source_name}"))
+                card_rows.append({"status": "ok", "title": manga.title,
+                                  "detail": f"{status_text} - {source_name}",
+                                  "thumbnail_url": manga.thumbnail_url})
 
             ok_count = sum(1 for _, s, _ in results if s == "ok")
             exist_count = sum(1 for _, s, _ in results if s == "exists")
@@ -999,7 +1029,28 @@ class SuwayomiPlugin(Star):
                     lines.append(f"  ⏭ {info} (已订阅)")
                 else:
                     lines.append(f"  ❌ {name} - {info}")
-            yield event.plain_result("\n".join(lines))
+            summary_text = "\n".join(lines)
+
+            if self._result_cards_enabled():
+                try:
+                    tmpldata = build_batch_card(
+                        card_rows,
+                        f"{ok_count} 新增, {exist_count} 已存在, {fail_count} 失败",
+                    )
+                    tmpldata["rows"] = await embed_covers(
+                        self.client, tmpldata["rows"],
+                        custom_tmp=self.config.get("temp_dir", "").strip(),
+                        retries=self.config.get("download_retries", 3),
+                        concurrency=self.config.get("download_concurrency", 6),
+                    )
+                    path = await self._render_card_result(tmpldata)
+                    if path:
+                        yield event.chain_result([Comp.Image.fromFileSystem(path)])
+                        return
+                except Exception as e:
+                    logger.warning(f"[{PLUGIN_NAME}] 批量订阅卡片渲染失败，回退文本: {e}")
+
+            yield event.plain_result(summary_text)
 
         except Exception as e:
             logger.error(f"[{PLUGIN_NAME}] batch_subscribe error: {e}")

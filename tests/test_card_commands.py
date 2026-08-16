@@ -97,3 +97,76 @@ async def test_search_cards_success_sends_image(monkeypatch):
     event.plain_result.assert_not_called()
     chain = event.chain_result.call_args[0][0]
     assert len(chain) == 1
+
+
+@pytest.mark.asyncio
+async def test_subscribe_confirm_card_success(monkeypatch):
+    plugin = _plugin(cards_enabled=True)
+    manga = _manga("咒术回战", 1)
+    plugin._get_cached_manga = MagicMock(return_value=manga)
+    plugin.sub_mgr.subscribe = AsyncMock()
+    plugin.sub_mgr.update_latest_chapter = AsyncMock()
+    monkeypatch.setattr(
+        "plugin_pkg.main.get_or_fetch_chapters", AsyncMock(return_value=[])
+    )
+    plugin._render_card_result = AsyncMock(return_value="/tmp/confirm.jpg")
+    monkeypatch.setattr(
+        "plugin_pkg.main.embed_covers",
+        AsyncMock(
+            side_effect=lambda c, items, **kw: [
+                dict(items[0], cover_data_url="data:image/jpeg;base64,AA==")
+            ]
+        ),
+    )
+    event = _event()
+
+    results = [msg async for msg in plugin.subscribe_manga(event, "1")]
+    assert len(results) == 1
+    event.chain_result.assert_called_once()
+    event.plain_result.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_subscribe_confirm_render_failure_text(monkeypatch):
+    plugin = _plugin(cards_enabled=True)
+    manga = _manga("咒术回战", 1)
+    plugin._get_cached_manga = MagicMock(return_value=manga)
+    plugin.sub_mgr.subscribe = AsyncMock()
+    plugin.sub_mgr.update_latest_chapter = AsyncMock()
+    monkeypatch.setattr(
+        "plugin_pkg.main.get_or_fetch_chapters", AsyncMock(return_value=[])
+    )
+    plugin._render_card_result = AsyncMock(return_value=None)
+    event = _event()
+
+    results = [msg async for msg in plugin.subscribe_manga(event, "1")]
+    assert len(results) == 1
+    assert "已订阅" in results[0]
+    event.plain_result.assert_called_once()
+    event.chain_result.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_batch_subscribe_card_success(monkeypatch):
+    plugin = _plugin(cards_enabled=True)
+    plugin.client.get_sources = AsyncMock(return_value=[_source()])
+    plugin.sub_mgr.get_subscriptions = AsyncMock(return_value=[])
+    plugin.sub_mgr.subscribe = AsyncMock()
+    plugin.sub_mgr.update_latest_chapter = AsyncMock()
+    plugin._render_card_result = AsyncMock(return_value="/tmp/batch.jpg")
+    monkeypatch.setattr(
+        "plugin_pkg.main.search_best_match",
+        AsyncMock(return_value=(_manga("咒术回战", 1), None)),
+    )
+    monkeypatch.setattr(
+        "plugin_pkg.main.get_or_fetch_chapters", AsyncMock(return_value=[])
+    )
+    monkeypatch.setattr(
+        "plugin_pkg.main.embed_covers",
+        AsyncMock(side_effect=lambda c, items, **kw: [dict(i, cover_data_url="x") for i in items]),
+    )
+    event = _event()
+    event.message_str = "漫画 批量订阅 咒术回战"
+
+    results = [msg async for msg in plugin.batch_subscribe(event)]
+    assert event.chain_result.call_count >= 1

@@ -833,6 +833,7 @@ class SuwayomiPlugin(Star):
             lines = []
             idx = 1
             cache: dict[str, Manga] = {}
+            card_rows: list[dict] = []
             for source_name, result in all_results:
                 if result.mangas:
                     lines.append(f"\n🔍 搜索结果（源: {source_name}）:")
@@ -840,6 +841,13 @@ class SuwayomiPlugin(Star):
                         status = STATUS_EMOJI.get(m.status, "未知")
                         lines.append(f"  [{idx}] {m.title} - {status}")
                         cache[str(idx)] = m
+                        card_rows.append({
+                            "index": idx,
+                            "title": m.title,
+                            "status": m.status,
+                            "source": source_name,
+                            "thumbnail_url": m.thumbnail_url,
+                        })
                         idx += 1
 
             if idx == 1:
@@ -847,8 +855,34 @@ class SuwayomiPlugin(Star):
                 return
 
             lines.append("\n回复「漫画 订阅 <编号>」订阅，如「漫画 订阅 1」")
+            text = "\n".join(lines)
             self._set_search_cache(event.unified_msg_origin, cache)
-            yield event.plain_result("\n".join(lines))
+
+            if self._result_cards_enabled():
+                try:
+                    subtitle = (
+                        f"{' · '.join(dict.fromkeys(source_name for source_name, _ in all_results))}"
+                        f" · {len(card_rows)} 条"
+                    )
+                    tmpldata = build_search_card(
+                        card_rows,
+                        subtitle,
+                        "回复「漫画 订阅 编号」订阅，如「漫画 订阅 1」",
+                    )
+                    tmpldata["rows"] = await embed_covers(
+                        self.client, tmpldata["rows"],
+                        custom_tmp=self.config.get("temp_dir", "").strip(),
+                        retries=self.config.get("download_retries", 3),
+                        concurrency=self.config.get("download_concurrency", 6),
+                    )
+                    path = await self._render_card_result(tmpldata)
+                    if path:
+                        yield event.chain_result([Comp.Image.fromFileSystem(path)])
+                        return
+                except Exception as e:
+                    logger.warning(f"[{PLUGIN_NAME}] 搜索卡片渲染失败，回退文本: {e}")
+
+            yield event.plain_result(text)
 
         except SuwayomiError as e:
             yield event.plain_result(f"搜索失败: {e}")

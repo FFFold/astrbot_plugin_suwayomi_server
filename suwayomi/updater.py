@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Callable
 
 from astrbot.api import logger
 from astrbot.api.event import MessageChain
+import astrbot.api.message_components as Comp
 
 from . import PLUGIN_NAME
 from .service import (
@@ -61,6 +62,7 @@ async def _check_one_manga(
     if not subscribers:
         return None, False
 
+    manga_obj = None
     try:
         if force or cache_hours != 0:
             last_ts = await get_chapter_timestamp(get_kv_data, manga_id)
@@ -72,6 +74,7 @@ async def _check_one_manga(
             ):
                 try:
                     manga = await client.get_manga(manga_id)
+                    manga_obj = manga
                     if await sub_mgr.update_title(manga_id, manga.title):
                         logger.info(
                             f"[{_PLUGIN_NAME}] 漫画标题已更新: "
@@ -113,7 +116,7 @@ async def _check_one_manga(
         ch_info = [
             fmt_chapter_label(ch, num_count) for ch in new_chapters
         ]
-        return (manga_id, title, ch_info, new_chapters, subscribers), False
+        return (manga_id, title, ch_info, new_chapters, subscribers, manga_obj), False
     except Exception as e:
         logger.warning(
             f"[{_PLUGIN_NAME}] 检查漫画 {title} "
@@ -133,6 +136,7 @@ async def check_updates(
     push_chapter_images_fn: Callable,
     push_chapter_file_fn: Callable,
     force: bool = False,
+    render_update_card_fn: Callable | None = None,
 ) -> str:
     logger.info(f"[{_PLUGIN_NAME}] 开始检查更新 (force={force})")
     async with update_lock:
@@ -194,18 +198,42 @@ async def check_updates(
         )
 
         user_msgs: dict[str, list[str]] = {}
-        for manga_id, title, ch_info, new_chapters, subscribers in updated_mangas:
+        user_updates: dict[str, list[dict]] = {}
+        for manga_id, title, ch_info, new_chapters, subscribers, manga_obj in updated_mangas:
             latest_num = fmt_chapter_num(new_chapters[-1].chapter_number)
             msg = (
                 f"📢「{title}」更新了！\n"
                 f"新增章节：{', '.join(ch_info)}\n"
                 f"发送「漫画 阅读 {title} {latest_num}」开始阅读"
             )
+            item = {
+                "title": title,
+                "status": manga_obj.status if manga_obj else "UNKNOWN",
+                "chapters": ch_info,
+                "read_hint": f"「漫画 阅读 {title} {latest_num}」",
+                "thumbnail_url": manga_obj.thumbnail_url if manga_obj else None,
+            }
             for umo in subscribers:
                 user_msgs.setdefault(umo, []).append(msg)
+                user_updates.setdefault(umo, []).append(item)
 
         for umo, msgs in user_msgs.items():
             try:
+                if render_update_card_fn is not None:
+                    heading = (
+                        f"📢「{user_updates[umo][0]['title']}」更新了！"
+                        if len(user_updates[umo]) == 1
+                        else f"📢 {len(user_updates[umo])} 部漫画更新了"
+                    )
+                    card_path = await render_update_card_fn(
+                        umo, user_updates[umo], heading
+                    )
+                    if card_path:
+                        chain = MessageChain(
+                            chain=[Comp.Image.fromFileSystem(card_path)]
+                        )
+                        await context.send_message(umo, chain)
+                        continue
                 chain = MessageChain().message("\n---\n".join(msgs))
                 await context.send_message(umo, chain)
             except Exception as e:
@@ -218,7 +246,7 @@ async def check_updates(
         )
 
         auto_push_mode = config.get("auto_push_mode", "image")
-        for manga_id, title, ch_info, new_chapters, subscribers in updated_mangas:
+        for manga_id, title, ch_info, new_chapters, subscribers, manga_obj in updated_mangas:
             for umo in subscribers:
                 if not sub_mgr.is_auto_push_enabled(
                     all_subs, manga_id, umo
@@ -239,7 +267,7 @@ async def check_updates(
                         )
 
         summary_lines = [f"✅ 发现 {len(updated_mangas)} 部漫画更新："]
-        for _, title, ch_info, _, _ in updated_mangas:
+        for _, title, ch_info, _, _, _ in updated_mangas:
             summary_lines.append(f"  • {title}: {', '.join(ch_info)}")
         await put_kv_data(LAST_CHECK_KV_KEY, time.time())
         return "\n".join(summary_lines)

@@ -2,10 +2,10 @@
 import asyncio
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from suwayomi.client import SuwayomiError
-from suwayomi.models import Chapter
+from suwayomi.models import Chapter, Manga
 from suwayomi.updater import LAST_CHECK_KV_KEY, check_updates
 
 
@@ -211,3 +211,87 @@ async def test_check_updates_all_failed_reports_error_without_timestamp():
     )
     assert "检查出错" in summary or "失败" in summary
     assert "suwayomi_last_update_check" not in plugin._store
+
+
+def _update_manga(thumbnail="/api/v1/manga/1/thumbnail"):
+    return Manga(id=1, source_id=1, url="", title="T1", status="ONGOING",
+                 thumbnail_url=thumbnail)
+
+
+@pytest.mark.asyncio
+async def test_check_updates_sends_card_when_render_fn_succeeds():
+    client = CountingClient({1: _chapters(1, [1, 2])})
+    client.get_manga = AsyncMock(return_value=_update_manga())
+    plugin = FakePlugin()
+    sub_mgr = _make_sub_mgr(plugin)
+    await sub_mgr.subscribe(1, "T1", 1, "u1")
+    await sub_mgr.update_latest_chapter(1, 1)
+    ctx = _context()
+
+    async def render_fn(umo, items, heading):
+        return "/tmp/update-card.jpg"
+
+    with patch("suwayomi.updater.Comp.Image.fromFileSystem") as mock_img:
+        mock_img.return_value = MagicMock()
+        summary = await check_updates(
+            client, sub_mgr, ctx, _config(),
+            plugin.get_kv_data, plugin.put_kv_data, asyncio.Lock(),
+            AsyncMock(), AsyncMock(),
+            render_update_card_fn=render_fn,
+        )
+    mock_img.assert_called_once_with("/tmp/update-card.jpg")
+    assert ctx.send_message.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_check_updates_falls_back_to_text_when_render_fails():
+    client = CountingClient({1: _chapters(1, [1, 2])})
+    client.get_manga = AsyncMock(return_value=_update_manga())
+    plugin = FakePlugin()
+    sub_mgr = _make_sub_mgr(plugin)
+    await sub_mgr.subscribe(1, "T1", 1, "u1")
+    await sub_mgr.update_latest_chapter(1, 1)
+    ctx = _context()
+
+    async def render_fn(umo, items, heading):
+        return None
+
+    with patch("suwayomi.updater.Comp.Image.fromFileSystem") as mock_img:
+        mock_img.return_value = MagicMock()
+        summary = await check_updates(
+            client, sub_mgr, ctx, _config(),
+            plugin.get_kv_data, plugin.put_kv_data, asyncio.Lock(),
+            AsyncMock(), AsyncMock(),
+            render_update_card_fn=render_fn,
+        )
+    mock_img.assert_not_called()
+    assert ctx.send_message.await_count == 1  # 文本消息回退
+
+
+@pytest.mark.asyncio
+async def test_check_updates_build_update_items_include_thumbnail():
+    client = CountingClient({1: _chapters(1, [1, 2])})
+    client.get_manga = AsyncMock(return_value=_update_manga())
+    plugin = FakePlugin()
+    sub_mgr = _make_sub_mgr(plugin)
+    await sub_mgr.subscribe(1, "T1", 1, "u1")
+    await sub_mgr.update_latest_chapter(1, 1)
+    ctx = _context()
+    seen = {}
+
+    async def render_fn(umo, items, heading):
+        seen["items"] = items
+        seen["heading"] = heading
+        return "/tmp/c.jpg"
+
+    with patch("suwayomi.updater.Comp.Image.fromFileSystem") as mock_img:
+        mock_img.return_value = MagicMock()
+        await check_updates(
+            client, sub_mgr, ctx, _config(),
+            plugin.get_kv_data, plugin.put_kv_data, asyncio.Lock(),
+            AsyncMock(), AsyncMock(),
+            render_update_card_fn=render_fn,
+        )
+    assert seen["items"][0]["thumbnail_url"] == "/api/v1/manga/1/thumbnail"
+    assert seen["items"][0]["title"] == "T1"
+    assert seen["items"][0]["status"] == "ONGOING"

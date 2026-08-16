@@ -584,13 +584,29 @@ class SuwayomiPlugin(Star):
                 ),
             )
 
+        async def _render_update_card(umo, items, heading):
+            try:
+                tmpldata = build_update_card(items, heading)
+                tmpldata["items"] = await embed_covers(
+                    client, tmpldata["items"],
+                    custom_tmp=config.get("temp_dir", "").strip(),
+                    retries=config.get("download_retries", 3),
+                    concurrency=config.get("download_concurrency", 6),
+                )
+                return await self._render_card_result(tmpldata)
+            except Exception as e:
+                logger.warning(f"[{PLUGIN_NAME}] 更新通知卡片渲染失败: {e}")
+                return None
+
         async def _check(force=False):
+            render_fn = _render_update_card if self._result_cards_enabled() else None
             return await _check_updates(
                 client, self.sub_mgr, context, config,
                 self.get_kv_data, self.put_kv_data,
                 self._update_lock,
                 _push_images, _push_file,
                 force=force,
+                render_update_card_fn=render_fn,
             )
         self._check_updates_fn = _check
 

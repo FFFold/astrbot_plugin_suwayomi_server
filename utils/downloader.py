@@ -121,10 +121,12 @@ async def download_cover(
         if client.server_url:
             server = urlparse(client.server_url)
             target = urlparse(thumbnail_url)
+            server_port = server.port or (443 if server.scheme == "https" else 80 if server.scheme == "http" else None)
+            target_port = target.port or (443 if target.scheme == "https" else 80 if target.scheme == "http" else None)
             if (
                 server.scheme == target.scheme
                 and server.hostname == target.hostname
-                and server.port == target.port
+                and server_port == target_port
             ):
                 use_headers = headers
     else:
@@ -135,9 +137,12 @@ async def download_cover(
         paths, tmp_dir = await download_images(
             [url], concurrency=1, custom_tmp=custom_tmp, retries=retries, headers=use_headers
         )
-    except Exception as e:
-        logger.warning(f"[{_PLUGIN_NAME}] 封面下载失败: {e}")
+    except (aiohttp.ClientError, asyncio.TimeoutError, OSError) as e:
+        logger.warning(f"[{_PLUGIN_NAME}] 封面下载失败: {e}", exc_info=True)
         return None, None
+    except Exception:
+        logger.exception(f"[{_PLUGIN_NAME}] 封面下载出现未知异常")
+        raise
 
     if not paths or not paths[0]:
         shutil.rmtree(tmp_dir, ignore_errors=True)

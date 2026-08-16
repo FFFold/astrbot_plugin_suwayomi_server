@@ -184,6 +184,32 @@ async def test_download_cover_same_origin_absolute_keeps_auth(tmp_path, monkeypa
 
 
 @pytest.mark.asyncio
+async def test_download_cover_absolute_url_without_server_url_does_not_forward_headers(tmp_path, monkeypatch):
+    client = SuwayomiClient("", "none", "", "")
+    cover_tmp = tmp_path / "cover"
+    cover_tmp.mkdir()
+    cover_file = cover_tmp / "0000.jpg"
+    cover_file.write_bytes(b"cover")
+    captured = {}
+
+    async def fake_download_images(urls, **kwargs):
+        captured["headers"] = kwargs.get("headers")
+        return [str(cover_file)], cover_tmp
+
+    monkeypatch.setattr("plugin_pkg.utils.downloader.download_images", fake_download_images)
+
+    path, tmp_dir = await download_cover(
+        client,
+        "https://example.com/cover.jpg",
+        headers={"Authorization": "Basic xyz"},
+    )
+
+    assert path == str(cover_file)
+    assert tmp_dir == cover_tmp
+    assert captured["headers"] is None
+
+
+@pytest.mark.asyncio
 async def test_download_cover_swallows_download_exception(tmp_path, monkeypatch):
     client = SuwayomiClient("http://localhost:4567", "none", "", "")
 

@@ -168,3 +168,61 @@ async def test_list_chapters_missing_cover_falls_back_to_plain_text(monkeypatch)
     event.plain_result.assert_called_once()
     event.chain_result.assert_not_called()
     schedule_cleanup_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_list_chapters_skips_download_cover_when_thumbnail_is_none(monkeypatch):
+    manga = _make_manga()
+    manga.thumbnail_url = None
+    chapters = _make_chapters()
+    plugin = _make_plugin()
+    event = _make_event()
+    cover_mock = AsyncMock()
+
+    monkeypatch.setattr(
+        "plugin_pkg.main.resolve_manga", AsyncMock(return_value=(manga, None))
+    )
+    monkeypatch.setattr(
+        "plugin_pkg.main.get_or_fetch_chapters", AsyncMock(return_value=chapters)
+    )
+    monkeypatch.setattr("plugin_pkg.main.download_cover", cover_mock)
+    schedule_cleanup_mock = MagicMock()
+    monkeypatch.setattr("plugin_pkg.main.schedule_cleanup", schedule_cleanup_mock)
+
+    results = [msg async for msg in plugin.list_chapters(event, "测试漫画")]
+
+    assert len(results) == 1
+    assert "章节列表" in results[0]
+    event.plain_result.assert_called_once()
+    event.chain_result.assert_not_called()
+    cover_mock.assert_not_awaited()
+    schedule_cleanup_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_list_chapters_skips_download_cover_when_thumbnail_is_empty_string(monkeypatch):
+    manga = _make_manga()
+    manga.thumbnail_url = ""
+    chapters = _make_chapters()
+    plugin = _make_plugin()
+    event = _make_event()
+    cover_mock = AsyncMock()
+
+    monkeypatch.setattr(
+        "plugin_pkg.main.resolve_manga", AsyncMock(return_value=(manga, None))
+    )
+    monkeypatch.setattr(
+        "plugin_pkg.main.get_or_fetch_chapters", AsyncMock(return_value=chapters)
+    )
+    monkeypatch.setattr("plugin_pkg.main.download_cover", cover_mock)
+    schedule_cleanup_mock = MagicMock()
+    monkeypatch.setattr("plugin_pkg.main.schedule_cleanup", schedule_cleanup_mock)
+
+    results = [msg async for msg in plugin.list_chapters(event, "测试漫画")]
+
+    assert len(results) == 1
+    assert "章节列表" in results[0]
+    event.plain_result.assert_called_once()
+    event.chain_result.assert_not_called()
+    cover_mock.assert_not_awaited()
+    schedule_cleanup_mock.assert_not_called()

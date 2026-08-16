@@ -25,8 +25,11 @@ from .service import STATUS_EMOJI
 if TYPE_CHECKING:
     pass
 
-CARD_WIDTH = 440
-COVER_WIDTH = 120
+# 模板按 880 CSS 宽设计（所有尺寸为 440 设计的 2 倍），配合
+# device_scale_factor_level=ultra(1.8) 输出约 1584px 物理像素宽，
+# 手机 2x/3x 屏上文字与封面保持锐利。
+CARD_WIDTH = 880
+COVER_WIDTH = 320
 CHAPTER_LINES_PER_CARD = 130
 MAX_CHAPTER_CARDS = 4
 
@@ -44,51 +47,51 @@ def _status_pill_class(status: str) -> str:
 CARD_TEMPLATE = """
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background:#f8f9fb;
-         padding:14px; color:#1a1d29; }
-  .title { font-size:17px; font-weight:700; margin-bottom:10px; }
-  .title .sub { font-size:12px; color:#8a8f9d; font-weight:400; }
-  .card { background:#fff; border-radius:10px; padding:8px 10px; display:flex;
-          align-items:center; gap:10px; box-shadow:0 1px 3px rgba(0,0,0,.05); }
-  .card + .card { margin-top:8px; }
-  .cover { border-radius:5px; object-fit:cover; flex-shrink:0; background:#e4e6ec; }
+  body { font-family: "PingFang SC","Microsoft YaHei",sans-serif; background:#e9ecf3;
+         padding:28px; color:#1a1d29; }
+  .title { font-size:34px; font-weight:700; margin-bottom:20px; }
+  .title .sub { font-size:24px; color:#8a8f9d; font-weight:400; }
+  .card { background:#fff; border-radius:20px; padding:16px 20px; display:flex;
+          align-items:center; gap:20px; box-shadow:0 2px 6px rgba(0,0,0,.05); }
+  .card + .card { margin-top:16px; }
+  .cover { border-radius:10px; object-fit:cover; flex-shrink:0; background:#e4e6ec; }
   .cover-placeholder { display:flex; align-items:center; justify-content:center;
-                       color:#b0b5c3; font-size:16px; }
-  .badge { min-width:20px; height:20px; border-radius:50%; background:#4f7cff;
-           color:#fff; font-size:12px; font-weight:600; display:flex;
+                       color:#b0b5c3; font-size:32px; }
+  .badge { min-width:40px; height:40px; border-radius:50%; background:#4f7cff;
+           color:#fff; font-size:24px; font-weight:600; display:flex;
            align-items:center; justify-content:center; flex-shrink:0; }
-  .mark { min-width:20px; height:20px; border-radius:50%; color:#fff; font-size:12px;
+  .mark { min-width:40px; height:40px; border-radius:50%; color:#fff; font-size:24px;
           display:flex; align-items:center; justify-content:center; flex-shrink:0; }
   .mark-ok { background:#3ecf6a; }
   .mark-skip { background:#f2b33d; }
   .mark-fail { background:#ef5350; }
   .body { flex:1; min-width:0; }
-  .body .name { font-size:15px; font-weight:600; white-space:nowrap; overflow:hidden;
+  .body .name { font-size:30px; font-weight:600; white-space:nowrap; overflow:hidden;
                 text-overflow:ellipsis; }
-  .body .meta { font-size:12px; color:#8a8f9d; margin-top:2px; }
-  .footer { font-size:12px; color:#8a8f9d; text-align:center; margin-top:10px; }
-  .chip { display:inline-block; background:#eef3ff; color:#4f7cff; font-size:12px;
-          padding:3px 8px; border-radius:6px; margin:3px 3px 0 0; }
-  .manga-card { background:#fff; border-radius:12px; padding:12px; display:flex;
-                gap:12px; box-shadow:0 1px 3px rgba(0,0,0,.05); }
-  .manga-card + .manga-card { margin-top:8px; }
-  .manga-cover { border-radius:6px; object-fit:cover; flex-shrink:0; background:#e4e6ec; }
+  .body .meta { font-size:24px; color:#8a8f9d; margin-top:4px; }
+  .footer { font-size:24px; color:#8a8f9d; text-align:center; margin-top:20px; }
+  .chip { display:inline-block; background:#eef3ff; color:#4f7cff; font-size:24px;
+          padding:6px 16px; border-radius:12px; margin:6px 6px 0 0; }
+  .manga-card { background:#fff; border-radius:24px; padding:24px; display:flex;
+                gap:24px; box-shadow:0 2px 6px rgba(0,0,0,.05); }
+  .manga-card + .manga-card { margin-top:16px; }
+  .manga-cover { border-radius:12px; object-fit:cover; flex-shrink:0; background:#e4e6ec; }
   .manga-body { flex:1; min-width:0; display:flex; flex-direction:column; }
-  .manga-name { font-size:15px; font-weight:700; }
-  .status-pill { font-size:10px; padding:1px 6px; border-radius:20px; margin-left:2px;
-                 vertical-align:1px; }
+  .manga-name { font-size:30px; font-weight:700; }
+  .status-pill { font-size:20px; padding:2px 12px; border-radius:40px; margin-left:4px;
+                 vertical-align:2px; }
   .status-ongoing { background:#eef3ff; color:#4f7cff; }
   .status-completed { background:#eef5ec; color:#3e9c4f; }
   .status-default { background:#f2f3f7; color:#6b7180; }
-  .hint { font-size:11px; color:#8a8f9d; margin-top:6px; }
-  .hint.pushed { margin-top:auto; padding-top:10px; }
-  .cols { display:flex; gap:8px; margin-top:8px; }
-  .col { flex:1; background:#fff; border-radius:8px; padding:8px; font-family:Consolas,monospace;
-         font-size:12px; color:#3a3f4b; line-height:1.8; }
-  .mini-head { display:flex; align-items:center; gap:10px; background:#fff; border-radius:10px;
-               padding:8px 12px; box-shadow:0 1px 3px rgba(0,0,0,.05); }
-  .mini-title { font-size:14px; font-weight:700; }
-  .mini-title .cont { font-size:11px; color:#8a8f9d; font-weight:400; }
+  .hint { font-size:22px; color:#8a8f9d; margin-top:12px; }
+  .hint.pushed { margin-top:auto; padding-top:20px; }
+  .cols { display:flex; gap:16px; margin-top:16px; }
+  .col { flex:1; background:#fff; border-radius:16px; padding:16px; font-family:Consolas,monospace;
+         font-size:24px; color:#3a3f4b; line-height:1.8; }
+  .mini-head { display:flex; align-items:center; gap:20px; background:#fff; border-radius:20px;
+               padding:16px 24px; box-shadow:0 2px 6px rgba(0,0,0,.05); }
+  .mini-title { font-size:28px; font-weight:700; }
+  .mini-title .cont { font-size:22px; color:#8a8f9d; font-weight:400; }
 </style>
 
 <body>
@@ -98,9 +101,9 @@ CARD_TEMPLATE = """
   <div class="card">
     <div class="badge">{{ row.index }}</div>
     {% if row.cover_data_url %}
-      <img class="cover" style="width:44px;height:60px" src="{{ row.cover_data_url }}">
+      <img class="cover" style="width:88px;height:120px" src="{{ row.cover_data_url }}">
     {% else %}
-      <div class="cover cover-placeholder" style="width:44px;height:60px">?</div>
+      <div class="cover cover-placeholder" style="width:88px;height:120px">?</div>
     {% endif %}
     <div class="body">
       <div class="name">{{ row.title }}</div>
@@ -113,15 +116,15 @@ CARD_TEMPLATE = """
 {% elif card_type == "confirm" %}
   <div class="manga-card">
     {% if cover_data_url %}
-      <img class="manga-cover" style="width:120px;height:168px" src="{{ cover_data_url }}">
+      <img class="manga-cover" style="width:240px;height:336px" src="{{ cover_data_url }}">
     {% else %}
-      <div class="manga-cover cover-placeholder" style="width:120px;height:168px">?</div>
+      <div class="manga-cover cover-placeholder" style="width:240px;height:336px">?</div>
     {% endif %}
     <div class="manga-body">
-      <div style="font-size:22px;font-weight:700">✅ 订阅成功</div>
-      <div style="font-size:16px;font-weight:600;margin-top:6px">{{ title }}</div>
-      <div class="meta" style="margin-top:2px">{{ meta }}</div>
-      <div style="margin-top:6px"><span class="status-pill {{ status_class }}">{{ status }}</span></div>
+      <div style="font-size:44px;font-weight:700">✅ 订阅成功</div>
+      <div style="font-size:32px;font-weight:600;margin-top:12px">{{ title }}</div>
+      <div class="meta" style="margin-top:4px">{{ meta }}</div>
+      <div style="margin-top:12px"><span class="status-pill {{ status_class }}">{{ status }}</span></div>
       <div class="hint pushed">{{ footer }}</div>
     </div>
   </div>
@@ -131,9 +134,9 @@ CARD_TEMPLATE = """
   {% for row in rows %}
   <div class="card">
     {% if row.cover_data_url %}
-      <img class="cover" style="width:44px;height:60px" src="{{ row.cover_data_url }}">
+      <img class="cover" style="width:88px;height:120px" src="{{ row.cover_data_url }}">
     {% else %}
-      <div class="cover cover-placeholder" style="width:44px;height:60px">?</div>
+      <div class="cover cover-placeholder" style="width:88px;height:120px">?</div>
     {% endif %}
     <div class="body">
       <div class="name">{{ row.title }}</div>
@@ -148,9 +151,9 @@ CARD_TEMPLATE = """
   <div class="card">
     <div class="mark {{ row.mark_class }}">{{ row.icon }}</div>
     {% if row.cover_data_url %}
-      <img class="cover" style="width:44px;height:60px" src="{{ row.cover_data_url }}">
+      <img class="cover" style="width:88px;height:120px" src="{{ row.cover_data_url }}">
     {% else %}
-      <div class="cover cover-placeholder" style="width:44px;height:60px">?</div>
+      <div class="cover cover-placeholder" style="width:88px;height:120px">?</div>
     {% endif %}
     <div class="body">
       <div class="name">{{ row.title }}</div>
@@ -164,9 +167,9 @@ CARD_TEMPLATE = """
   {% for item in items %}
   <div class="manga-card">
     {% if item.cover_data_url %}
-      <img class="manga-cover" style="width:72px;height:100px" src="{{ item.cover_data_url }}">
+      <img class="manga-cover" style="width:144px;height:200px" src="{{ item.cover_data_url }}">
     {% else %}
-      <div class="manga-cover cover-placeholder" style="width:72px;height:100px">?</div>
+      <div class="manga-cover cover-placeholder" style="width:144px;height:200px">?</div>
     {% endif %}
     <div class="manga-body">
       <div class="manga-name">{{ item.title }}
@@ -182,23 +185,23 @@ CARD_TEMPLATE = """
   {% if not is_continuation %}
   <div class="manga-card">
     {% if cover_data_url %}
-      <img class="manga-cover" style="width:100px;height:140px" src="{{ cover_data_url }}">
+      <img class="manga-cover" style="width:200px;height:280px" src="{{ cover_data_url }}">
     {% else %}
-      <div class="manga-cover cover-placeholder" style="width:100px;height:140px">?</div>
+      <div class="manga-cover cover-placeholder" style="width:200px;height:280px">?</div>
     {% endif %}
     <div class="manga-body">
-      <div style="font-size:17px;font-weight:700">{{ title }}</div>
-      <div class="meta" style="margin-top:3px">{{ meta }}</div>
-      <div style="margin-top:8px">{% for t in tags %}<span class="status-pill {{ t.class }}">{{ t.text }}</span>{% endfor %}</div>
-      <div class="hint" style="margin-top:8px">{{ hint }}</div>
+      <div style="font-size:34px;font-weight:700">{{ title }}</div>
+      <div class="meta" style="margin-top:6px">{{ meta }}</div>
+      <div style="margin-top:16px">{% for t in tags %}<span class="status-pill {{ t.class }}">{{ t.text }}</span>{% endfor %}</div>
+      <div class="hint" style="margin-top:16px">{{ hint }}</div>
     </div>
   </div>
   {% else %}
   <div class="mini-head">
     {% if cover_data_url %}
-      <img class="cover" style="width:36px;height:50px" src="{{ cover_data_url }}">
+      <img class="cover" style="width:72px;height:100px" src="{{ cover_data_url }}">
     {% else %}
-      <div class="cover cover-placeholder" style="width:36px;height:50px">?</div>
+      <div class="cover cover-placeholder" style="width:72px;height:100px">?</div>
     {% endif %}
     <div class="mini-title">{{ title }} <span class="cont">{{ continuation }}</span></div>
   </div>
@@ -492,7 +495,10 @@ async def render_card(
         "type": "jpeg",
         "quality": 95,
         "viewport_width": CARD_WIDTH,
-        # 440px 视口 × 1.8 设备像素比 → 792px 物理像素输出，
+        # 视口高度必须小于内容高度：服务端 scrollHeight = max(内容, 视口高)，
+        # full_page 截图按 scrollHeight 输出，默认 720 会让矮卡片底部大片空白。
+        "viewport_height": 100,
+        # 880px 视口 × 1.8 设备像素比 → 约 1584px 物理像素输出，
         # 保证手机 2x/3x 屏上文字锐利（服务端默认 1.0x 会糊）
         "device_scale_factor_level": "ultra",
     }

@@ -252,9 +252,12 @@ async def test_render_card_returns_path():
 
     path = await render_card(fake_html_render, {"card_type": "search"}, timeout=10)
     assert path == "/tmp/card.jpg"
-    # 高清输出：440px 视口 × 1.8 设备像素比 → 792px 物理像素，手机 2x/3x 屏上文字不糊
-    assert captured["options"]["viewport_width"] == 440
+    # 高清输出：880px 画布 × 1.8 设备像素比 → 约 1584px 物理像素，手机 2x/3x 屏文字不糊
+    assert captured["options"]["viewport_width"] == 880
     assert captured["options"]["device_scale_factor_level"] == "ultra"
+    assert captured["options"]["quality"] == 95
+    # 视口高度小于内容高度，避免 scrollHeight 被默认 720 撑高导致底部空白
+    assert captured["options"]["viewport_height"] == 100
 
 
 @pytest.mark.asyncio

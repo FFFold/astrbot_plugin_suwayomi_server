@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 - **旧配置迁移覆盖新填值** — 配置曾被 Core 清空后重新填写分组配置的用户，重载插件时 Core 补回的 invisible 旧键默认值会被迁移逻辑误当作"用户旧值"覆盖分组中的真实配置；迁移改为**仅迁移非默认值的旧键**（等于 `_LEGACY_KEY_DEFAULTS` 的旧键视为无意义占位，原样保留）
 - **迁移机制简化为无状态幂等同步** — 移除 `_config_migrated_v1` 迁移标记（schema 键与守卫逻辑）：Core 补回的占位永远是默认值、天然不会被迁移，非默认平铺键（升级残留或手改）在任何一次加载后都会被同步进分组；幂等（无变更不保存），无需持久化标记状态
+- **WebUI 保存不再触发补键日志** — `set_config_value` 仅在旧平铺键值为非默认（手改/升级残留）时清理；默认占位键保留原样，WebUI 保存后重启不再出现 "Config key missing" 日志与多余写盘
+- **卡片渲染兜底默认对齐 schema** — `_result_cards_enabled()` 兜底默认从 `True` 修正为 `False`（与 `result_cards_enabled` 的 schema 默认一致），避免未来移除兼容旧键后静默开启卡片渲染
+- **WebUI 配置 API 精简** — 删除 `AI_CONFIG_DEFAULTS` 与 `api_config_get` 的 `setdefault` 兜底循环（Core 保证分组键始终存在，属死代码）；`test_legacy_defaults_match_schema` 升级为双向校验（schema invisible 键 / 分组子键与代码定义严格对齐）
 - **首装用户配置稳态** — 默认值旧键不再被清理删除（删除会使 Core 每次加载重新补键、打 23 条 "Config key missing" 日志并多余写盘）；占位键原样保留，首装与升级用户磁盘结构一致、加载零噪音
 - **迁移数值旧键类型规范化** — 手改配置文件产生的字符串旧值（如 `"check_interval": "30"`）在迁入分组时规范化为 `int` / `bool`，避免下游 `cache_hours < -1` 等比较抛 `TypeError`；无法转换的值不迁移（留在旧键位），等于默认值的字符串值同样视为占位
 - **WebUI 配置 API 一致性** — `api_config_get` 的 AI 默认值兜底改走 `get_config_value`（与分组读取一致）；`web/api.py` 的兼容导入失败仅回退绝对导入，不再掩盖包内真实导入错误

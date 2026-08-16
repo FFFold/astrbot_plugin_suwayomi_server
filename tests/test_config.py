@@ -21,7 +21,7 @@ def _schema() -> dict:
 
 
 def test_legacy_defaults_match_schema():
-    """_LEGACY_KEY_DEFAULTS must stay in sync with the invisible keys' defaults.
+    """_LEGACY_KEY_DEFAULTS must stay in sync with the schema, in both directions.
 
     If they diverge, Core-refilled defaults would be mistaken for real user
     values and clobber grouped config during migration.
@@ -31,6 +31,17 @@ def test_legacy_defaults_match_schema():
         entry = schema[key]
         assert entry.get("invisible") is True, f"{key} must be invisible"
         assert entry.get("default") == default, f"{key} default mismatch"
+    invisible_keys = {k for k, v in schema.items() if v.get("invisible")}
+    assert invisible_keys == set(_LEGACY_KEY_DEFAULTS), (
+        "invisible schema keys must match _LEGACY_KEY_DEFAULTS exactly"
+    )
+    for group, keys in CONFIG_GROUPS.items():
+        items = schema[group]["items"]
+        assert set(items) == set(keys), f"{group} items drift"
+        for key in keys:
+            assert items[key].get("default") == _LEGACY_KEY_DEFAULTS[key], (
+                f"{group}.{key} default mismatch"
+            )
 
 
 def test_group_layout_covers_all_keys():
@@ -73,6 +84,22 @@ def test_set_config_value_unknown_key_noop():
     cfg = {"evil": 1}
     set_config_value(cfg, "evil", 2)
     assert cfg == {"evil": 1}
+
+
+def test_set_config_value_keeps_default_placeholder():
+    """Default-valued flat placeholders survive saves (no Core refill cycle)."""
+    cfg = {"server_url": "http://localhost:4567"}  # Core-refilled placeholder
+    set_config_value(cfg, "server_url", "http://new:4567")
+    assert cfg["server"]["server_url"] == "http://new:4567"
+    assert cfg["server_url"] == "http://localhost:4567"  # placeholder kept
+
+
+def test_set_config_value_removes_non_default_flat_key():
+    """Non-default flat residue is cleaned on write."""
+    cfg = {"server_url": "http://hand-edited:4567"}
+    set_config_value(cfg, "server_url", "http://new:4567")
+    assert cfg["server"]["server_url"] == "http://new:4567"
+    assert "server_url" not in cfg
 
 
 def test_flatten_config_grouped_and_flat():

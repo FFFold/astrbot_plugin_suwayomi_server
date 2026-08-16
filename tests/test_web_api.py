@@ -441,14 +441,17 @@ async def test_config_post_rejects_bad_card_render_values():
 
 def test_config_get_only_returns_allowed_keys():
     """api_config_get should only return whitelisted keys."""
-    cfg = {"server_url": "http://localhost:4567", "password": "pw", "internal_key": "secret"}
+    cfg = {
+        "server_url": "http://localhost:4567",
+        "password": "pw",
+        "internal_key": "secret",
+        "enable_ai_tools": True,  # whitelisted, returned as-is
+    }
     result = api_config_get(cfg)
     assert "server_url" in result
     assert "password" in result
     assert "internal_key" not in result
     assert result["enable_ai_tools"] is True
-    assert result["allow_ai_send"] is True
-    assert result["ai_max_sources"] == 5
 
 
 # ── api_sources ─────────────────────────────────────────

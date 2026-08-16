@@ -117,7 +117,11 @@ def get_config_value(config: dict, key: str, default: Any = None) -> Any:
 
 
 def set_config_value(config: dict, key: str, value: Any) -> None:
-    """写入配置项到所属分组，同时清理旧版平铺键。"""
+    """写入配置项到所属分组。
+
+    顶层旧平铺键仅在值为**非默认**（手改残留/升级残留）时清理；默认占位
+    键保留原样，避免 Core 每次加载重新补键并打 "Config key missing" 日志。
+    """
     group = KEY_TO_GROUP.get(key)
     if group is None:
         return
@@ -126,7 +130,8 @@ def set_config_value(config: dict, key: str, value: Any) -> None:
         section = {}
         config[group] = section
     section[key] = value
-    config.pop(key, None)
+    if config.get(key) != _LEGACY_KEY_DEFAULTS.get(key):
+        config.pop(key, None)
 
 
 def flatten_config(config: dict, keys: list[str]) -> dict:

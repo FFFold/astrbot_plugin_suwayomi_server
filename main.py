@@ -641,7 +641,7 @@ class SuwayomiPlugin(Star):
         )
 
     def _result_cards_enabled(self) -> bool:
-        if not self._config_bool(get_config_value(self.config, "result_cards_enabled", True), True):
+        if not self._config_bool(get_config_value(self.config, "result_cards_enabled", False), False):
             return False
         if time.time() < getattr(self, "_card_cooldown_until", 0.0):
             return False

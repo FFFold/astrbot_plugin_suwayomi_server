@@ -44,8 +44,10 @@ _BLOCK_TAG_RE = re.compile(
     re.IGNORECASE,
 )
 # script/style 整块删除（仅标签剥离会残留其可见文本）。
+# 内容长度上限 4096 字符：既避免超大文本上的灾难回溯，也防止畸形/嵌套
+# 标签意外跨越过长内容（剩余闭合标签若未命中，后续 _HTML_TAG_RE 仍会兜底剥除）。
 _SCRIPT_STYLE_RE = re.compile(
-    r"<\s*(script|style)\b[^>]*>.*?<\s*/\s*\1\s*>",
+    r"<\s*(script|style)\b[^>]*>.{0,4096}?<\s*/\s*\1\s*>",
     re.IGNORECASE | re.DOTALL,
 )
 

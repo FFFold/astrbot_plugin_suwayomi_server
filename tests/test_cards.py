@@ -6,8 +6,10 @@ import plugin_pkg.utils.downloader as downloader_mod
 import plugin_pkg.utils.pusher as pusher_mod
 import pytest
 from plugin_pkg.suwayomi.cards import (
+    CARD_TEMPLATE,
     CHAPTER_LINES_PER_CARD,
     MAX_CHAPTER_CARDS,
+    SYNOPSIS_MAX_CHARS,
     CardCache,
     clean_description,
     build_batch_card,
@@ -68,6 +70,22 @@ def test_clean_description_truncates_with_ellipsis():
     text = "字" * 500
     cleaned = clean_description(text, max_chars=100)
     assert cleaned == "字" * 100 + "…"
+
+
+def test_clean_description_uses_default_max_chars_truncation():
+    text = "字" * (SYNOPSIS_MAX_CHARS + 50)
+    cleaned = clean_description(text)
+    # 默认按 SYNOPSIS_MAX_CHARS 截断并追加省略号
+    assert len(cleaned) == SYNOPSIS_MAX_CHARS + 1
+    assert cleaned.endswith("…")
+    assert cleaned[:-1] == "字" * SYNOPSIS_MAX_CHARS
+
+
+def test_card_template_no_hint_class_remains():
+    # .hint 已被 .synopsis 取代，模板中不应残留任何 class="hint" 或 .hint 样式，
+    # 防止搜索/批量/订阅等变体出现未样式化的提示块（视觉回归）。
+    assert "class=\"hint\"" not in CARD_TEMPLATE
+    assert ".hint" not in CARD_TEMPLATE
 
 
 def test_clean_description_empty_and_none():

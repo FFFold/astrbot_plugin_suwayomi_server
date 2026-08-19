@@ -963,9 +963,9 @@ class SuwayomiPlugin(Star):
                 try:
                     tmpldata = build_subscribe_confirm_card(
                         {"id": manga.id, "title": manga.title,
-                         "status": manga.status, "thumbnail_url": manga.thumbnail_url},
+                         "status": manga.status, "thumbnail_url": manga.thumbnail_url,
+                         "description": manga.description},
                         source_name="",
-                        footer="有新章节时会推送通知",
                     )
                     card = (await embed_covers(
                         self.client, [tmpldata],
@@ -1345,7 +1345,7 @@ class SuwayomiPlugin(Star):
                         "thumbnail_url": manga.thumbnail_url,
                         "meta": meta,
                         "tags": [{"text": f"最近更新 #{latest}"}],
-                        "hint": f"「漫画 章节 {manga.title} --刷新」强制刷新",
+                        "description": manga.description,
                     }
                     (card_base,) = await embed_covers(
                         self.client, [card_base],

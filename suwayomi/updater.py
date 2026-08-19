@@ -230,7 +230,7 @@ async def check_updates(
                 "title": title,
                 "status": manga_obj.status if manga_obj else "UNKNOWN",
                 "chapters": chapters_display,
-                "read_hint": f"「漫画 阅读 {title} {latest_num}」",
+                "description": manga_obj.description if manga_obj else None,
                 "thumbnail_url": manga_obj.thumbnail_url if manga_obj else None,
             }
             for umo in subscribers:

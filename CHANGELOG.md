@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 ## [Unreleased]
 
+### Added
+
+- **T2I 卡片加入漫画简介** — 章节列表、订阅确认、更新通知卡片展示 Suwayomi 漫画简介（`description`，清洗 HTML 后按行数钳制），并移除卡片上的模板约束提示文字（强制刷新/阅读提示等）。
+
 ## [0.6.0] - 2026-08-16
 
 ### Added

@@ -73,6 +73,39 @@ def test_clean_description_truncates_with_ellipsis():
 def test_clean_description_empty_and_none():
     assert clean_description(None) == ""
     assert clean_description("   ") == ""
+    assert clean_description("abc", max_chars=0) == ""
+
+
+def test_clean_description_removes_script_and_style_bodies():
+    raw = "简介<script>alert(1)</script>正文<style>.x{color:red}</style>后续"
+    assert clean_description(raw) == "简介 正文 后续"
+
+
+def test_build_subscribe_confirm_card_escapes_unescaped_tags():
+    # &lt;script&gt; 是源里的 HTML 实体，清洗会反转义为 <script>，再经 html.escape 转义回文本
+    data = build_subscribe_confirm_card(
+        {"title": "T", "status": "ONGOING",
+         "description": "前文&lt;script&gt;alert(1)&lt;/script&gt;后文"},
+        source_name="",
+    )
+    assert "<script>" not in data["synopsis"]
+    assert "&lt;script&gt;" in data["synopsis"]
+
+
+def test_build_subscribe_confirm_card_without_description_has_empty_synopsis():
+    data = build_subscribe_confirm_card(
+        {"title": "T", "status": "ONGOING", "thumbnail_url": "/c"},
+        source_name="",
+    )
+    assert data["synopsis"] == ""
+
+
+def test_build_update_card_without_description_has_empty_synopsis():
+    data = build_update_card(
+        [{"title": "T", "status": "ONGOING", "chapters": ["#1"], "thumbnail_url": "/d"}],
+        heading="📢 更新",
+    )
+    assert data["items"][0]["synopsis"] == ""
 
 
 def test_build_update_card_multi():

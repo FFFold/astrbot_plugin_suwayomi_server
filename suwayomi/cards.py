@@ -43,17 +43,24 @@ _BLOCK_TAG_RE = re.compile(
     r"<\s*(?:br|/?p|/?div|/?li|/?section|/?article|/?h[1-6]|/?ul|/?ol|/?blockquote)\b[^>]*>",
     re.IGNORECASE,
 )
+# script/style 整块删除（仅标签剥离会残留其可见文本）。
+_SCRIPT_STYLE_RE = re.compile(
+    r"<\s*(script|style)\b[^>]*>.*?<\s*/\s*\1\s*>",
+    re.IGNORECASE | re.DOTALL,
+)
 
 
 def clean_description(text: Any, max_chars: int = SYNOPSIS_MAX_CHARS) -> str:
     """Normalize a Suwayomi manga ``description`` into a plain single-line string.
 
     Suwayomi 源的简介常带 HTML 标签/实体与换行；渲染进 T2I 卡片前统一
-    去除标签、反转义实体并折叠空白，最后按字符数截断，避免巨大简介撑爆卡片。
+    去除整块 script/style、其余标签、反转义实体并折叠空白，最后按字符数
+    截断，避免巨大简介撑爆卡片。
     """
-    if not text:
+    if not text or max_chars <= 0:
         return ""
-    cleaned = _BLOCK_TAG_RE.sub(" ", str(text))
+    cleaned = _SCRIPT_STYLE_RE.sub(" ", str(text))
+    cleaned = _BLOCK_TAG_RE.sub(" ", cleaned)
     cleaned = _HTML_TAG_RE.sub("", cleaned)
     cleaned = html.unescape(cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()

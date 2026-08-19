@@ -6,9 +6,12 @@ import plugin_pkg.utils.downloader as downloader_mod
 import plugin_pkg.utils.pusher as pusher_mod
 import pytest
 from plugin_pkg.suwayomi.cards import (
+    CARD_TEMPLATE,
     CHAPTER_LINES_PER_CARD,
     MAX_CHAPTER_CARDS,
+    SYNOPSIS_MAX_CHARS,
     CardCache,
+    clean_description,
     build_batch_card,
     build_chapter_cards,
     build_search_card,
@@ -46,24 +49,90 @@ def test_build_search_card_escapes_and_numbers_rows():
 
 def test_build_subscribe_confirm_card():
     data = build_subscribe_confirm_card(
-        {"title": "鬼灭之刃", "status": "COMPLETED", "thumbnail_url": "/c"},
+        {"title": "鬼灭之刃", "status": "COMPLETED", "thumbnail_url": "/c",
+         "description": "大正年间，恶鬼横行。"},
         source_name="拷贝漫画",
-        footer="有新章节时会推送通知",
     )
     assert data["card_type"] == "confirm"
     assert data["title"] == "鬼灭之刃"
     assert data["status"] == "已完结"
     assert data["status_class"] == "status-completed"
     assert "ID" in data["meta"] and "拷贝漫画" in data["meta"]
+    assert data["synopsis"] == "大正年间，恶鬼横行。"
+
+
+def test_clean_description_strips_html_and_whitespace():
+    raw = "<p>  少年<b>吞下了</b>诅咒的手指，\n踏上讨伐&amp;之路。  </p>"
+    assert clean_description(raw) == "少年吞下了诅咒的手指， 踏上讨伐&之路。"
+
+
+def test_clean_description_truncates_with_ellipsis():
+    text = "字" * 500
+    cleaned = clean_description(text, max_chars=100)
+    assert cleaned == "字" * 100 + "…"
+
+
+def test_clean_description_uses_default_max_chars_truncation():
+    text = "字" * (SYNOPSIS_MAX_CHARS + 50)
+    cleaned = clean_description(text)
+    # 默认按 SYNOPSIS_MAX_CHARS 截断并追加省略号
+    assert len(cleaned) == SYNOPSIS_MAX_CHARS + 1
+    assert cleaned.endswith("…")
+    assert cleaned[:-1] == "字" * SYNOPSIS_MAX_CHARS
+
+
+def test_card_template_no_hint_class_remains():
+    # .hint 已被 .synopsis 取代，模板中不应残留任何 class="hint" 或 .hint 样式，
+    # 防止搜索/批量/订阅等变体出现未样式化的提示块（视觉回归）。
+    assert "class=\"hint\"" not in CARD_TEMPLATE
+    assert ".hint" not in CARD_TEMPLATE
+
+
+def test_clean_description_empty_and_none():
+    assert clean_description(None) == ""
+    assert clean_description("   ") == ""
+    assert clean_description("abc", max_chars=0) == ""
+
+
+def test_clean_description_removes_script_and_style_bodies():
+    raw = "简介<script>alert(1)</script>正文<style>.x{color:red}</style>后续"
+    assert clean_description(raw) == "简介 正文 后续"
+
+
+def test_build_subscribe_confirm_card_escapes_unescaped_tags():
+    # &lt;script&gt; 是源里的 HTML 实体，清洗会反转义为 <script>，再经 html.escape 转义回文本
+    data = build_subscribe_confirm_card(
+        {"title": "T", "status": "ONGOING",
+         "description": "前文&lt;script&gt;alert(1)&lt;/script&gt;后文"},
+        source_name="",
+    )
+    assert "<script>" not in data["synopsis"]
+    assert "&lt;script&gt;" in data["synopsis"]
+
+
+def test_build_subscribe_confirm_card_without_description_has_empty_synopsis():
+    data = build_subscribe_confirm_card(
+        {"title": "T", "status": "ONGOING", "thumbnail_url": "/c"},
+        source_name="",
+    )
+    assert data["synopsis"] == ""
+
+
+def test_build_update_card_without_description_has_empty_synopsis():
+    data = build_update_card(
+        [{"title": "T", "status": "ONGOING", "chapters": ["#1"], "thumbnail_url": "/d"}],
+        heading="📢 更新",
+    )
+    assert data["items"][0]["synopsis"] == ""
 
 
 def test_build_update_card_multi():
     data = build_update_card(
         [
             {"title": "咒术回战", "status": "ONGOING", "chapters": ["#251 新的一页", "#252 决战"],
-             "read_hint": "「漫画 阅读 咒术回战 252」", "thumbnail_url": "/d"},
+             "description": "吞下了诅咒的手指，少年踏上讨伐之路。", "thumbnail_url": "/d"},
             {"title": "鬼灭之刃", "status": "COMPLETED", "chapters": ["#205"],
-             "read_hint": "「漫画 阅读 鬼灭之刃 205」", "thumbnail_url": "/e"},
+             "description": "大正年间，恶鬼横行。", "thumbnail_url": "/e"},
         ],
         heading="📢 2 部漫画更新了",
     )
@@ -71,6 +140,8 @@ def test_build_update_card_multi():
     assert data["items"][0]["status"] == "连载中"
     assert data["items"][1]["status_class"] == "status-completed"
     assert data["items"][0]["chapters"][0] == "#251 新的一页"
+    assert data["items"][0]["synopsis"] == "吞下了诅咒的手指，少年踏上讨伐之路。"
+    assert data["items"][1]["synopsis"] == "大正年间，恶鬼横行。"
 
 
 def test_build_subscriptions_card():
@@ -99,7 +170,7 @@ def test_build_batch_card_marks():
 def test_build_chapter_cards_single_header_only():
     cards, tail = build_chapter_cards(
         {"title": "咒术回战", "cover_data_url": None, "meta": "拷贝漫画 · 3 话",
-         "tags": ["连载中"], "hint": "「漫画 章节 咒术回战 --刷新」"},
+         "tags": ["连载中"], "description": "吞下了诅咒的手指，少年踏上讨伐之路。"},
         ["#1", "#2", "#3"],
     )
     assert len(cards) == 1
@@ -110,6 +181,8 @@ def test_build_chapter_cards_single_header_only():
     assert sum(len(c) for c in cards[0]["chunks"]) == 3
     # 标题保留
     assert cards[0]["title"] == "咒术回战"
+    # 简介进入章节卡头部
+    assert cards[0]["synopsis"] == "吞下了诅咒的手指，少年踏上讨伐之路。"
 
 
 def test_build_chapter_cards_dict_tags_preserve_class():

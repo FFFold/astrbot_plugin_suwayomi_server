@@ -40,6 +40,7 @@ def _make_manga() -> Manga:
         url="",
         title="测试漫画",
         thumbnail_url="/api/v1/manga/1/thumbnail",
+        description="测试漫画简介",
     )
 
 
@@ -317,6 +318,9 @@ async def test_list_chapters_cards_success_multiple_images(monkeypatch):
     assert event.send.await_count == 2
     assert event.send.await_count == plugin._render_card_result.call_count - 1
     event.plain_result.assert_not_called()
+    # 首张卡头部携带漫画简介，续卡不含
+    first_card = plugin._render_card_result.call_args_list[0][0][0]
+    assert first_card["synopsis"] == "测试漫画简介"
     # 卡片模式封面由 embed_covers 统一负责：不调用 download_cover，无临时目录泄漏
     download_cover_mock.assert_not_awaited()
     schedule_cleanup_mock.assert_not_called()

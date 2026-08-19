@@ -39,7 +39,8 @@ def _event():
 
 def _manga(title, mid):
     return Manga(id=mid, source_id=2, url="", title=title,
-                 status="ONGOING", thumbnail_url=f"/api/v1/manga/{mid}/thumbnail")
+                 status="ONGOING", thumbnail_url=f"/api/v1/manga/{mid}/thumbnail",
+                 description="测试漫画简介")
 
 
 def _source(name="拷贝漫画"):
@@ -126,6 +127,8 @@ async def test_subscribe_confirm_card_success(monkeypatch):
     assert len(results) == 1
     event.chain_result.assert_called_once()
     event.plain_result.assert_not_called()
+    card = plugin._render_card_result.call_args[0][0]
+    assert card["synopsis"] == "测试漫画简介"
 
 
 @pytest.mark.asyncio

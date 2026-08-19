@@ -214,7 +214,7 @@ async def test_check_updates_all_failed_reports_error_without_timestamp():
 
 def _update_manga(thumbnail="/api/v1/manga/1/thumbnail"):
     return Manga(id=1, source_id=1, url="", title="T1", status="ONGOING",
-                 thumbnail_url=thumbnail)
+                 thumbnail_url=thumbnail, description="新章节更新简介")
 
 
 @pytest.mark.asyncio
@@ -294,6 +294,7 @@ async def test_check_updates_build_update_items_include_thumbnail():
     assert seen["items"][0]["thumbnail_url"] == "/api/v1/manga/1/thumbnail"
     assert seen["items"][0]["title"] == "T1"
     assert seen["items"][0]["status"] == "ONGOING"
+    assert seen["items"][0]["description"] == "新章节更新简介"
 
 
 @pytest.mark.asyncio

@@ -32,8 +32,43 @@ CARD_WIDTH = 880
 COVER_WIDTH = 320
 CHAPTER_LINES_PER_CARD = 130
 MAX_CHAPTER_CARDS = 4
+# 卡片上的简介按纯文本展示，最多保留这么多字符（配合 CSS 行数钳制）。
+SYNOPSIS_MAX_CHARS = 150
 
 _PLUGIN_NAME = PLUGIN_NAME
+
+_HTML_TAG_RE = re.compile(r"<[^>]*>")
+# 段落类标签替换为空格（保留文字间隔），其余 inline 标签直接删除。
+_BLOCK_TAG_RE = re.compile(
+    r"<\s*(?:br|/?p|/?div|/?li|/?section|/?article|/?h[1-6]|/?ul|/?ol|/?blockquote)\b[^>]*>",
+    re.IGNORECASE,
+)
+# script/style 整块删除（仅标签剥离会残留其可见文本）。
+# 内容长度上限 4096 字符：既避免超大文本上的灾难回溯，也防止畸形/嵌套
+# 标签意外跨越过长内容（剩余闭合标签若未命中，后续 _HTML_TAG_RE 仍会兜底剥除）。
+_SCRIPT_STYLE_RE = re.compile(
+    r"<\s*(script|style)\b[^>]*>.{0,4096}?<\s*/\s*\1\s*>",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def clean_description(text: Any, max_chars: int = SYNOPSIS_MAX_CHARS) -> str:
+    """Normalize a Suwayomi manga ``description`` into a plain single-line string.
+
+    Suwayomi 源的简介常带 HTML 标签/实体与换行；渲染进 T2I 卡片前统一
+    去除整块 script/style、其余标签、反转义实体并折叠空白，最后按字符数
+    截断，避免巨大简介撑爆卡片。
+    """
+    if not text or max_chars <= 0:
+        return ""
+    cleaned = _SCRIPT_STYLE_RE.sub(" ", str(text))
+    cleaned = _BLOCK_TAG_RE.sub(" ", cleaned)
+    cleaned = _HTML_TAG_RE.sub("", cleaned)
+    cleaned = html.unescape(cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    if len(cleaned) > max_chars:
+        cleaned = cleaned[:max_chars].rstrip() + "…"
+    return cleaned
 
 
 def _status_pill_class(status: str) -> str:
@@ -83,8 +118,10 @@ CARD_TEMPLATE = """
   .status-ongoing { background:#eef3ff; color:#4f7cff; }
   .status-completed { background:#eef5ec; color:#3e9c4f; }
   .status-default { background:#f2f3f7; color:#6b7180; }
-  .hint { font-size:22px; color:#8a8f9d; margin-top:12px; }
-  .hint.pushed { margin-top:auto; padding-top:20px; }
+  .synopsis { font-size:24px; color:#5a5f6e; line-height:1.55; margin-top:14px;
+              display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical;
+              overflow:hidden; word-break:break-word; }
+  .synopsis.compact { -webkit-line-clamp:2; }
   .cols { display:flex; gap:16px; margin-top:16px; }
   .col { flex:1; background:#fff; border-radius:16px; padding:16px; font-family:"Smiley Sans","LXGW WenKai","Noto Sans CJK SC","Noto Sans Mono CJK SC",Consolas,monospace;
          font-size:24px; color:#3a3f4b; line-height:1.8; overflow:hidden; }
@@ -127,7 +164,7 @@ CARD_TEMPLATE = """
       <div style="font-size:32px;font-weight:600;margin-top:12px">{{ title }}</div>
       <div class="meta" style="margin-top:4px">{{ meta }}</div>
       <div style="margin-top:12px"><span class="status-pill {{ status_class }}">{{ status }}</span></div>
-      <div class="hint pushed">{{ footer }}</div>
+      {% if synopsis %}<div class="synopsis">{{ synopsis }}</div>{% endif %}
     </div>
   </div>
 
@@ -178,7 +215,7 @@ CARD_TEMPLATE = """
         <span class="status-pill {{ item.status_class }}">{{ item.status }}</span>
       </div>
       <div>{% for ch in item.chapters %}<span class="chip">{{ ch }}</span>{% endfor %}</div>
-      <div class="hint">{{ item.read_hint }}</div>
+      {% if item.synopsis %}<div class="synopsis compact">{{ item.synopsis }}</div>{% endif %}
     </div>
   </div>
   {% endfor %}
@@ -195,7 +232,7 @@ CARD_TEMPLATE = """
       <div style="font-size:34px;font-weight:700">{{ title }}</div>
       <div class="meta" style="margin-top:6px">{{ meta }}</div>
       <div style="margin-top:16px">{% for t in tags %}<span class="status-pill {{ t.class }}">{{ t.text }}</span>{% endfor %}</div>
-      <div class="hint" style="margin-top:16px">{{ hint }}</div>
+      {% if synopsis %}<div class="synopsis">{{ synopsis }}</div>{% endif %}
     </div>
   </div>
   {% else %}
@@ -239,8 +276,8 @@ def build_search_card(rows: list[dict], subtitle: str, footer: str) -> dict:
     }
 
 
-def build_subscribe_confirm_card(manga: dict, source_name: str, footer: str) -> dict:
-    """manga: {id, title, status, thumbnail_url}."""
+def build_subscribe_confirm_card(manga: dict, source_name: str) -> dict:
+    """manga: {id, title, status, thumbnail_url, description}."""
     status = STATUS_EMOJI.get(manga["status"], "未知")
     meta = f"ID: {manga.get('id', '?')}" + (f" · 源: {source_name}" if source_name else "")
     return {
@@ -249,13 +286,13 @@ def build_subscribe_confirm_card(manga: dict, source_name: str, footer: str) -> 
         "meta": html.escape(meta),
         "status": status,
         "status_class": _status_pill_class(manga["status"]),
-        "footer": html.escape(footer),
+        "synopsis": html.escape(clean_description(manga.get("description"))),
         "thumbnail_url": manga.get("thumbnail_url"),
     }
 
 
 def build_update_card(items: list[dict], heading: str) -> dict:
-    """items: [{title, status, chapters, read_hint, thumbnail_url}]."""
+    """items: [{title, status, chapters, description, thumbnail_url}]."""
     cleaned = []
     for it in items:
         cleaned.append({
@@ -263,7 +300,7 @@ def build_update_card(items: list[dict], heading: str) -> dict:
             "status": STATUS_EMOJI.get(it.get("status", "UNKNOWN"), "未知"),
             "status_class": _status_pill_class(it.get("status", "UNKNOWN")),
             "chapters": [html.escape(c) for c in it["chapters"]],
-            "read_hint": html.escape(it["read_hint"]),
+            "synopsis": html.escape(clean_description(it.get("description"))),
             "thumbnail_url": it.get("thumbnail_url"),
         })
     return {"card_type": "update", "heading": html.escape(heading), "items": cleaned}
@@ -429,7 +466,7 @@ def build_chapter_cards(manga: dict, lines: list[str]) -> tuple[list[dict], list
             card = dict(base, is_continuation=False)
             card["meta"] = html.escape(manga.get("meta", ""))
             card["tags"] = tags
-            card["hint"] = html.escape(manga.get("hint", ""))
+            card["synopsis"] = html.escape(clean_description(manga.get("description")))
             card["chunks"] = chunks
         else:
             card = dict(base, is_continuation=True)

@@ -71,7 +71,7 @@ astrbot_plugin_suwayomi_server/
 │   ├── config.py              # 分组配置读写、旧版平铺配置迁移
 │   ├── models.py              # 数据模型（Source, Manga, Chapter, SearchResult）
 │   ├── service.py             # 业务逻辑层（漫画/章节解析、缓存策略、格式化）
-│   ├── cards.py               # 指令结果卡片（T2I 模板、数据准备、封面嵌入、渲染缓存）
+│   ├── cards.py               # 指令结果卡片（T2I 模板、数据准备、简介清洗、封面嵌入、渲染缓存）
 │   ├── ai_service.py          # Agent 结构化搜索、章节查询与订阅管理（无发送副作用）
 │   ├── ai_tools.py            # AstrBot FunctionTool Schema 与注册工厂
 │   └── updater.py             # 更新引擎（check_updates + run_update_loop）

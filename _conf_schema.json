@@ -53,7 +53,7 @@
         "default": "system",
         "options": ["system", "custom"],
         "labels": ["使用 AstrBot 系统配置", "单独配置（自建 T2I 服务）"],
-        "hint": "卡片渲染使用的 T2I 服务。「使用 AstrBot 系统配置」跟随 AstrBot 全局的 T2I 设置（默认）；「单独配置」则仅本插件使用下方指定的 T2I 端点，适合自建 astrbot-t2i-service 或想与系统 T2I 隔离的场景。自建服务部署方式见文档 docs/setup.md"
+        "hint": "使用哪个 T2I 服务渲染卡片。系统配置跟随 AstrBot 全局设置（默认）；单独配置则仅本插件使用下方端点。部署见 docs/setup.md"
       },
       "t2i_endpoint": {
         "description": "T2I 端点",
@@ -62,7 +62,7 @@
         "condition": {
           "t2i_source": "custom"
         },
-        "hint": "仅当「T2I 服务来源」选择「单独配置」时生效。填写自建 astrbot-t2i-service 的地址，例如 http://127.0.0.1:8999 或 http://192.168.1.100:8999（末尾无需 /text2img，插件会自动补全）。留空时回退为使用 AstrBot 系统 T2I 配置并打印警告。部署教程：https://github.com/AstrBotDevs/astrbot-t2i-service，也可参考 docs/setup.md 的「可选：自建 T2I 卡片渲染服务」章节"
+        "hint": "自建 astrbot-t2i-service 地址，如 http://192.168.1.100:8999（无需填 /text2img）。留空则回退系统配置"
       }
     }
   },

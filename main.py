@@ -673,6 +673,21 @@ class SuwayomiPlugin(Star):
 
         return make_endpoint_renderer(endpoint)
 
+    def _reset_after_config_change(self) -> None:
+        """Drop state derived from the previous config after a WebUI save.
+
+        Card images are cached by ``tmpldata`` only, and a render failure
+        parks rendering behind ``CARD_FAIL_COOLDOWN``. Both would otherwise
+        keep serving/blocking results produced by the *old* renderer for
+        minutes after the user fixes or switches the T2I settings.
+        """
+        self._search_cache.clear()
+        self._ai_state.clear()
+        self._ai_send_locks.clear()
+        self._card_cache.clear()
+        self._card_cooldown_until = 0.0
+        self._t2i_endpoint_warned = False
+
     async def _render_card_result(self, tmpldata: dict) -> str | None:
         """Render one card to a local file; return path or None on failure.
 
@@ -1646,11 +1661,7 @@ class SuwayomiPlugin(Star):
                 password=get_config_value(cfg, "password", ""),
             )
             self._build_check_updates_fn()
-            self._search_cache.clear()
-            self._ai_state.clear()
-            self._ai_send_locks.clear()
-            # 配置变更后允许再次就空 T2I 端点发出警告
-            self._t2i_endpoint_warned = False
+            self._reset_after_config_change()
             self._sync_ai_tools()
             if self._bg_task and not self._bg_task.done():
                 self._bg_task.cancel()

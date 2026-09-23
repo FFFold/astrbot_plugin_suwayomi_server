@@ -73,6 +73,12 @@ ENUM_CONFIG_KEYS = {
     "t2i_source": {"system", "custom"},
 }
 
+# Free-form string keys: non-string payloads (JSON numbers/objects) are dropped
+# instead of being stored, so downstream helpers never see unexpected types.
+STRING_CONFIG_KEYS = {
+    "t2i_endpoint",
+}
+
 
 async def api_status(
     client: Any,
@@ -255,6 +261,8 @@ async def api_config_post(
         if key in ENUM_CONFIG_KEYS:
             if not isinstance(value, str) or value not in ENUM_CONFIG_KEYS[key]:
                 continue
+        if key in STRING_CONFIG_KEYS and not isinstance(value, str):
+            continue
         set_config_value(config, key, value)
 
     try:

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import tempfile
 from collections.abc import Awaitable, Callable
+from urllib.parse import urlparse
 
 import aiohttp
 
@@ -20,19 +21,27 @@ import aiohttp
 _GENERATE_TIMEOUT = 130.0
 
 
-def normalize_endpoint(endpoint: str) -> str:
+def normalize_endpoint(endpoint: object) -> str:
     """Normalize a service address to its base URL ending in ``/text2img``.
 
     Mirrors AstrBot core's URL rule so users may enter either
     ``http://host:8999`` or ``http://host:8999/text2img`` (and tolerate a
     pasted ``/generate`` or trailing slash).
+
+    Non-string input (hand-edited config, misbehaving API client) is rejected
+    as empty rather than raising, so card rendering degrades to the system
+    renderer instead of failing the command.
     """
-    url = (endpoint or "").strip().rstrip("/")
+    if not isinstance(endpoint, str):
+        return ""
+    url = endpoint.strip().rstrip("/")
     if not url:
         return ""
     if url.endswith("/generate"):
         url = url[: -len("/generate")]
-    if not url.endswith("text2img"):
+    # Only a real ``/text2img`` path component counts as already normalized —
+    # a bare ``endswith`` would misjudge hosts like ``/nottext2img``.
+    if urlparse(url).path.rsplit("/", 1)[-1] != "text2img":
         url += "/text2img"
     return url
 

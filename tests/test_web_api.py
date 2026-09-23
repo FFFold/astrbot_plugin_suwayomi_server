@@ -468,6 +468,33 @@ async def test_config_post_rejects_invalid_t2i_source():
     assert "t2i_source" not in cfg.get("cards", {})
 
 
+@pytest.mark.asyncio
+async def test_config_post_rejects_non_string_t2i_endpoint():
+    """A JSON number/bool/object must never reach normalize_endpoint()."""
+    cfg = FakeConfig({"server_url": "http://old:4567"})
+
+    result = await api_config_post(cfg, {
+        "server_url": "http://new:4567",
+        "t2i_endpoint": 12345,
+    }, AsyncMock())
+
+    assert result["success"] is True
+    assert "t2i_endpoint" not in cfg.get("cards", {})
+
+
+@pytest.mark.asyncio
+async def test_config_post_accepts_string_t2i_endpoint():
+    cfg = FakeConfig({"server_url": "http://old:4567"})
+
+    result = await api_config_post(cfg, {
+        "server_url": "http://new:4567",
+        "t2i_endpoint": "http://t2i.local:9105/text2img",
+    }, AsyncMock())
+
+    assert result["success"] is True
+    assert cfg["cards"]["t2i_endpoint"] == "http://t2i.local:9105/text2img"
+
+
 def test_config_get_only_returns_allowed_keys():
     """api_config_get should only return whitelisted keys."""
     cfg = {

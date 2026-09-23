@@ -80,6 +80,25 @@ def test_normalize_endpoint_empty():
     assert normalize_endpoint("   ") == ""
 
 
+def test_normalize_endpoint_rejects_non_string():
+    """A truthy non-string config value must not raise AttributeError."""
+    assert normalize_endpoint(None) == ""
+    assert normalize_endpoint(123) == ""
+    assert normalize_endpoint(["http://host:8999"]) == ""
+
+
+def test_normalize_endpoint_does_not_accept_partial_path_suffix():
+    """Only a real `/text2img` path component counts as normalized."""
+    assert (
+        normalize_endpoint("http://host:8999/nottext2img")
+        == "http://host:8999/nottext2img/text2img"
+    )
+    assert (
+        normalize_endpoint("http://host:8999/myt2i")
+        == "http://host:8999/myt2i/text2img"
+    )
+
+
 # ── render_custom_template ──────────────────────────────────────────
 
 @pytest.mark.asyncio

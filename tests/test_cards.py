@@ -467,6 +467,18 @@ def test_card_cache_max_entries_evicts_oldest():
     assert cache.get({"k": 2}, now=4) == "/2"
 
 
+def test_card_cache_clear_drops_all_entries():
+    cache = CardCache(ttl=600)
+    cache.put({"k": 1}, "/1")
+    cache.put({"k": 2}, "/2")
+
+    cache.clear()
+
+    assert cache.get({"k": 1}) is None
+    assert cache.get({"k": 2}) is None
+    assert cache._data == {}
+
+
 @pytest.mark.asyncio
 async def test_render_card_cached_skips_render_on_hit():
     cache = CardCache(ttl=600)

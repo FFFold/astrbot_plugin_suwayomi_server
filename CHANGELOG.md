@@ -9,12 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 ### Added
 
-- **卡片渲染支持单独配置 T2I 端点** — 新增 `t2i_source`（`system` 使用 AstrBot 系统 T2I 配置，默认；`custom` 单独配置）与 `t2i_endpoint`（仅 `custom` 时生效）两个配置项。选择 `custom` 后插件不再依赖 AstrBot 全局 T2I 设置，而是直接调用自建 [astrbot-t2i-service](https://github.com/AstrBotDevs/astrbot-t2i-service) 的 `/text2img/generate`（端点末尾无需 `/text2img`，插件自动补全；留空则回退系统配置并打印警告）。适用于 AstrBot 默认官方端点位于国外导致的渲染慢/失败率高、系统 T2I 设为本地渲染、多实例隔离等场景。失败仍按原有语义回退纯文本。
+- **卡片渲染支持单独配置 T2I 端点** — 新增 `t2i_source`（`system` 使用 AstrBot 系统 T2I 配置，默认；`custom` 单独配置）与 `t2i_endpoint`（仅 `custom` 时生效）两个配置项。选择 `custom` 后插件不再依赖 AstrBot 全局 T2I 设置，而是直接调用自建 [astrbot-t2i-service](https://github.com/AstrBotDevs/astrbot-t2i-service) 的 `/text2img/generate`（端点末尾无需 `/text2img`，插件自动补全；留空则回退系统配置并打印警告）。适用于 AstrBot 默认官方端点位于国外导致的渲染慢/失败率高、系统 T2I 设为本地渲染、多实例隔离等场景。失败仍按原有语义回退纯文本；WebUI 保存配置后立即生效（清空卡片缓存与失败冷却）。
 
 ### Docs
 
 - `docs/setup.md` 新增「可选：优化 T2I 卡片渲染服务」章节：说明为何建议自建（AstrBot 默认官方端点在国外，慢且失败率高）、改 AstrBot 全局端点与插件单独配置两种方案对比、Docker/源码部署与环境变量
 - `README.md` 配置表补充 `t2i_source` / `t2i_endpoint`；WebUI 仪表盘设置页同步新增两项
+- `AGENTS.md` 记录 T2I 端点选择的唯一入口（`_card_render_fn`）与配置变更后的状态重置（`_reset_after_config_change`）
 
 ## [0.6.1] - 2026-08-19
 

@@ -83,6 +83,11 @@ function initHandlers() {
     }
   });
 
+  // T2I source selects which renderer the plugin uses; endpoint only matters
+  // for "custom" — keep the field hidden otherwise so the form stays honest.
+  document.getElementById('cfg-t2i_source')
+    .addEventListener('change', syncT2iEndpointVisibility);
+
   // Config form submit
   document.getElementById('config-form').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -259,6 +264,12 @@ function renderSubsTable(rows) {
 }
 
 // ── Settings ───────────────────────────────────────────
+function syncT2iEndpointVisibility() {
+  const source = document.getElementById('cfg-t2i_source').value;
+  document.getElementById('group-t2i_endpoint')
+    .classList.toggle('hidden', source !== 'custom');
+}
+
 async function loadConfig() {
   try {
     const config = await bridge.apiGet('config');
@@ -267,6 +278,10 @@ async function loadConfig() {
       if (!el) continue;
       el.value = value;
     }
+    // Older configs predate t2i_source — never leave the select blank.
+    const sourceEl = document.getElementById('cfg-t2i_source');
+    if (sourceEl.value !== 'custom') sourceEl.value = 'system';
+    syncT2iEndpointVisibility();
   } catch (e) {
     showToast('加载配置失败', 'error');
   }

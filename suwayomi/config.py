@@ -3,7 +3,7 @@
 配置项按功能分组存储（与 WebUI 设置页、_conf_schema.json 的分组一致）：
 
 - `server`: 服务器连接（server_url / auth_mode / username / password）
-- `cards`: 卡片渲染（result_cards_enabled / card_render_timeout_sec）
+- `cards`: 卡片渲染（result_cards_enabled / card_render_timeout_sec / t2i_source / t2i_endpoint）
 - `reading`: 阅读体验（max_pages / send_mode / image_fetch_mode）
 - `pack`: 下载打包（download_format / download_concurrency / download_retries）
 - `push`: 自动推送（auto_push_mode）
@@ -34,6 +34,8 @@ _LEGACY_KEY_DEFAULTS: dict[str, Any] = {
     "password": "",
     "result_cards_enabled": False,
     "card_render_timeout_sec": 30,
+    "t2i_source": "system",
+    "t2i_endpoint": "",
     "max_pages": 30,
     "send_mode": "image",
     "image_fetch_mode": "download",
@@ -81,7 +83,12 @@ def _normalize_legacy_value(key: str, value: Any) -> Any | None:
 
 CONFIG_GROUPS: dict[str, list[str]] = {
     "server": ["server_url", "auth_mode", "username", "password"],
-    "cards": ["result_cards_enabled", "card_render_timeout_sec"],
+    "cards": [
+        "result_cards_enabled",
+        "card_render_timeout_sec",
+        "t2i_source",
+        "t2i_endpoint",
+    ],
     "reading": ["max_pages", "send_mode", "image_fetch_mode"],
     "pack": ["download_format", "download_concurrency", "download_retries"],
     "push": ["auto_push_mode"],

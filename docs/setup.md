@@ -8,6 +8,7 @@
 - [第二步：安装漫画源扩展](#第二步安装漫画源扩展)
 - [第三步：配置 AstrBot 插件](#第三步配置-astrbot-插件)
 - [第四步：验证](#第四步验证)
+- [可选：自建 T2I 卡片渲染服务](#可选自建-t2i-卡片渲染服务)
 - [⚠️ 更换 Suwayomi-Server 实例的注意事项](#️-更换-suwayomi-server-实例的注意事项)
 - [常见问题](#常见问题)
 
@@ -218,6 +219,93 @@ server:
 - `server_url` 是否正确
 - 防火墙是否放行了端口
 - AstrBot 所在网络是否能访问 Suwayomi 地址
+
+---
+
+## 可选：自建 T2I 卡片渲染服务
+
+> 本插件默认状态为纯文本回复。如果你希望把指令结果渲染为带封面的精美卡片（`result_cards_enabled`），插件默认使用 **AstrBot 系统自带的 T2I 服务**（通常随 AstrBot 内置可用），无需额外部署。
+>
+> 但如果你希望卡片渲染**不依赖 AstrBot 系统 T2I 配置**（例如系统配置为本地 PIL 渲染、官方端点限流严重、多实例互相干扰，或者想完全掌控渲染服务），可以自建一个 T2I 渲染服务并让本插件单独使用它。
+
+### 为什么单独配置？
+
+| 场景 | 建议 |
+|------|------|
+| 只是想让卡片能显示 | 直接开启 `result_cards_enabled`，用系统配置即可 |
+| AstrBot 系统 T2I 设置为「本地渲染」/官方端点限流 | 自建服务 + 插件单独配置 |
+| 多个插件/多个 AstrBot 实例共用一台渲染机 | 自建服务 + 各实例填写同一端点 |
+| 想用最新渲染选项（高清设备像素比等） | 自建服务，插件会自动请求 880px × 1.8x 高清输出 |
+
+### 部署方式一：Docker（推荐）
+
+官方镜像由 AstrBot 官方维护并发布在 Docker Hub（`soulter/astrbot-t2i-service`）：
+
+```bash
+docker run -d \
+  --name astrbot-t2i \
+  -p 8999:8999 \
+  -e TZ=Asia/Shanghai \
+  -e IMAGE_LIFETIME_HOURS=24 \
+  --restart unless-stopped \
+  soulter/astrbot-t2i-service:latest
+```
+
+验证服务运行：
+
+```bash
+curl -X POST http://localhost:8999/text2img/generate \
+  -H "Content-Type: application/json" \
+  -d '{"html":"<h1>hello</h1>","options":{"type":"png"}}' \
+  -o test.png
+```
+
+能生成 `test.png` 即表示部署成功。
+
+### 部署方式二：从源码运行
+
+需要 Python 3.13+ 与 Playwright 浏览器依赖：
+
+```bash
+git clone https://github.com/AstrBotDevs/astrbot-t2i-service.git
+cd astrbot-t2i-service
+pip install -r requirements.txt
+playwright install --with-deps chromium
+python main.py
+```
+
+默认监听 `0.0.0.0:8999`。
+
+### 常用环境变量
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `PORT` | `8999` | 服务端口 |
+| `IMAGE_LIFETIME_HOURS` | `24` | 生成图片的保留时长（小时），过期自动清理 |
+| `STORAGE_BACKEND` | `local` | 图片存储后端，支持 `local` / `s3` / `r2` |
+| `RATE_LIMIT_MAX_REQUESTS` | `0` | 限流窗口内最大请求数，`0` 表示不限流 |
+| `RATE_LIMIT_WINDOW_SECONDS` | `0` | 限流窗口秒数 |
+
+> 多副本部署（K8s 等）时，JSON 模式生成的图片可能落在不同实例上导致 404，此时需配置 S3/R2 共享存储。本插件使用**直接返回图片字节**的模式（不落盘），单实例部署即可，无此问题。
+>
+> 完整环境变量与 API 说明见 [astrbot-t2i-service 仓库](https://github.com/AstrBotDevs/astrbot-t2i-service)。
+
+### 在插件中启用
+
+1. 打开 AstrBot WebUI → 插件管理 → 「Suwayomi 漫画助手」→ 设置
+2. 在「卡片渲染」分组中：
+   - **T2I 服务来源** → 选择「单独配置（自建 T2I 服务）」
+   - **T2I 端点** → 填写服务地址，例如 `http://192.168.1.100:8999`
+     - 末尾**无需** `/text2img`，插件会自动补全为 `http://192.168.1.100:8999/text2img`
+     - 也可以直接填 `http://192.168.1.100:8999/text2img`
+   - 确认 **指令结果卡片渲染** 已开启
+3. 发送 `/漫画 搜索 海贼王` 验证；卡片渲染失败会自动回退纯文本，不会报错
+
+**注意事项**：
+
+- AstrBot 所在机器必须能访问 T2I 端点地址（Docker 部署时注意容器网络）
+- 「T2I 服务来源」选择「单独配置」但端点留空时，插件会打印警告并回退使用 AstrBot 系统 T2I 配置，不会静默失败
+- 若 T2I 服务不可用，命令会等待 `card_render_timeout_sec`（默认 30 秒）后回退纯文本，并在之后 5 分钟内不再尝试渲染
 
 ---
 

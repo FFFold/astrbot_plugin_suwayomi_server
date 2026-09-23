@@ -243,6 +243,117 @@ async def test_card_render_failure_enters_cooldown(monkeypatch):
     assert plugin._result_cards_enabled() is True
 
 
+def test_card_render_fn_defaults_to_builtin_render():
+    plugin = _plugin(cards_enabled=True)
+    assert plugin._card_render_fn() is plugin.html_render
+
+
+def test_card_render_fn_ignores_endpoint_under_system_source(monkeypatch):
+    """A leftover endpoint must not leak into the system path."""
+    plugin = _plugin(cards_enabled=True)
+    plugin.config["t2i_source"] = "system"
+    plugin.config["t2i_endpoint"] = "http://leftover:8999"
+
+    def unexpected(*args, **kwargs):
+        raise AssertionError("system 来源下不应创建独立渲染器")
+
+    monkeypatch.setattr("plugin_pkg.main.make_endpoint_renderer", unexpected)
+
+    assert plugin._card_render_fn() is plugin.html_render
+
+
+@pytest.mark.asyncio
+async def test_dead_custom_endpoint_falls_back_to_text_not_system_renderer(monkeypatch):
+    """Privacy contract: a failing custom endpoint must degrade to plain text.
+
+    Quietly switching to AstrBot's system T2I would send the user's card HTML
+    to a service they explicitly chose not to use, so the system renderer has
+    to stay untouched and the cooldown must engage.
+    """
+    plugin = _plugin(cards_enabled=True)
+    plugin.config["t2i_source"] = "custom"
+    plugin.config["t2i_endpoint"] = "http://127.0.0.1:1"  # nothing listening
+    plugin.config["card_render_timeout_sec"] = 5
+    plugin.html_render = AsyncMock(return_value="/tmp/SYSTEM.jpg")
+
+    path = await plugin._render_card_result(
+        {"card_type": "search", "rows": [], "subtitle": "s", "footer": "f"}
+    )
+
+    assert path is None
+    plugin.html_render.assert_not_called()
+    assert plugin._result_cards_enabled() is False  # cooldown engaged
+
+
+def test_card_render_fn_custom_uses_configured_endpoint(monkeypatch):
+    plugin = _plugin(cards_enabled=True)
+    plugin.config["t2i_source"] = "custom"
+    plugin.config["t2i_endpoint"] = "  http://t2i.local:9105  "
+    fake_factory = MagicMock(return_value="custom-render-fn")
+    monkeypatch.setattr("plugin_pkg.main.make_endpoint_renderer", fake_factory)
+
+    render_fn = plugin._card_render_fn()
+
+    assert render_fn == "custom-render-fn"
+    assert render_fn is not plugin.html_render
+    # 传入工厂前归一化：去空白并补 /text2img（与服务端路径规则一致）
+    fake_factory.assert_called_once_with("http://t2i.local:9105/text2img")
+
+
+def test_card_render_fn_custom_empty_endpoint_falls_back_to_system(monkeypatch):
+    plugin = _plugin(cards_enabled=True)
+    plugin.config["t2i_source"] = "custom"
+    plugin.config["t2i_endpoint"] = ""
+
+    def unexpected(*args, **kwargs):
+        raise AssertionError("端点为空时不应创建独立渲染器")
+
+    monkeypatch.setattr("plugin_pkg.main.make_endpoint_renderer", unexpected)
+
+    assert plugin._card_render_fn() is plugin.html_render
+
+
+def test_card_render_fn_custom_empty_endpoint_warns_once(monkeypatch):
+    """Empty endpoint warns once per config load, not on every command."""
+    import plugin_pkg.main as main_mod
+
+    plugin = _plugin(cards_enabled=True)
+    plugin.config["t2i_source"] = "custom"
+    plugin.config["t2i_endpoint"] = ""
+    warning = MagicMock()
+    monkeypatch.setattr(main_mod.logger, "warning", warning)
+
+    assert plugin._card_render_fn() is plugin.html_render
+    assert plugin._card_render_fn() is plugin.html_render
+    assert warning.call_count == 1
+    assert "端点为空" in warning.call_args[0][0]
+
+    # WebUI 保存配置后（rebuild_client）允许再次告警
+    plugin._t2i_endpoint_warned = False
+    plugin._card_render_fn()
+    assert warning.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_render_card_result_uses_configured_render_fn(monkeypatch):
+    plugin = _plugin(cards_enabled=True)
+    sentinel = MagicMock()
+    plugin._card_render_fn = MagicMock(return_value=sentinel)
+    captured = {}
+
+    async def fake_render_cached(cache, html_render, tmpldata, timeout):
+        captured["fn"] = html_render
+        return "/tmp/card.jpg"
+
+    monkeypatch.setattr("plugin_pkg.main.render_card_cached", fake_render_cached)
+    monkeypatch.setattr("plugin_pkg.main.schedule_cleanup_file", MagicMock())
+
+    path = await plugin._render_card_result({"card_type": "search"})
+
+    assert path == "/tmp/card.jpg"
+    assert captured["fn"] is sentinel
+
+
 @pytest.mark.asyncio
 async def test_card_render_success_clears_cooldown(monkeypatch):
     plugin = _plugin(cards_enabled=True)

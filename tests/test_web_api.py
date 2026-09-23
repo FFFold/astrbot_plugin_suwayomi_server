@@ -439,6 +439,35 @@ async def test_config_post_rejects_bad_card_render_values():
     assert cfg["cards"]["card_render_timeout_sec"] == 5  # clamped to min
 
 
+@pytest.mark.asyncio
+async def test_config_post_t2i_keys():
+    """T2I source/endpoint are whitelisted; endpoint is stored for later normalization."""
+    cfg = FakeConfig({"server_url": "http://old:4567"})
+
+    result = await api_config_post(cfg, {
+        "server_url": "http://new:4567",
+        "t2i_source": "custom",
+        "t2i_endpoint": "http://t2i.local:9105",
+    }, AsyncMock())
+
+    assert result["success"] is True
+    assert cfg["cards"]["t2i_source"] == "custom"
+    assert cfg["cards"]["t2i_endpoint"] == "http://t2i.local:9105"
+
+
+@pytest.mark.asyncio
+async def test_config_post_rejects_invalid_t2i_source():
+    cfg = FakeConfig({"server_url": "http://old:4567"})
+
+    result = await api_config_post(cfg, {
+        "server_url": "http://new:4567",
+        "t2i_source": "evil",
+    }, AsyncMock())
+
+    assert result["success"] is True
+    assert "t2i_source" not in cfg.get("cards", {})
+
+
 def test_config_get_only_returns_allowed_keys():
     """api_config_get should only return whitelisted keys."""
     cfg = {

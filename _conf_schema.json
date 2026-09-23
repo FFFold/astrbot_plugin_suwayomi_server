@@ -46,6 +46,23 @@
         "min": 5,
         "max": 120,
         "hint": "单张卡片渲染的超时上限，超时自动回退纯文本；T2I 服务不可用（如未配置/断网）时命令会等待该时长后回退"
+      },
+      "t2i_source": {
+        "description": "T2I 服务来源",
+        "type": "string",
+        "default": "system",
+        "options": ["system", "custom"],
+        "labels": ["使用 AstrBot 系统配置", "单独配置（自建 T2I 服务）"],
+        "hint": "卡片渲染使用的 T2I 服务。「使用 AstrBot 系统配置」跟随 AstrBot 全局的 T2I 设置（默认）；「单独配置」则仅本插件使用下方指定的 T2I 端点，适合自建 astrbot-t2i-service 或想与系统 T2I 隔离的场景。自建服务部署方式见文档 docs/setup.md"
+      },
+      "t2i_endpoint": {
+        "description": "T2I 端点",
+        "type": "string",
+        "default": "",
+        "condition": {
+          "t2i_source": "custom"
+        },
+        "hint": "仅当「T2I 服务来源」选择「单独配置」时生效。填写自建 astrbot-t2i-service 的地址，例如 http://127.0.0.1:8999 或 http://192.168.1.100:8999（末尾无需 /text2img，插件会自动补全）。留空时回退为使用 AstrBot 系统 T2I 配置并打印警告。部署教程：https://github.com/AstrBotDevs/astrbot-t2i-service，也可参考 docs/setup.md 的「可选：自建 T2I 卡片渲染服务」章节"
       }
     }
   },
@@ -198,6 +215,8 @@
   "password": { "type": "string", "default": "", "invisible": true },
   "result_cards_enabled": { "type": "bool", "default": false, "invisible": true },
   "card_render_timeout_sec": { "type": "int", "default": 30, "invisible": true },
+  "t2i_source": { "type": "string", "default": "system", "invisible": true },
+  "t2i_endpoint": { "type": "string", "default": "", "invisible": true },
   "max_pages": { "type": "int", "default": 30, "invisible": true },
   "send_mode": { "type": "string", "default": "image", "invisible": true },
   "image_fetch_mode": { "type": "string", "default": "download", "invisible": true },

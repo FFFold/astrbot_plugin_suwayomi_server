@@ -53,6 +53,7 @@ from .suwayomi.service import (
     ttl_cache_lookup,
     ttl_cache_store,
 )
+from .suwayomi.t2i import make_endpoint_renderer, normalize_endpoint
 from .suwayomi.updater import check_updates as _check_updates
 from .suwayomi.updater import run_update_loop
 from .utils.downloader import download_cover, fetch_pages_local
@@ -117,6 +118,7 @@ class SuwayomiPlugin(Star):
         self._ai_send_locks: dict[tuple[str, str], asyncio.Lock] = {}
         self._card_cache = CardCache(ttl=CARD_CACHE_TTL)
         self._card_cooldown_until = 0.0
+        self._t2i_endpoint_warned = False
         self._update_lock = asyncio.Lock()
         self._bg_task: asyncio.Task | None = None
         self._check_updates_fn = None
@@ -647,6 +649,30 @@ class SuwayomiPlugin(Star):
             return False
         return True
 
+    def _card_render_fn(self):
+        """Pick the card renderer: AstrBot's built-in T2I or a standalone endpoint.
+
+        ``t2i_source == "custom"`` routes cards to the endpoint configured in
+        ``t2i_endpoint`` (e.g. a self-hosted astrbot-t2i-service); an empty
+        endpoint falls back to AstrBot's system T2I config with a warning.
+        Any other value keeps the system renderer (the plugin default).
+        """
+        source = str(get_config_value(self.config, "t2i_source", "system") or "system").strip().lower()
+        if source != "custom":
+            return self.html_render
+
+        endpoint = normalize_endpoint(get_config_value(self.config, "t2i_endpoint", ""))
+        if not endpoint:
+            if not getattr(self, "_t2i_endpoint_warned", False):
+                self._t2i_endpoint_warned = True
+                logger.warning(
+                    f"[{PLUGIN_NAME}] T2I 服务来源为「单独配置」但端点为空，"
+                    "已回退 AstrBot 系统 T2I 配置；请在插件设置中填写 T2I 端点"
+                )
+            return self.html_render
+
+        return make_endpoint_renderer(endpoint)
+
     async def _render_card_result(self, tmpldata: dict) -> str | None:
         """Render one card to a local file; return path or None on failure.
 
@@ -660,7 +686,7 @@ class SuwayomiPlugin(Star):
             timeout = 30.0
         timeout = max(5.0, min(timeout, 120.0))
         path = await render_card_cached(
-            self._card_cache, self.html_render, tmpldata, timeout=timeout
+            self._card_cache, self._card_render_fn(), tmpldata, timeout=timeout
         )
         if path:
             self._card_cooldown_until = 0.0
@@ -1623,6 +1649,8 @@ class SuwayomiPlugin(Star):
             self._search_cache.clear()
             self._ai_state.clear()
             self._ai_send_locks.clear()
+            # 配置变更后允许再次就空 T2I 端点发出警告
+            self._t2i_endpoint_warned = False
             self._sync_ai_tools()
             if self._bg_task and not self._bg_task.done():
                 self._bg_task.cancel()

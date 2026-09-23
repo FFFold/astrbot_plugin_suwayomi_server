@@ -17,6 +17,7 @@ astrbot_suwayomi_server/
 │   ├── models.py              # 数据模型定义
 │   ├── service.py             # 业务逻辑层（漫画/章节解析、缓存策略、格式化）
 │   ├── cards.py               # 指令结果卡片（T2I 模板、数据准备、简介清洗、封面嵌入、渲染缓存）
+│   ├── t2i.py                 # 独立 T2I 端点客户端（t2i_source=custom 时使用）
 │   ├── ai_service.py          # Agent 结构化搜索、章节查询与订阅管理（无发送副作用）
 │   ├── ai_tools.py            # AstrBot FunctionTool Schema 与注册工厂
 │   └── updater.py             # 更新引擎（check_updates + run_update_loop）
@@ -53,7 +54,9 @@ astrbot_suwayomi_server/
 │   ├── test_cards.py          # 卡片模块单元测试（数据准备/封面嵌入/渲染/缓存）
 │   ├── test_card_commands.py  # 命令卡片路径回归测试
 │   ├── test_live_skip.py      # live 探活助手单元测试
+│   ├── test_t2i.py            # 独立 T2I 端点客户端单元测试（URL 归一化/请求/落盘）
 │   ├── test_live_api.py       # Suwayomi 客户端集成测试
+│   ├── test_live_t2i.py       # 独立 T2I 端点集成测试（不可达时自动跳过）
 │   └── test_live_web_api.py   # WebUI API handler 集成测试
 ├── docs/
 │   ├── dev/                   # 开发者文档（本目录）
@@ -166,9 +169,18 @@ astrbot_suwayomi_server/
 - `CARD_TEMPLATE` — 单个 Jinja2 HTML 模板字符串，含 7 种卡片变体（搜索/订阅确认/批量订阅/我的订阅/更新/章节头部/章节续卡），远程 T2I 服务端原生渲染
 - `build_*` 数据准备纯函数 — 生成 `tmpldata`，标题/章节名等用户可控文本统一 `html.escape()`；漫画简介经 `clean_description` 清洗（去 HTML 标签/实体、折叠空白、截断）后转义，章节列表、订阅确认、更新通知卡片均展示；`build_chapter_cards(manga, lines)` 按 `CHAPTER_LINES_PER_CARD=130` 切块（三列，最多 `MAX_CHAPTER_CARDS=4` 张），超限行原样返回作文本尾部
 - `embed_covers(client, items)` — 复用 `utils/downloader.download_images` 并发下载封面（带认证头，同源策略与 `download_cover` 一致），PIL 压缩为 120px 宽 JPEG 后以 base64 data URL 嵌入；失败置 `cover_data_url=None`（模板渲染占位块）
-- `render_card(html_render, tmpldata, timeout)` — `asyncio.wait_for` 包裹 `html_render(return_url=False)`，440px 宽 JPEG q85；任何异常/超时返回 `None`（调用方回退纯文本）
+- `render_card(html_render, tmpldata, timeout)` — `asyncio.wait_for` 包裹 `html_render(return_url=False)`，880px 宽 JPEG q95、1.8x 设备像素比（约 1584px 物理宽）；任何异常/超时返回 `None`（调用方回退纯文本）
 - `CardCache` — 以 `sha1(tmpldata)` 为键的 TTL 内存缓存（默认 600s），避免相同查询重复渲染；缓存文件由 `schedule_cleanup_file` 延后清理
 - 命令接入统一套路：开关开 → `embed_covers` → `render_card_cached`（成功 `yield` 图片 / 失败回退原文本）
+- 渲染器由 `main.py` 的 `_card_render_fn()` 注入：`t2i_source=system` 用 `Star.html_render`（AstrBot 全局 T2I 配置），`t2i_source=custom` 用 `suwayomi/t2i.py` 的独立端点渲染器；渲染失败进入 5 分钟冷却（`_card_cooldown_until`）
+
+#### `suwayomi/t2i.py` — 独立 T2I 端点客户端
+
+- `normalize_endpoint(endpoint)` — 归一化服务地址：去尾斜杠、剥掉误粘贴的 `/generate`、缺 `/text2img` 时补全（与 AstrBot 核心 URL 规则一致）
+- `render_custom_template(endpoint, tmpl, tmpldata, options, timeout)` — POST `{base}/generate`，载荷 `{tmpl, tmpldata, options, json: false}`；响应字节按 Content-Type 写入 `.jpg`/`.png` 临时文件并返回路径；非 200 / 空响应抛 `RuntimeError`，空端点抛 `ValueError`
+- `make_endpoint_renderer(endpoint)` — 返回与 `Star.html_render` 同签名的可调用对象（`tmpl, data, return_url=False, options=None`），通过 `_card_render_fn()` 注入 `render_card_cached`；`return_url=True` 不支持（本插件恒用本地文件）
+- 不使用 AstrBot 的 `download_image_by_url`：核心路径会注入 Shiki runtime 与 `t2i_active_template` 逻辑，独立端点只需原样渲染插件模板
+- 端点留空时 `main._card_render_fn()` 打印一次性警告并回退系统渲染器（`_t2i_endpoint_warned` 去重，WebUI 保存配置后重置）
 
 #### `utils/downloader.py` — 图片下载管道
 
@@ -364,7 +376,7 @@ uv add --dev pytest pytest-asyncio
 
 ```bash
 # 全部单元测试（无需网络）
-uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_downloader.py tests/test_list_chapters.py tests/test_cards.py tests/test_card_commands.py tests/test_subscription.py tests/test_web_api.py tests/test_batch_subscribe.py tests/test_push.py tests/test_service.py tests/test_updater.py tests/test_ai_service.py tests/test_ai_tools.py tests/test_live_skip.py tests/test_config.py -v
+uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_downloader.py tests/test_list_chapters.py tests/test_cards.py tests/test_card_commands.py tests/test_subscription.py tests/test_web_api.py tests/test_batch_subscribe.py tests/test_push.py tests/test_service.py tests/test_updater.py tests/test_ai_service.py tests/test_ai_tools.py tests/test_live_skip.py tests/test_t2i.py tests/test_config.py -v
 
 # 实时 API 集成测试（需要 Suwayomi-Server 可访问）
 uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s

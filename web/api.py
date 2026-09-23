@@ -30,6 +30,7 @@ PLUGIN_NAME = "astrbot_plugin_suwayomi_server"
 ALLOWED_CONFIG_KEYS = {
     "server_url", "auth_mode", "username", "password",
     "result_cards_enabled", "card_render_timeout_sec",
+    "t2i_source", "t2i_endpoint",
     "check_interval", "max_pages", "send_mode", "image_fetch_mode",
     "download_concurrency", "download_retries", "default_source_id",
     "chapter_cache_hours", "chapter_list_show_cover", "download_format",
@@ -69,6 +70,7 @@ ENUM_CONFIG_KEYS = {
     "image_fetch_mode": {"url", "download"},
     "auto_push_mode": {"image", "file"},
     "download_format": {"zip", "pdf", "cbz"},
+    "t2i_source": {"system", "custom"},
 }
 
 

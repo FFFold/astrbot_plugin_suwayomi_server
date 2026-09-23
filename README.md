@@ -235,10 +235,12 @@ uv pip install -r astrbot_suwayomi_server/requirements.txt
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
-| `result_cards_enabled` | bool | `false` | 指令结果卡片渲染：搜索/订阅确认/批量订阅/我的订阅/更新通知/章节列表通过 AstrBot T2I 服务渲染为带封面的卡片；其中章节列表、订阅确认、更新通知卡片会展示漫画简介；关闭或渲染失败时回退纯文本 |
+| `result_cards_enabled` | bool | `false` | 指令结果卡片渲染：搜索/订阅确认/批量订阅/我的订阅/更新通知/章节列表通过 T2I 服务渲染为带封面的卡片；其中章节列表、订阅确认、更新通知卡片会展示漫画简介；关闭或渲染失败时回退纯文本 |
 | `card_render_timeout_sec` | int | `30` | 单张卡片渲染超时（5-120 秒），超时自动回退纯文本；T2I 服务不可用时命令会等待该时长后回退，且之后 5 分钟内不再尝试渲染 |
+| `t2i_source` | string | `system` | T2I 服务来源：`system`（使用 AstrBot 系统 T2I 配置，默认）/ `custom`（单独配置，仅本插件使用下面的端点） |
+| `t2i_endpoint` | string | `""` | 仅 `t2i_source=custom` 时生效：自建 astrbot-t2i-service 地址，如 `http://192.168.1.100:8999`（末尾无需 `/text2img`，插件自动补全）；留空则回退系统配置并打印警告 |
 
-> 💡 **卡片渲染**：插件默认以纯文本回复。如需将指令结果渲染为带封面的精美卡片（章节列表、订阅确认、更新通知卡片会同时展示漫画简介，依赖 AstrBot 的 T2I 服务，通常随 AstrBot 内置可用），在 WebUI 插件设置中将 `result_cards_enabled` 开启即可；T2I 服务不可用时所有命令自动回退纯文本，不会报错。
+> 💡 **卡片渲染**：插件默认以纯文本回复。如需将指令结果渲染为带封面的精美卡片（章节列表、订阅确认、更新通知卡片会同时展示漫画简介），在 WebUI 插件设置中将 `result_cards_enabled` 开启即可。默认使用 AstrBot 系统 T2I 配置；AstrBot 框架默认指向**国外官方端点**（速度慢、失败率高），建议自建本地服务并改全局端点或按下方 `t2i_source` 单独配置，详见 [docs/setup.md](docs/setup.md#可选优化-t2i-卡片渲染服务)。T2I 服务不可用时所有命令自动回退纯文本，不会报错。
 
 ### 阅读体验
 

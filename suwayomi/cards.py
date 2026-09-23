@@ -573,6 +573,10 @@ class CardCache:
         self._max_entries = max_entries
         self._data: dict[str, tuple[float, str]] = {}
 
+    def clear(self) -> None:
+        """Drop every cached entry (e.g. after the renderer config changes)."""
+        self._data.clear()
+
     @staticmethod
     def _key(tmpldata: dict) -> str:
         payload = json.dumps(tmpldata, ensure_ascii=False, sort_keys=True, default=str)

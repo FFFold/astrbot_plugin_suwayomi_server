@@ -46,6 +46,23 @@
         "min": 5,
         "max": 120,
         "hint": "单张卡片渲染的超时上限，超时自动回退纯文本；T2I 服务不可用（如未配置/断网）时命令会等待该时长后回退"
+      },
+      "t2i_source": {
+        "description": "T2I 服务来源",
+        "type": "string",
+        "default": "system",
+        "options": ["system", "custom"],
+        "labels": ["使用 AstrBot 系统配置", "单独配置（自建 T2I 服务）"],
+        "hint": "使用哪个 T2I 服务渲染卡片。系统配置跟随 AstrBot 全局设置（默认）；单独配置则仅本插件使用下方端点。部署见 docs/setup.md"
+      },
+      "t2i_endpoint": {
+        "description": "T2I 端点",
+        "type": "string",
+        "default": "",
+        "condition": {
+          "t2i_source": "custom"
+        },
+        "hint": "自建 astrbot-t2i-service 地址，如 http://192.168.1.100:8999（无需填 /text2img）。留空则回退系统配置"
       }
     }
   },
@@ -198,6 +215,8 @@
   "password": { "type": "string", "default": "", "invisible": true },
   "result_cards_enabled": { "type": "bool", "default": false, "invisible": true },
   "card_render_timeout_sec": { "type": "int", "default": 30, "invisible": true },
+  "t2i_source": { "type": "string", "default": "system", "invisible": true },
+  "t2i_endpoint": { "type": "string", "default": "", "invisible": true },
   "max_pages": { "type": "int", "default": 30, "invisible": true },
   "send_mode": { "type": "string", "default": "image", "invisible": true },
   "image_fetch_mode": { "type": "string", "default": "download", "invisible": true },

@@ -8,6 +8,7 @@
 - [第二步：安装漫画源扩展](#第二步安装漫画源扩展)
 - [第三步：配置 AstrBot 插件](#第三步配置-astrbot-插件)
 - [第四步：验证](#第四步验证)
+- [可选：优化 T2I 卡片渲染服务](#可选优化-t2i-卡片渲染服务)
 - [⚠️ 更换 Suwayomi-Server 实例的注意事项](#️-更换-suwayomi-server-实例的注意事项)
 - [常见问题](#常见问题)
 
@@ -218,6 +219,115 @@ server:
 - `server_url` 是否正确
 - 防火墙是否放行了端口
 - AstrBot 所在网络是否能访问 Suwayomi 地址
+
+---
+
+## 可选：优化 T2I 卡片渲染服务
+
+> 本插件默认状态为纯文本回复。开启 `result_cards_enabled` 后，指令结果会渲染为带封面的卡片，默认使用 **AstrBot 系统 T2I 服务**，无需额外部署。
+
+### 为什么要自建？
+
+AstrBot 框架默认使用**部署在国外的官方 T2I 端点**（`t2i.soulter.top` 及其官方端点池）。国内用户访问时常见两个问题：
+
+- **速度慢** —— 渲染一张卡片动辄数秒，章节列表等多卡片场景更明显
+- **失败率高** —— 网络抖动或端点限流会触发渲染失败，插件只能回退纯文本
+
+自建一个本地的 astrbot-t2i-service 可以彻底解决：渲染在局域网/本机完成，速度从数秒降到几百毫秒，且不受官方端点波动影响。
+
+### 方案一：改 AstrBot 全局端点（最省事）
+
+如果你只有本插件需要卡片渲染，直接把 AstrBot 的 T2I 端点指向自建服务即可，**无需修改插件配置**（`t2i_source` 保持默认的「使用 AstrBot 系统配置」）：
+
+1. 按下方「部署方式」先把服务跑起来
+2. 打开 AstrBot WebUI → **配置** → 「文本转图像」
+3. 将 **文本转图像服务 API 地址** 填为自建地址，例如 `http://127.0.0.1:8999`
+4. 保存后重启 AstrBot 生效
+
+> 也可以开启「文本转图像自定义模版」使用 AstrBot 的模板系统；本插件不受此影响，模板由插件自带。
+
+**注意**：AstrBot 全局配置为空的默认值即官方端点 `https://t2i.soulter.top/text2img`，并且会自动从官方端点池中随机选取节点，因此填了自建地址后请确认已生效。
+
+### 方案二：仅本插件单独配置（推荐多实例/多插件共存）
+
+如果其他插件仍想用官方端点，或你想让本插件的卡片渲染与系统设置完全隔离：
+
+1. 按下方「部署方式」把服务跑起来
+2. 打开 AstrBot WebUI → 插件管理 → 「Suwayomi 漫画助手」→ 设置
+3. 在「卡片渲染」分组中：
+   - **T2I 服务来源** → 选择「单独配置（自建 T2I 服务）」
+   - **T2I 端点** → 填写服务地址，例如 `http://192.168.1.100:8999`
+     - 末尾**无需** `/text2img`，插件会自动补全
+   - 确认 **指令结果卡片渲染** 已开启
+4. 发送 `/漫画 搜索 海贼王` 验证；渲染失败会自动回退纯文本，不会报错
+
+**方案对比**：
+
+| | 方案一：改全局 | 方案二：插件单独配置 |
+|---|---|---|
+| 影响范围 | AstrBot 所有用到 T2I 的功能 | 仅本插件卡片渲染 |
+| 配置位置 | AstrBot 配置 → 文本转图像 | 插件设置 → 卡片渲染 |
+| 适用场景 | 只有本插件用卡片 | 多插件/多实例共存，需隔离 |
+| 留空时行为 | — | 回退系统配置并打印警告 |
+
+### 部署方式一：Docker（推荐）
+
+官方镜像由 AstrBot 官方维护并发布在 Docker Hub（`soulter/astrbot-t2i-service`）：
+
+```bash
+docker run -d \
+  --name astrbot-t2i \
+  -p 8999:8999 \
+  -e TZ=Asia/Shanghai \
+  -e IMAGE_LIFETIME_HOURS=24 \
+  --restart unless-stopped \
+  soulter/astrbot-t2i-service:latest
+```
+
+验证服务运行：
+
+```bash
+curl -X POST http://localhost:8999/text2img/generate \
+  -H "Content-Type: application/json" \
+  -d '{"html":"<h1>hello</h1>","options":{"type":"png"}}' \
+  -o test.png
+```
+
+能生成 `test.png` 即表示部署成功。
+
+### 部署方式二：从源码运行
+
+需要 Python 3.13+ 与 Playwright 浏览器依赖：
+
+```bash
+git clone https://github.com/AstrBotDevs/astrbot-t2i-service.git
+cd astrbot-t2i-service
+pip install -r requirements.txt
+playwright install --with-deps chromium
+python main.py
+```
+
+默认监听 `0.0.0.0:8999`。
+
+### 常用环境变量
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `PORT` | `8999` | 服务端口 |
+| `IMAGE_LIFETIME_HOURS` | `24` | 生成图片的保留时长（小时），过期自动清理 |
+| `STORAGE_BACKEND` | `local` | 图片存储后端，支持 `local` / `s3` / `r2` |
+| `RATE_LIMIT_MAX_REQUESTS` | `0` | 限流窗口内最大请求数，`0` 表示不限流 |
+| `RATE_LIMIT_WINDOW_SECONDS` | `0` | 限流窗口秒数 |
+
+> 多副本部署（K8s 等）时，JSON 模式生成的图片可能落在不同实例上导致 404，此时需配置 S3/R2 共享存储。本插件使用**直接返回图片字节**的模式（不落盘），单实例部署即可，无此问题。
+>
+> 完整环境变量与 API 说明见 [astrbot-t2i-service 仓库](https://github.com/AstrBotDevs/astrbot-t2i-service)。
+
+### 注意事项
+
+- AstrBot 所在机器必须能访问 T2I 端点地址（Docker 部署时注意容器网络）
+- 「T2I 服务来源」选择「单独配置」但端点留空时，插件会打印警告并回退使用 AstrBot 系统 T2I 配置，不会静默失败
+- 若 T2I 服务不可用，命令会等待 `card_render_timeout_sec`（默认 30 秒）后回退纯文本，并在之后 5 分钟内不再尝试渲染
 
 ---
 

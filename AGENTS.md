@@ -18,12 +18,16 @@
 
 ```bash
 # Unit tests (no network needed)
-uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_downloader.py tests/test_list_chapters.py tests/test_cards.py tests/test_card_commands.py tests/test_subscription.py tests/test_web_api.py tests/test_batch_subscribe.py tests/test_push.py tests/test_service.py tests/test_updater.py tests/test_ai_service.py tests/test_ai_tools.py tests/test_live_skip.py tests/test_config.py -v
+uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_downloader.py tests/test_list_chapters.py tests/test_cards.py tests/test_card_commands.py tests/test_subscription.py tests/test_web_api.py tests/test_batch_subscribe.py tests/test_push.py tests/test_service.py tests/test_updater.py tests/test_ai_service.py tests/test_ai_tools.py tests/test_live_skip.py tests/test_t2i.py tests/test_config.py tests/test_config_reset.py -v
 
 # Integration tests (requires live Suwayomi-Server)
 uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
 # Custom server: SUWAYOMI_URL=http://host:4567 uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
 # Note: live tests auto-skip (3s probe) when the server is unreachable, so plain `uv run pytest` is always green without a server.
+
+# Integration tests for standalone T2I endpoint (auto-skips when unreachable)
+uv run pytest tests/test_live_t2i.py -v -s
+# Custom endpoint: T2I_ENDPOINT=http://host:8999 uv run pytest tests/test_live_t2i.py -v -s
 
 # All tests
 uv run pytest -v
@@ -41,6 +45,7 @@ main.py (SuwayomiPlugin — thin dispatch layer)
   ├── suwayomi/models.py (Source, Manga, Chapter, SearchResult dataclasses)
   ├── suwayomi/service.py (resolve_manga, resolve_chapter, get_or_fetch_chapters, fmt helpers)
   ├── suwayomi/cards.py (T2I card template, data prep, embed_covers, render_card, CardCache)
+  ├── suwayomi/t2i.py (standalone astrbot-t2i-service client for t2i_source=custom)
   ├── suwayomi/ai_service.py (structured, side-effect-free Agent search/chapter/subscription service)
   ├── suwayomi/ai_tools.py (FunctionTool schemas and registration factory)
   ├── suwayomi/updater.py (check_updates, run_update_loop)
@@ -55,7 +60,8 @@ main.py (SuwayomiPlugin — thin dispatch layer)
 - `main.py`: Plugin entry, all commands under `@filter.command_group("漫画")`, six AstrBot Agent tools, background update loop, WebUI API registration. Thin dispatch layer — all business logic delegated to service/updater/downloader/pusher modules.
   - `suwayomi/client.py`: All Suwayomi interaction via `POST /api/graphql`; supports none/basic/jwt auth. Exposes `auth_headers` property for image download auth.
   - `suwayomi/config.py`: Config is stored grouped (server/cards/reading/pack/push/ai/advanced, matching `_conf_schema.json` and the WebUI settings page). All reads go through `get_config_value()` and writes through `set_config_value()` — both fall back to legacy flat keys. `_conf_schema.json` keeps all legacy flat keys as `invisible: true` so AstrBot Core's config sync never deletes user values; `migrate_legacy_config()` runs in `__init__` on **every load**, stateless and idempotent: non-default legacy values are synced into groups (Core-refilled default placeholders are left untouched, never clobbering grouped config), returns whether a save is needed.
-- `suwayomi/cards.py`: T2I 结果卡片渲染（`result_cards_enabled` 配置，默认关闭）。`CARD_TEMPLATE` 为单个 Jinja2 模板（远程 T2I 端点原生渲染）；`build_*` 纯函数准备 tmpldata（用户文本统一 `html.escape`，漫画简介经 `clean_description` 清洗后一并转义）；`embed_covers` 复用 `download_images` 并发下载封面→PIL 压缩→base64 嵌入（失败显示占位块）；`render_card` 用 `asyncio.wait_for` 包裹 `html_render(return_url=False)`（880px 画布 × 1.8 设备像素比输出高清图），异常/超时返回 None 供调用方回退纯文本；`CardCache` 以 sha1(tmpldata) 为键 TTL 缓存。`main.py` 的 `_result_cards_enabled()` 在渲染失败后进入 5 分钟冷却（`_card_cooldown_until`），期间命令直接回退文本。
+- `suwayomi/cards.py`: T2I 结果卡片渲染（`result_cards_enabled` 配置，默认关闭）。`CARD_TEMPLATE` 为单个 Jinja2 模板（远程 T2I 端点原生渲染）；`build_*` 纯函数准备 tmpldata（用户文本统一 `html.escape`，漫画简介经 `clean_description` 清洗后一并转义）；`embed_covers` 复用 `download_images` 并发下载封面→PIL 压缩→base64 嵌入（失败显示占位块）；`render_card` 用 `asyncio.wait_for` 包裹 `html_render(return_url=False)`（880px 画布 × 1.8 设备像素比输出高清图），异常/超时返回 None 供调用方回退纯文本；`CardCache` 以 sha1(tmpldata) 为键 TTL 缓存，`clear()` 供配置变更时丢弃旧渲染器产物。`main.py` 的 `_result_cards_enabled()` 在渲染失败后进入 5 分钟冷却（`_card_cooldown_until`），期间命令直接回退文本；`_card_render_fn()` 决定渲染器来源（见 `suwayomi/t2i.py`）；WebUI 保存配置后 `_reset_after_config_change()` 清空卡片缓存与冷却（缓存键不含渲染器，冷却会掩盖已修好的端点）。
+- `suwayomi/t2i.py`: 独立 T2I 端点客户端（`t2i_source="custom"` 时启用）。`normalize_endpoint()` 镜像 AstrBot 核心 URL 规则（去尾斜杠、补 `/text2img`、容忍粘贴的 `/generate`；非字符串输入安全返回空串，仅精确匹配 `/text2img` 路径段以避免 `/nottext2img` 误判）；`render_custom_template()` POST `{base}/generate`（`{tmpl, tmpldata, options, json:false}`）并把图片字节写入临时文件（按 Content-Type 选 `.jpg`/`.png`），非 200/空响应抛异常；`make_endpoint_renderer()` 返回与 `Star.html_render` 同签名的可调用对象，供 `render_card_cached` 直接注入。留空端点由 `main._card_render_fn()` 回退系统渲染器并打印一次性警告。
 - `suwayomi/models.py`: Pure dataclasses with `from_dict()` factory methods
 - `suwayomi/service.py`: Business logic — manga/chapter resolution, chapter fetching/caching, text normalization, status emoji mapping. All functions are standalone with dependency-injected parameters (client, sub_mgr, get_kv_data, etc.)
 - `suwayomi/ai_service.py`: Structured AI-facing search, chapter lookup, subscribe/unsubscribe, and subscription listing. Returns stable manga/chapter IDs and never sends messages.
@@ -101,6 +107,10 @@ main.py (SuwayomiPlugin — thin dispatch layer)
 15. **`LibraryUpdateStatus` has no `state` or `isRunning` field directly**: The `updateLibrary` mutation's `updateStatus` field returns a `LibraryUpdateStatus` type with fields `categoryUpdates`, `jobsInfo`, and `mangaUpdates`. To check if the updater is running, use `updateStatus { jobsInfo { isRunning } }`. Both `{updateStatus{state}}` and `{updateStatus{isRunning}}` will fail with `FieldUndefined` validation errors.
 
 16. **Image downloads must carry auth headers**: When Suwayomi-Server has auth enabled, image downloads via `/api/v1/manga/.../page/...` REST endpoint require authentication. `download_images()` creates a new `aiohttp.ClientSession` — always pass `headers=client.auth_headers` to carry the auth. Use `SuwayomiClient.auth_headers` property (returns Basic or cached JWT token). The `image_fetch_mode="url"` path is **irreparably broken** for authenticated servers because AstrBot Core's HTTP client has no way to inject auth headers.
+
+17. **Card rendering has two T2I sources, one entry point**: All card rendering funnels through `main._render_card_result()` → `main._card_render_fn()`. `t2i_source="system"` (default) returns `self.html_render` (AstrBot Core's `HtmlRenderer`, whose endpoint comes from AstrBot's *global* config); `t2i_source="custom"` returns a standalone renderer from `suwayomi/t2i.py` bound to `t2i_endpoint`. Never call `self.html_render` directly for cards — bypassing `_card_render_fn()` silently ignores the user's choice. `suwayomi/t2i.py` does **not** use AstrBot's `download_image_by_url` (it injects Shiki/`t2i_active_template` logic that only makes sense for the core path); it POSTs the raw template and saves bytes itself.
+
+18. **AstrBot's T2I endpoint is a module-level singleton**: `astrbot/core/__init__.py` builds `html_renderer = HtmlRenderer(astrbot_config.get("t2i_endpoint", ...))` at *import* time from the global config, and `Star.html_render` just forwards to it. Changing the global `t2i_endpoint` in the AstrBot WebUI therefore requires an **AstrBot restart** to take effect (documented in `docs/setup.md`). AstrBot's default is the overseas official endpoint `https://t2i.soulter.top/text2img`, plus a randomly-shuffled pool fetched from `api.soulter.top/astrbot/t2i-endpoints` — the reason the plugin offers a self-hosted `t2i_endpoint`. In contrast, the plugin's own `t2i_source`/`t2i_endpoint` are read per render, so they apply **without** a restart (the WebUI save path resets `_t2i_endpoint_warned`).
 
 ## Key Helper Methods
 

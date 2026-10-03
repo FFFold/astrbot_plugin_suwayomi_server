@@ -991,6 +991,12 @@ class SuwayomiPlugin(Star):
                 except Exception:
                     resolution = None
 
+            if responses and all(result is None for _, result in responses):
+                logger.warning(
+                    f"[{PLUGIN_NAME}] 全部 {len(responses)} 个源搜索失败，"
+                    "「未找到」可能由网络/限流导致"
+                )
+
             # pool: (manga, 源显示名, Bangumi 溯源条目id|None)；排序开启时
             # 统一按标题相关度混排，编号在排序后分配（同分保持源顺序）
             pool: list[tuple[Manga, str, int | None]] = [
@@ -999,6 +1005,10 @@ class SuwayomiPlugin(Star):
                 if result
                 for m in result.mangas
             ]
+            logger.debug(
+                f"[{PLUGIN_NAME}] 搜索 {search_query!r}: "
+                f"{len(target_sources)} 个源, {len(pool)} 条结果"
+            )
             if refresh_on and pool:
                 # 源站列表页截断的长标题（我的首推是恶役...）从详情页补全，
                 # 失败保留原标题（排序有反向包含兜底）
@@ -1050,7 +1060,11 @@ class SuwayomiPlugin(Star):
                                 self.client.search_manga(src.id, query), timeout=15
                             )
                             return result, sanitize_for_message(src.display_name, limit=40), sid
-                        except Exception:
+                        except Exception as e:
+                            logger.debug(
+                                f"[{PLUGIN_NAME}] Bangumi 探针 {query!r} "
+                                f"在 {src.name} 搜索失败: {e}"
+                            )
                             return None, sanitize_for_message(src.display_name, limit=40), sid
 
                     probe_responses = await asyncio.gather(
@@ -1092,6 +1106,23 @@ class SuwayomiPlugin(Star):
                                 f"\n💡 关键词无强命中，已通过 Bangumi 别名"
                                 f"「{used[:80]}」扩展搜索"
                             )
+                            logger.debug(
+                                f"[{PLUGIN_NAME}] Bangumi 扩展采纳: "
+                                f"{len(probes)} 个探针, 新增 {len(added)} 条, "
+                                f"最强分 {merged_scores[0]:.0f}"
+                            )
+                        else:
+                            logger.debug(
+                                f"[{PLUGIN_NAME}] Bangumi 扩展未达强命中线，保持第一轮结果"
+                            )
+                    else:
+                        logger.debug(
+                            f"[{PLUGIN_NAME}] Bangumi 探针未带回新结果，保持第一轮结果"
+                        )
+                else:
+                    logger.debug(
+                        f"[{PLUGIN_NAME}] 未生成可用 Bangumi 探针，跳过扩展搜索"
+                    )
                 if best < STRONG_MATCH_THRESHOLD and not expansion_note:
                     aliases = (
                         confident_aliases(search_query, resolution)

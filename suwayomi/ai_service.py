@@ -196,8 +196,13 @@ async def search_manga_for_agent(
             )
             return source, result, None
         except TimeoutError:
+            logger.debug(
+                f"[suwayomi] AI 搜索源 {source.name} 超时"
+                f"（{_SOURCE_SEARCH_TIMEOUT_SEC:g} 秒）"
+            )
             return source, None, f"搜索超时（{_SOURCE_SEARCH_TIMEOUT_SEC:g} 秒）"
         except Exception as exc:  # one broken source must not fail the whole search
+            logger.debug(f"[suwayomi] AI 搜索源 {source.name} 失败: {exc}")
             return source, None, str(exc)
 
     ranking_on = config_bool(

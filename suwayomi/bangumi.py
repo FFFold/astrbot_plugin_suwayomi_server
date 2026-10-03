@@ -189,6 +189,9 @@ async def resolve_aliases(
         else:
             remaining = deadline - (time.monotonic() - start)
             if remaining <= 0:
+                logger.debug(
+                    f"[{_PLUGIN_NAME}] Bangumi 解析预算耗尽，放弃剩余端点: {query!r}"
+                )
                 return None
             per_base = remaining / (len(chain) - index)
         try:
@@ -197,9 +200,20 @@ async def resolve_aliases(
                 timeout=per_base,
             )
         except asyncio.TimeoutError:
+            logger.debug(
+                f"[{_PLUGIN_NAME}] Bangumi 端点 {base} 超时（{per_base:.1f}s）"
+            )
             continue
         if resolution is not None and resolution.by_subject:
+            if index > 0:
+                logger.debug(
+                    f"[{_PLUGIN_NAME}] Bangumi 前序端点失败，回退到 {base} 成功"
+                )
             return resolution
+    logger.debug(
+        f"[{_PLUGIN_NAME}] Bangumi 全部 {len(chain)} 个端点均失败，"
+        f"跳过别名扩展: {query!r}"
+    )
     return None
 
 
@@ -244,6 +258,10 @@ async def _resolve_via(
             if best_alias_score(query, resolution) < STRONG_MATCH_THRESHOLD:
                 jp = jp_variant(query)
                 if jp and jp != query:
+                    logger.debug(
+                        f"[{_PLUGIN_NAME}] Bangumi 首轮无强命中，"
+                        f"使用日文字形变体重试: {jp!r}"
+                    )
                     await _collect(jp)
     except Exception as exc:
         logger.debug(f"[{_PLUGIN_NAME}] Bangumi 端点 {base} 解析失败: {exc}")

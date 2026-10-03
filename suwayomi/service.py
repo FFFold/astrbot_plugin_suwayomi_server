@@ -457,7 +457,10 @@ async def refresh_truncated_titles(
             fresh = await asyncio.wait_for(
                 client.fetch_manga_details(manga.id), timeout
             )
-        except Exception:
+        except Exception as exc:
+            logger.debug(
+                f"[{_PLUGIN_NAME}] 截断标题刷新失败(manga={manga.id}): {exc}"
+            )
             return False
         if fresh and fresh.title and not looks_truncated(fresh.title):
             manga.title = fresh.title
@@ -465,7 +468,11 @@ async def refresh_truncated_titles(
         return False
 
     results = await asyncio.gather(*(_refresh(m) for m in targets))
-    return sum(1 for ok in results if ok)
+    refreshed = sum(1 for ok in results if ok)
+    logger.debug(
+        f"[{_PLUGIN_NAME}] 截断标题刷新: 尝试 {len(targets)} 条, 成功 {refreshed} 条"
+    )
+    return refreshed
 
 
 async def search_best_match(

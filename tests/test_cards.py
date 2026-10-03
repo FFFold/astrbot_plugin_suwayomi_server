@@ -324,10 +324,18 @@ def test_resolve_cover_url_same_origin_absolute_uses_auth():
 
 def test_resolve_cover_url_cross_origin_port_no_auth():
     client = FakeClient()
+    url, headers = resolve_cover_url(client, "https://cdn.example.com:8443/c.jpg")
+    assert url == "https://cdn.example.com:8443/c.jpg"
+    assert headers is None
+
+
+def test_resolve_cover_url_rejects_cross_origin_loopback():
+    """SSRF 防护：同主机不同端口的环回地址属于第三方目标，拒绝请求。"""
+    client = FakeClient()
     url, headers = resolve_cover_url(
         client, "http://localhost:4568/api/v1/manga/1/thumbnail"
     )
-    assert url == "http://localhost:4568/api/v1/manga/1/thumbnail"
+    assert url is None
     assert headers is None
 
 

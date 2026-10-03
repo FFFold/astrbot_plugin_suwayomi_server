@@ -202,3 +202,28 @@ class TestPackHelpers:
         assert output.exists()
         with zipfile.ZipFile(output) as zf:
             assert len(zf.namelist()) == 3
+
+
+class TestSanitizeFilenameHardening:
+    def test_strips_control_chars(self):
+        out = sanitize_filename("第\x001话\n第2话\t尾")
+        assert "\n" not in out and "\t" not in out and "\x00" not in out
+        assert out == "第1话第2话尾"
+
+    def test_strips_del_char(self):
+        assert sanitize_filename("abc\x7fd") == "abcd"
+
+    def test_windows_reserved_name_prefixed(self):
+        assert sanitize_filename("CON") == "_CON"
+        assert sanitize_filename("com1.zip") == "_com1.zip"
+        assert sanitize_filename("com1特别篇") == "com1特别篇"  # 保留名后跟文字则合法
+
+    def test_trailing_dot_and_space_stripped(self):
+        assert sanitize_filename("第1话. ") == "第1话"
+
+    def test_truncation_does_not_reintroduce_trailing_dot(self):
+        # 截断位恰好落在点上时也不得留下结尾点（PR #21 复审）
+        assert sanitize_filename("a" * 49 + "." + "b", max_len=50) == "a" * 49
+
+    def test_normal_name_unchanged(self):
+        assert sanitize_filename("一拳超人 第1话") == "一拳超人 第1话"

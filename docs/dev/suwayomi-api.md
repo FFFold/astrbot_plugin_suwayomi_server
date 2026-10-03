@@ -173,6 +173,15 @@ mutation($r: String!) {
 }
 ```
 
+
+## fetchManga（刷新漫画详情）
+
+```graphql
+mutation($id:Int!){fetchManga(input:{id:$id}){manga{id title url sourceId status thumbnailUrl inLibrary author artist description genre}}}
+```
+
+触发源站详情页解析器刷新并持久化漫画数据。插件用于修复搜索列表页截断的标题（`refresh_truncated_titles`）。
+
 ## 关键数据类型
 
 ### MangaType

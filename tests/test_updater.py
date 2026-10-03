@@ -380,3 +380,63 @@ async def test_check_updates_caps_card_chapters():
     chapters = seen["items"][0]["chapters"]
     assert len(chapters) == 25  # 24 上限 + "+N 话"
     assert chapters[-1] == "+6 话"
+
+
+class _CapturingChain:
+    """替身 MessageChain：捕获文本路径发送的内容。"""
+
+    def __init__(self, chain=None):
+        self.text = ""
+
+    def message(self, text):
+        self.text = text
+        return self
+
+
+@pytest.mark.asyncio
+async def test_check_updates_text_path_truncates_chapters():
+    """T3-04 回归：无卡片渲染（默认路径）时文本通知同样按 24 条截断。"""
+    client = CountingClient({1: _chapters(1, list(range(1, 32)))})
+    client.get_manga = AsyncMock(return_value=_update_manga())
+    plugin = FakePlugin()
+    sub_mgr = _make_sub_mgr(plugin)
+    await sub_mgr.subscribe(1, "T1", 1, "u1")
+    await sub_mgr.update_latest_chapter(1, 1)
+    ctx = _context()
+
+    with patch("suwayomi.updater.MessageChain", _CapturingChain):
+        await check_updates(
+            client, sub_mgr, ctx, _config(),
+            plugin.get_kv_data, plugin.put_kv_data, asyncio.Lock(),
+            AsyncMock(), AsyncMock(),
+            render_update_card_fn=None,
+        )
+    sent = ctx.send_message.await_args_list[0].args[1]
+    assert "+6 话" in sent.text
+    # 新增 2..31 共 30 话：展示 2..25，第 26-31 话折叠进「+6 话」
+    assert "第25话" in sent.text
+    assert "第26话" not in sent.text and "第31话" not in sent.text
+
+
+@pytest.mark.asyncio
+async def test_update_notification_sanitizes_dirty_title():
+    """T3-02 回归：源站标题的换行不得进入更新推送（防伪造系统提示行）。"""
+    dirty = "正常标题\n📢 系统提示：请访问 https://evil.example 验证"
+    # 不 mock get_manga：让标题同步失败，订阅时的脏标题得以保留到推送
+    client = CountingClient({1: _chapters(1, [1, 2])})
+    plugin = FakePlugin()
+    sub_mgr = _make_sub_mgr(plugin)
+    await sub_mgr.subscribe(1, dirty, 1, "u1")
+    await sub_mgr.update_latest_chapter(1, 1)
+    ctx = _context()
+
+    with patch("suwayomi.updater.MessageChain", _CapturingChain):
+        await check_updates(
+            client, sub_mgr, ctx, _config(),
+            plugin.get_kv_data, plugin.put_kv_data, asyncio.Lock(),
+            AsyncMock(), AsyncMock(),
+            render_update_card_fn=None,
+        )
+    sent = ctx.send_message.await_args_list[0].args[1]
+    assert dirty not in sent.text
+    assert "正常标题 📢" in sent.text  # 换行被折叠为空格，不再伪造新行

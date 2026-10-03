@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 ## [Unreleased]
 
+### Added
+
+- **搜索结果跨源相关度排序** — 新增 `suwayomi/ranking.py` 纯函数打分器：归一化（NFKC/大小写/繁简/日文新字体/标点；日文字形经 opencc 自带 JPVariants.txt 动态构建全量映射，字典缺失时回落内置小表）后按五级证据打分（完全相等 1000 > 正向包含 900 > 反向包含 880 > 子序列简称 800–860（fzf 式紧凑度）> 部分重叠 ≤800），同分稳定保序。`/漫画 搜索` 输出改为混排列表（行内标注源名），编号在排序后分配，`订阅 <编号>` 映射保持一致；AI 搜索工具与批量订阅选书（`search_best_match` 源内选优）共用同一打分器。配置 `search_result_ranking`（默认开，关闭恢复按源分组旧格式）与 `search_display_limit`（默认 20）
+- **修复被源站截断的搜索标题** — 列表页截断标题（如「我的首推是恶役...」）经 GraphQL `fetchManga` 并发刷新为完整标题（上限 5 条/10s 超时，失败保留原标题走反向包含兜底排序）。配置 `search_refresh_truncated_titles`
+- **Bangumi 别名扩展搜索** — 关键词无强命中时（简称「我推恶役」、跨译名「海贼王/航海王」）通过 api.bgm.tv 解析官方译名/别名（top-5 条目 + 日文字形变体重试），别名探针有界 fan-out 重搜；扩展结果需强命中才并入展示并附透明提示行，别名增强仲裁对第一轮同样生效。配置 `search_alias_expansion`（默认开，失败静默跳过）
+- **Bangumi 公共镜像回退链** — 网络受限环境可选 `bangumi_mirror`：填写自定义镜像时仅用自定义镜像；留空时按序尝试内置公共镜像（api.bangumi.vip / bgmapi.anibt.net），全部失败回退不使用 Bangumi；关闭时直连官方
+- **文件打包页数上限可配置** — 新增 `file_delivery_max_pages`（默认 300）：上限只用于挡住恶意源宣告的超大页列表，「第一卷」这类整卷/合集章节可合法超过默认值，用户可按需调大
+- `/漫画 搜索` 逐源串行改并发（与 AI 路径一致），5 源约 5–10s 降至约 3s
+
+### Fixed
+
+- SSRF 防护覆盖重定向：aiohttp 默认自动跟随重定向可绕过私网地址过滤（302 → 127.0.0.1 实测可被跟随到恶意端点），图片下载改为禁用自动重定向并逐跳校验目标（同 origin 或公网放行、跳向第三方私网拒绝、上限 4 跳；跨源跳转丢弃认证头并对连接后的实际对端 IP 复检），Bangumi 请求同样禁用重定向（3xx 按端点失败走回退链）
+- 消息清洗补全：控制字符覆盖补入 VT/FF/ESC/NEL/行分隔符（阻断终端转义序列与伪造提示行），新增零宽空格与 BOM 删除；来源显示名（源扩展可控）在源列表/搜索结果/批量订阅/订阅列表/章节列表等消息出口统一过清洗
+- 关闭 `search_result_ranking` 时完整恢复旧版行为：按源分组输出的末尾订阅提示行回归；截断标题刷新改由排序开关一并门控（此前不受门控，关闭排序仍会改写标题）
+- 日文新字体归一化覆盖不全：内置小映射表未收录的常用字（如「戦争」的 戦）归一化后不等于对应简体词，改用 opencc 自带 JPVariants.txt（365 组繁→日变体）运行时动态构建全量映射，内置表降级为补漏与回落，并补齐 JPVariants 未收录的 頬/艶/働
+- 别名解析整体超时兜底：subject 详情并发拉取 + 调用侧 20s `wait_for`，端点回退最坏等待不再拖住命令
+- 溯源增强门槛收紧：探针结果仅凭溯源不再继承最强别名分（标题含官方别名才全额；仅溯源时要求自身 ≥650 分且封顶 849），泛探针噪声无法挤入 top-N
+- 第三方文本进入消息前剥离换行与控制符并限长：Bangumi 别名/探针名（扩展提示行）与搜索结果行中的源站标题
+- bgm 查询改 `quote(safe="")`，含 `/` 关键词不再破坏 URL 路径；`+` 多词归一为空格
+- Bangumi 回退链共享截止预算改为真链级墙钟语义：按剩余端点数均分剩余时间、单个端点多阶段请求（搜索+详情+日文重试）的墙钟总和不得超出其切片（`wait_for` 强制）、预算耗尽（含 `deadline=0`）立即放弃不再发请求
+- GraphQL 客户端会话级超时（total 60s / connect 10s）：此前无外层 `wait_for` 的路径（章节/阅读/下载的漫画解析、章节拉取、推送取页、批量订阅、更新循环）单请求最长可挂 aiohttp 默认的 5 分钟，且更新循环持锁期间手动「漫画 更新」与 WebUI 更新会排队
+- 第三方文本清洗覆盖补全（此前仅搜索结果行）：更新推送标题与章节标签、推送头与发送失败回退、订阅列表、章节列表、多结果引导、阅读/下载加载提示等全部消息出口统一清洗（`sanitize_for_message` 下沉到 `fmt_chapter_label`/`fmt_chapter_display` 与标题入链出口，函数自 `bangumi.py` 迁至 `service.py`）
+- 更新通知文本路径与手动更新 summary 同样按 24 条截断并追加「+N 话」：水位线为 0 的存量订阅一次判新可达数百章，超长消息会超出平台长度限制导致推送整体失败（卡片路径此前已截断，文本为默认路径）
+- 搜索命令协程被取消（插件热重载/卸载）时同步取消并行的 Bangumi 解析任务，不再产生失去外层兜底的孤儿任务
+- 文件打包路径（下载/AI 发送/自动推送 file 模式）整章页数设默认 300 上限（`file_delivery_max_pages` 可调）、单图片响应设 64MB 流式上限：防恶意源宣告超大页列表/响应打满磁盘内存
+- 封面绝对 URL 指向私网/环回/链路本地地址（字面 IP，含十进制/八进制/十六进制写法与 localhost/尾点写法）时拒绝下载（SSRF 防护）；同源的内网 Suwayomi 地址不受影响、照常携带凭据
+- `sanitize_filename` 补控制字符（`\x00`–`\x1f`、`\x7f`）过滤、结尾点/空格剥离（含截断位恰好落在点上的情况）与 Windows 保留名（CON/COM1 等）前缀处理
+- WebUI 配置 API 补齐搜索排序/Bangumi 六个配置键的白名单与类型校验，仪表盘设置页新增「搜索排序」分区并在「下载打包」分区补 `file_delivery_max_pages` 输入；`server_url` 非字符串直接 400，`username`/`password`/`temp_dir`/`bangumi_mirror_url` 补字符串类型门槛、`auth_mode` 补枚举校验
+- 命令路径与 AI 路径的布尔配置解析统一走 `config.config_bool`：配置文件被手改成字符串 `"false"`/`"0"` 时两条路径行为一致（此前 AI 路径按真值判断，`"false"` 仍视为开启）
+- WebUI 订阅列表与 `get_subscriptions` 容忍损坏的非数字 KV 键（与更新引擎一致跳过），单条脏数据不再使整个列表 500
+- 插件 `terminate` 等待后台任务取消传播完成，与配置保存路径行为一致
+- AI 工具返回的漫画对象增加 `data_notice` 字段，向模型声明第三方元数据是待处理数据而非指令（prompt injection 缓解）
+
+### Docs
+
+- `AGENTS.md`「Key Helpers」重写为当前依赖注入式函数的真实签名（旧清单为 0.4.7 重构前已删除的插件方法，示例照抄会 AttributeError）；Quirk 11 引用与 pydantic 版本上界同步
+- `CONTRIBUTING.md` / `docs/dev/development.md`：环境搭建改为 `uv venv` + `uv pip install -r requirements.txt pytest pytest-asyncio`（`pyproject.toml` 不入库，`uv sync` 必然失败）；测试命令统一为全量 `uv run pytest`（live 不可达自动跳过）；项目树补 `ranking.py`/`bangumi.py` 与缺失测试文件；新命令示例改用 `service.resolve_manga` 真实签名；版本号声明改为仅 `metadata.yaml`；搜索/批量订阅数据流更新为并发/排序/别名扩展的现行为；封面压缩宽度 120px 更正为 320px
+
 ## [0.6.2] - 2026-09-23
 
 ### Added

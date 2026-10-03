@@ -534,3 +534,82 @@ async def test_unsubscribe_manga_success():
     assert result["manga_id"] == 10
     assert result["title"] == "一拳超人"
     sub_mgr.unsubscribe.assert_awaited_once_with(10, "test:123")
+
+
+@pytest.mark.asyncio
+async def test_agent_search_results_sorted_by_relevance():
+    """跨源结果按标题相关度降序（与 /漫画 搜索 共用打分器）。"""
+    from suwayomi.models import SearchResult
+
+    class _Client:
+        async def get_sources(self):
+            return [_source("1", "甲源"), _source("2", "乙源")]
+
+        async def search_manga(self, source_id, query, page=1):
+            if str(source_id) == "1":
+                return SearchResult(mangas=[_manga(1, "恶役大小姐的执事大人", 1)])
+            return SearchResult(mangas=[_manga(2, "我的首推是恶役大小姐", 2)])
+
+    result = await search_manga_for_agent(
+        _Client(), {"default_source_id": 0}, "我的首推是恶役大小姐"
+    )
+    titles = [r["title"] for r in result["results"]]
+    assert titles == ["我的首推是恶役大小姐", "恶役大小姐的执事大人"]
+
+
+@pytest.mark.asyncio
+async def test_agent_search_sorts_within_source_before_limit():
+    """每源先按相关度排序再截取：真目标排在源内第 6 位也能进前 5。"""
+    from suwayomi.models import SearchResult
+
+    mangas = [_manga(i, f"恶役千金衍生作品第{i}季", 1) for i in range(5)]
+    mangas.append(_manga(99, "我的首推是恶役大小姐", 1))
+
+    class _Client:
+        async def get_sources(self):
+            return [_source("1", "甲源")]
+
+        async def search_manga(self, source_id, query, page=1):
+            return SearchResult(mangas=list(mangas))
+
+    result = await search_manga_for_agent(
+        _Client(),
+        {"default_source_id": 0, "ai_results_per_source": 5},
+        "我的首推是恶役大小姐",
+    )
+    titles = [r["title"] for r in result["results"]]
+    assert titles and titles[0] == "我的首推是恶役大小姐"
+
+
+@pytest.mark.asyncio
+async def test_agent_search_ranking_disabled_by_string_false():
+    """PR #21 复审：字符串 "false" 与命令路径同为关闭（_config_bool 语义一致）。"""
+    from suwayomi.models import SearchResult
+
+    class _Client:
+        async def get_sources(self):
+            return [_source("1", "甲源"), _source("2", "乙源")]
+
+        async def search_manga(self, source_id, query, page=1):
+            if str(source_id) == "1":
+                return SearchResult(mangas=[_manga(1, "恶役大小姐的执事大人", 1)])
+            return SearchResult(mangas=[_manga(2, "我的首推是恶役大小姐", 2)])
+
+    result = await search_manga_for_agent(
+        _Client(),
+        {"default_source_id": 0, "search_result_ranking": "false"},
+        "我的首推是恶役大小姐",
+    )
+    titles = [r["title"] for r in result["results"]]
+    # 关闭排序：保持源顺序（甲源的模糊结果仍在前）
+    assert titles == ["恶役大小姐的执事大人", "我的首推是恶役大小姐"]
+
+
+def test_manga_dict_marks_third_party_data_as_untrusted():
+    """T3-06：外部元数据进入 LLM 上下文时须声明「数据非指令」。"""
+    from suwayomi.ai_service import manga_to_agent_dict
+
+    d = manga_to_agent_dict(_manga(1, "一拳超人"))
+    assert "data_notice" in d
+    assert "第三方漫画源" in d["data_notice"]
+    assert "不构成" in d["data_notice"]

@@ -19,6 +19,11 @@ class SuwayomiError(Exception):
 
 _SOURCES_CACHE_TTL = 60
 
+# Suwayomi 会代理源站请求（fetchChapters/fetchSourceManga 等），慢源会把单个
+# GraphQL 请求拖到 aiohttp 默认的 5 分钟；无外层 wait_for 的命令路径
+# （章节/阅读/下载/更新循环）以此值为统一上界，已有更紧外层超时的路径不受影响。
+_SESSION_TIMEOUT = aiohttp.ClientTimeout(total=60, sock_connect=10)
+
 
 class SuwayomiClient:
     def __init__(self, server_url: str, auth_mode: str, username: str, password: str):
@@ -41,7 +46,7 @@ class SuwayomiClient:
 
     async def _get_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession()
+            self._session = aiohttp.ClientSession(timeout=_SESSION_TIMEOUT)
         return self._session
 
     async def close(self):
@@ -234,6 +239,18 @@ class SuwayomiClient:
             {"id": manga_id},
         )
         return Manga.from_dict(data["manga"])
+
+    async def fetch_manga_details(self, manga_id: int) -> Manga:
+        """Trigger a source-side refresh of manga details (updates the DB record).
+
+        搜索列表页可能返回被源站截断的标题（如「我的首推是恶役...」），
+        fetchManga 会走详情页解析器拿回完整标题后返回并持久化。
+        """
+        data = await self._raw_query(
+            'mutation($id:Int!){fetchManga(input:{id:$id}){manga{id title url sourceId status thumbnailUrl inLibrary author artist description genre}}}',
+            {"id": manga_id},
+        )
+        return Manga.from_dict(data["fetchManga"]["manga"])
 
     async def get_chapters(self, manga_id: int) -> list[Chapter]:
         data = await self._raw_query(

@@ -52,6 +52,13 @@ _LEGACY_KEY_DEFAULTS: dict[str, Any] = {
     "chapter_cache_hours": 6,
     "chapter_list_show_cover": True,
     "default_source_id": 0,
+    "search_result_ranking": True,
+    "search_display_limit": 20,
+    "search_refresh_truncated_titles": True,
+    "search_alias_expansion": True,
+    "bangumi_mirror": False,
+    "bangumi_mirror_url": "",
+    "file_delivery_max_pages": 300,
     "temp_dir": "",
 }
 
@@ -90,7 +97,12 @@ CONFIG_GROUPS: dict[str, list[str]] = {
         "t2i_endpoint",
     ],
     "reading": ["max_pages", "send_mode", "image_fetch_mode"],
-    "pack": ["download_format", "download_concurrency", "download_retries"],
+    "pack": [
+        "download_format",
+        "download_concurrency",
+        "download_retries",
+        "file_delivery_max_pages",
+    ],
     "push": ["auto_push_mode"],
     "ai": [
         "enable_ai_tools",
@@ -104,6 +116,12 @@ CONFIG_GROUPS: dict[str, list[str]] = {
         "chapter_cache_hours",
         "chapter_list_show_cover",
         "default_source_id",
+        "search_result_ranking",
+        "search_display_limit",
+        "search_refresh_truncated_titles",
+        "search_alias_expansion",
+        "bangumi_mirror",
+        "bangumi_mirror_url",
         "temp_dir",
     ],
 }
@@ -121,6 +139,18 @@ def get_config_value(config: dict, key: str, default: Any = None) -> Any:
         if isinstance(section, dict) and key in section:
             return section[key]
     return config.get(key, default)
+
+
+def config_bool(value: Any, default: bool = False) -> bool:
+    """布尔配置读取：容忍手改配置文件里的字符串写法（"false"/"0"/"开启"）。
+
+    命令路径与 AI 路径共用，避免同一开关在两条路径解析结果不同。
+    """
+    if value is None:
+        return default
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on", "开启"}
+    return bool(value)
 
 
 def set_config_value(config: dict, key: str, value: Any) -> None:

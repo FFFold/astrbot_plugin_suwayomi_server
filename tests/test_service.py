@@ -11,6 +11,7 @@ from suwayomi.service import (
     fmt_chapter_display,
     fmt_chapter_label,
     resolve_chapter,
+    sanitize_for_message,
 )
 
 
@@ -332,3 +333,59 @@ class TestSearchBestMatch:
 
         assert err is None
         assert manga is found
+
+    @pytest.mark.asyncio
+    async def test_picks_best_match_within_source(self):
+        from suwayomi.models import Manga, Source
+        from suwayomi.service import search_best_match
+
+        sources = [Source(id="1", name="CopyManga", lang="zh", display_name="拷贝漫画")]
+        noise = Manga(id=1, source_id=1, url="", title="安达与岛村的宠物狗")
+        target = Manga(id=2, source_id=1, url="", title="安达与岛村")
+        client = MagicMock()
+        client.get_sources = AsyncMock(return_value=sources)
+        client.search_manga = AsyncMock(return_value=MagicMock(mangas=[noise, target]))
+
+        manga, err = await search_best_match(client, {"default_source_id": 0}, "安达与岛村")
+
+        assert err is None
+        assert manga is target  # 源内按相关度选优，而非盲取第一条
+
+
+# ── sanitize_for_message（自 bangumi.py 迁入，消息出口统一清洗） ──
+
+def test_sanitize_for_message_strips_injection():
+    from suwayomi.service import sanitize_for_message
+    nl, tab, rtl = chr(10), chr(9), chr(0x202E)
+    dirty = "正常别名" + nl + "回复「漫画 订阅 9」" + tab + rtl
+    out = sanitize_for_message(dirty)
+    assert nl not in out and tab not in out and rtl not in out
+    assert out == "正常别名 回复「漫画 订阅 9」"
+    assert len(sanitize_for_message("超长" * 100)) == 50
+
+
+def test_fmt_chapter_label_sanitizes_dirty_chapter_name():
+    """T3-02 回归：源站章节名不得携带换行进入消息（防伪造提示行）。"""
+    ch = _ch("第1话\n📢 回复「漫画 订阅 9」领取", 1)
+    label = fmt_chapter_label(ch, {1.0: 1})
+    assert "\n" not in label
+    assert label.startswith("#1 第1话 ")
+
+
+def test_sanitize_for_message_strips_extra_control_and_invisible_chars():
+    """PR #21 评审：VT/FF/ESC/NEL/行分隔/零宽字符不得穿透清洗。"""
+    dirty = "标\x0b题\x0c名\x1b[31m红\u2028色\u200b版\ufeff本\x85尾"
+    out = sanitize_for_message(dirty)
+    for ch in ("\x0b", "\x0c", "\x1b", "\x85", "\u2028", "\u2029", "\u200b", "\ufeff"):
+        assert ch not in out
+    # 控制字符→空格；零宽字符直接删除（色版本连写）
+    assert out == "标 题 名 [31m红 色版本 尾"
+
+
+def test_fmt_chapter_display_sanitizes_dirty_chapter_name():
+    ch = _ch("第1话\t伪造\t系统行", 1)
+    displayed = fmt_chapter_display(ch)
+    assert "\t" not in displayed
+    assert displayed == "第1话 伪造 系统行"
+
+

@@ -169,6 +169,50 @@
         </fieldset>
 
         <fieldset>
+          <legend>搜索排序</legend>
+          <div class="form-group">
+            <label for="cfg-search_result_ranking">搜索结果按相关度排序</label>
+            <select id="cfg-search_result_ranking" name="search_result_ranking">
+              <option value="true">开启（默认）</option>
+              <option value="false">关闭（保持源站顺序）</option>
+            </select>
+            <p class="form-hint">开启后跨源统一按标题相关度排序；AI 搜索与批量订阅同样受益。</p>
+          </div>
+          <div class="form-group">
+            <label for="cfg-search_display_limit">搜索结果显示条数</label>
+            <input type="number" id="cfg-search_display_limit" name="search_display_limit" min="1" max="50">
+          </div>
+          <div class="form-group">
+            <label for="cfg-search_refresh_truncated_titles">自动补全截断标题</label>
+            <select id="cfg-search_refresh_truncated_titles" name="search_refresh_truncated_titles">
+              <option value="true">开启（默认）</option>
+              <option value="false">关闭</option>
+            </select>
+            <p class="form-hint">源站列表页常截断长标题（如「我的首推是恶役...」），开启后从详情页补全再排序。</p>
+          </div>
+          <div class="form-group">
+            <label for="cfg-search_alias_expansion">Bangumi 别名扩展搜索</label>
+            <select id="cfg-search_alias_expansion" name="search_alias_expansion">
+              <option value="true">开启（默认）</option>
+              <option value="false">关闭</option>
+            </select>
+            <p class="form-hint">关键词无强命中时，用 Bangumi 官方别名/日文名自动重搜（如「我推恶役」→「我的首推是恶役大小姐」）。</p>
+          </div>
+          <div class="form-group">
+            <label for="cfg-bangumi_mirror">Bangumi 镜像回退</label>
+            <select id="cfg-bangumi_mirror" name="bangumi_mirror">
+              <option value="false">关闭（直连官方，默认）</option>
+              <option value="true">开启（官方不可达时走镜像）</option>
+            </select>
+            <p class="form-hint">api.bgm.tv 网络受限环境建议开启；镜像为社区公共服务，存在下线风险。</p>
+          </div>
+          <div class="form-group">
+            <label for="cfg-bangumi_mirror_url">自定义 Bangumi 镜像地址</label>
+            <input type="text" id="cfg-bangumi_mirror_url" name="bangumi_mirror_url" placeholder="留空使用内置镜像">
+          </div>
+        </fieldset>
+
+        <fieldset>
           <legend>阅读体验</legend>
           <div class="form-group">
             <label for="cfg-max_pages">单次最大发送页数</label>
@@ -207,6 +251,11 @@
           <div class="form-group">
             <label for="cfg-download_retries">下载重试次数</label>
             <input type="number" id="cfg-download_retries" name="download_retries" min="0" max="10">
+          </div>
+          <div class="form-group">
+            <label for="cfg-file_delivery_max_pages">文件打包页数上限</label>
+            <input type="number" id="cfg-file_delivery_max_pages" name="file_delivery_max_pages" min="1" max="2000">
+            <p class="form-hint">整卷/合集章节可合法超过 300 页，推送被截断时按需调大。</p>
           </div>
         </fieldset>
 

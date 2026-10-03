@@ -17,6 +17,7 @@ from .service import (
     fmt_chapter_num,
     get_chapter_timestamp,
     get_or_fetch_chapters,
+    sanitize_for_message,
 )
 
 if TYPE_CHECKING:
@@ -140,6 +141,14 @@ async def _check_one_manga(
 RenderUpdateCardFn = Callable[[str, list[dict[str, Any]], str], Awaitable[str | None]]
 
 
+def _display_chapters(ch_info: list[str]) -> list[str]:
+    """章节标签列表的展示版：超过上限截断并追加「+N 话」。"""
+    shown = ch_info[:_UPDATE_CARD_MAX_CHAPTERS]
+    if len(ch_info) > _UPDATE_CARD_MAX_CHAPTERS:
+        shown.append(f"+{len(ch_info) - _UPDATE_CARD_MAX_CHAPTERS} 话")
+    return shown
+
+
 async def check_updates(
     client: SuwayomiClient,
     sub_mgr: SubscriptionManager,
@@ -216,18 +225,17 @@ async def check_updates(
         user_updates: dict[str, list[dict]] = {}
         for manga_id, title, ch_info, new_chapters, subscribers, manga_obj in updated_mangas:
             latest_num = fmt_chapter_num(new_chapters[-1].chapter_number)
+            safe_title = sanitize_for_message(title, limit=80)
+            # 文本与卡片同样截断：水位线为 0 的存量订阅一次判新可达数百章，
+            # 不截断的文本消息会超出平台长度限制导致推送整体失败
+            chapters_display = _display_chapters(ch_info)
             msg = (
-                f"📢「{title}」更新了！\n"
-                f"新增章节：{', '.join(ch_info)}\n"
-                f"发送「漫画 阅读 {title} {latest_num}」开始阅读"
+                f"📢「{safe_title}」更新了！\n"
+                f"新增章节：{', '.join(chapters_display)}\n"
+                f"发送「漫画 阅读 {safe_title} {latest_num}」开始阅读"
             )
-            chapters_display = list(ch_info)
-            if len(chapters_display) > _UPDATE_CARD_MAX_CHAPTERS:
-                chapters_display = chapters_display[:_UPDATE_CARD_MAX_CHAPTERS] + [
-                    f"+{len(ch_info) - _UPDATE_CARD_MAX_CHAPTERS} 话"
-                ]
             item = {
-                "title": title,
+                "title": safe_title,
                 "status": manga_obj.status if manga_obj else "UNKNOWN",
                 "chapters": chapters_display,
                 "description": manga_obj.description if manga_obj else None,
@@ -294,7 +302,9 @@ async def check_updates(
 
         summary_lines = [f"✅ 发现 {len(updated_mangas)} 部漫画更新："]
         for _, title, ch_info, _, _, _ in updated_mangas:
-            summary_lines.append(f"  • {title}: {', '.join(ch_info)}")
+            summary_lines.append(
+                f"  • {sanitize_for_message(title, limit=80)}: {', '.join(_display_chapters(ch_info))}"
+            )
         await put_kv_data(LAST_CHECK_KV_KEY, time.time())
         return "\n".join(summary_lines)
 

@@ -34,7 +34,7 @@
 
 | | 功能 | 说明 |
 |---|---|---|
-| 🔍 | **多源搜索** | 跨多个已安装漫画源全局搜索，智能合并结果 |
+| 🔍 | **多源搜索** | 跨多个已安装漫画源全局搜索，按相关度混排展示 |
 | 🤖 | **Agent工具** | 注册 AstrBot Agent Tool，支持 LLM 调用，从而搜索、发送漫画 |
 | 📖 | **在线阅读** | 直接在聊天中阅读漫画章节，支持逐页发送或合并转发 |
 | ⬇️ | **章节下载** | 下载章节页面并打包为 ZIP/PDF/CBZ 文件发送到聊天 |
@@ -103,9 +103,9 @@
 
 ```
 用户: /漫画 搜索 一拳超人
-Bot:  🔍 搜索结果（源: 拷贝漫画 (ZH)）:
-        [1] 一拳超人 - 连载中
-        [2] 一拳超人 重制版 - 连载中
+Bot:  🔍 搜索结果（3 条，按相关度排序）:
+        [1] 一拳超人 - 连载中（拷贝漫画）
+        [2] 一拳超人 重制版 - 连载中（动漫屋）
       回复「漫画 订阅 <编号>」订阅，如「漫画 订阅 1」
 
 用户: /漫画 订阅 1
@@ -257,6 +257,7 @@ uv pip install -r astrbot_suwayomi_server/requirements.txt
 | `download_format` | string | `pdf` | 下载打包格式：`zip` / `pdf` / `cbz` |
 | `download_concurrency` | int | `6` | 并行下载图片数（仅 `download` 模式） |
 | `download_retries` | int | `3` | 图片下载失败重试次数（指数退避） |
+| `file_delivery_max_pages` | int | `300` | 下载/推送打包为文件时的单章页数上限（防恶意源超大页列表）；「第一卷」这类整卷/合集章节可合法超过 300 页，推送被截断时按需调大 |
 
 ### 自动推送
 
@@ -282,6 +283,12 @@ uv pip install -r astrbot_suwayomi_server/requirements.txt
 | `chapter_cache_hours` | int | `6` | 章节缓存时长（小时）。`0` = 不自动刷新，`-1` = 总是从源刷新 |
 | `chapter_list_show_cover` | bool | `true` | 「漫画 章节」列表顶部是否显示漫画封面；关闭后该命令不使用卡片渲染（回退纯文本） |
 | `default_source_id` | int | `0` | 默认搜索源 ID，`0` 搜索全部已安装源 |
+| `search_result_ranking` | bool | `true` | 搜索结果跨源按标题相关度排序（相等 > 包含 > 简称子序列 > 部分重叠），同分保持源顺序；关闭恢复按源分组的旧格式 |
+| `search_alias_expansion` | bool | `true` | 关键词无强命中时通过 Bangumi 解析官方译名/别名并换名重搜（简称「我推恶役」、跨译名「海贼王/航海王」），解析成功时别名也会参与首轮相关度排序增强；需可访问 api.bgm.tv |
+| `search_refresh_truncated_titles` | bool | `true` | 搜索标题以 `...` 结尾时自动从源站详情页刷新为完整标题（需同时开启 `search_result_ranking`，关闭排序时完整恢复旧版行为） |
+| `bangumi_mirror` | bool | `false` | 网络受限环境启用 Bangumi 镜像回退：填写了下方自定义镜像时仅使用自定义镜像；留空时按序尝试内置公共镜像（api.bangumi.vip / bgmapi.anibt.net），全部失败则回退不使用别名扩展。关闭时仅直连官方 api.bgm.tv |
+| `bangumi_mirror_url` | string | `""` | 自定义 Bangumi API 镜像根地址，留空用内置公共镜像；需同时开启 `bangumi_mirror` 与 `search_alias_expansion`（后者依赖相关度排序） |
+| `search_display_limit` | int | `20` | 开启相关度排序后最多显示的搜索结果条数；超过显示上限的结果无法通过编号订阅，可调大（≤50）或用「搜索 关键词 源名」锁定单源 |
 | `temp_dir` | string | `""` | 临时文件目录。留空用系统默认，Docker 环境设置共享目录如 `/AstrBot/data/temp` |
 
 ### 认证模式说明

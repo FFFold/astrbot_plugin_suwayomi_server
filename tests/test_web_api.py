@@ -561,3 +561,73 @@ async def test_update_failure(fake_plugin):
     result = await api_update(check, fake_plugin.put_kv_data)
     assert result["success"] is False
     assert "fail" in result["summary"]
+
+
+@pytest.mark.asyncio
+async def test_config_post_six_search_keys_roundtrip():
+    """T3-07 回归：搜索排序/Bangumi 六个新键可经 WebUI API 读写并按类型校验。"""
+    cfg = FakeConfig({"server_url": "http://old:4567"})
+
+    result = await api_config_post(cfg, {
+        "server_url": "http://new:4567",
+        "search_result_ranking": "false",
+        "search_display_limit": 99,  # 超上限 → 钳到 50
+        "search_refresh_truncated_titles": "true",
+        "search_alias_expansion": False,
+        "bangumi_mirror": True,
+        "bangumi_mirror_url": "https://bgm.mirror.example",
+    }, AsyncMock())
+
+    assert result["success"] is True
+    advanced = cfg["advanced"]
+    assert advanced["search_result_ranking"] is False
+    assert advanced["search_display_limit"] == 50
+    assert advanced["search_refresh_truncated_titles"] is True
+    assert advanced["search_alias_expansion"] is False
+    assert advanced["bangumi_mirror"] is True
+    assert advanced["bangumi_mirror_url"] == "https://bgm.mirror.example"
+
+
+@pytest.mark.asyncio
+async def test_config_post_rejects_non_string_server_url():
+    """server_url 为 JSON 数字时应在写入前拒绝（而非把 int 存进配置）。"""
+    cfg = FakeConfig({"server_url": "http://old:4567"})
+
+    result = await api_config_post(cfg, {"server_url": 12345}, AsyncMock())
+
+    assert result[1] == 400
+    cfg.save_config.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_config_post_rejects_non_string_bangumi_mirror_url():
+    cfg = FakeConfig({"server_url": "http://old:4567"})
+
+    result = await api_config_post(cfg, {
+        "server_url": "http://new:4567",
+        "bangumi_mirror_url": 12345,
+    }, AsyncMock())
+
+    assert result["success"] is True
+    assert "bangumi_mirror_url" not in cfg.get("advanced", {})
+
+
+@pytest.mark.asyncio
+async def test_config_get_returns_search_keys():
+    cfg = FakeConfig({
+        "advanced": {
+            "search_result_ranking": True,
+            "search_display_limit": 20,
+            "search_refresh_truncated_titles": True,
+            "search_alias_expansion": True,
+            "bangumi_mirror": False,
+            "bangumi_mirror_url": "",
+        },
+    })
+    out = api_config_get(cfg)
+    for key in (
+        "search_result_ranking", "search_display_limit",
+        "search_refresh_truncated_titles", "search_alias_expansion",
+        "bangumi_mirror", "bangumi_mirror_url",
+    ):
+        assert key in out

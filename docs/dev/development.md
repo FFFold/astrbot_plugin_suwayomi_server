@@ -16,6 +16,8 @@ astrbot_suwayomi_server/
 │   ├── config.py              # 分组配置读写、旧版平铺配置迁移（get/set/flatten/migrate）
 │   ├── models.py              # 数据模型定义
 │   ├── service.py             # 业务逻辑层（漫画/章节解析、缓存策略、格式化）
+│   ├── ranking.py             # 搜索相关度打分器（归一化 + 五级证据，纯函数零依赖）
+│   ├── bangumi.py             # Bangumi 别名解析（简称→官方名、镜像回退链、探针构建）
 │   ├── cards.py               # 指令结果卡片（T2I 模板、数据准备、简介清洗、封面嵌入、渲染缓存）
 │   ├── t2i.py                 # 独立 T2I 端点客户端（t2i_source=custom 时使用）
 │   ├── ai_service.py          # Agent 结构化搜索、章节查询与订阅管理（无发送副作用）
@@ -43,6 +45,9 @@ astrbot_suwayomi_server/
 │   ├── test_client.py         # 客户端单元测试（mocked HTTP）
 │   ├── test_downloader.py     # 图片下载/封面下载单元测试
 │   ├── test_subscription.py   # 订阅管理单元测试
+│   ├── test_ranking.py        # 搜索相关度打分器单元测试
+│   ├── test_bangumi.py        # Bangumi 别名解析单元测试
+│   ├── test_search_ranking.py # 搜索排序/截断刷新/扩展命令级测试
 │   ├── test_web_api.py        # WebUI API handler 单元测试
 │   ├── test_batch_subscribe.py # 批量订阅参数解析单元测试
 │   ├── test_push.py           # 自动推送单元测试
@@ -51,6 +56,9 @@ astrbot_suwayomi_server/
 │   ├── test_ai_tools.py       # AstrBot Tool call() 调度回归测试
 │   ├── test_list_chapters.py  # /漫画 章节 封面逻辑单元测试
 │   ├── test_config.py         # 分组配置读写与旧版配置迁移单元测试
+│   ├── test_config_reset.py   # 配置回退/重置单元测试
+│   ├── test_service.py        # service 业务函数单元测试
+│   ├── helpers.py             # 测试助手（事件/章节构造等）
 │   ├── test_cards.py          # 卡片模块单元测试（数据准备/封面嵌入/渲染/缓存）
 │   ├── test_card_commands.py  # 命令卡片路径回归测试
 │   ├── test_live_skip.py      # live 探活助手单元测试
@@ -135,6 +143,14 @@ astrbot_suwayomi_server/
 - `migrate_legacy_config(config)` — 插件每次加载在 `__init__` 中调用，无状态幂等：非默认值的平铺键（升级残留或手改）同步进分组并清理，等于 `_LEGACY_KEY_DEFAULTS` 的占位键（Core 补回的无意义默认值）原样保留、永不覆盖分组；无变更时不触发保存
 - `_conf_schema.json` 保留全部旧键为 `invisible: true`，使 AstrBot Core 的配置同步不会删除用户旧值；`test_legacy_defaults_match_schema` 双向校验 schema 与代码定义一致
 
+#### `suwayomi/ranking.py` — 搜索结果相关度打分器
+
+纯函数模块：归一化（NFKC/大小写/繁简/日文字形/标点）+ 五级证据打分（相等/包含/反向包含/子序列/部分重叠）+ 稳定排序。命令、AI 工具与批量订阅三条路径共用。
+
+#### `suwayomi/bangumi.py` — Bangumi 别名解析与镜像回退
+
+bgm.tv 模糊搜索解析官方译名/别名（top-5 条目 + 日文字形变体重试），构建探针供搜索命令无强命中时重搜；`bangumi_mirror` 开启时按「自定义镜像 → 内置公共镜像」回退。
+
 #### `suwayomi/service.py` — 业务逻辑层
 
 - 独立 async 函数，依赖注入参数（`client`、`sub_mgr`、`get_kv_data` 等）
@@ -168,7 +184,7 @@ astrbot_suwayomi_server/
 
 - `CARD_TEMPLATE` — 单个 Jinja2 HTML 模板字符串，含 7 种卡片变体（搜索/订阅确认/批量订阅/我的订阅/更新/章节头部/章节续卡），远程 T2I 服务端原生渲染
 - `build_*` 数据准备纯函数 — 生成 `tmpldata`，标题/章节名等用户可控文本统一 `html.escape()`；漫画简介经 `clean_description` 清洗（去 HTML 标签/实体、折叠空白、截断）后转义，章节列表、订阅确认、更新通知卡片均展示；`build_chapter_cards(manga, lines)` 按 `CHAPTER_LINES_PER_CARD=130` 切块（三列，最多 `MAX_CHAPTER_CARDS=4` 张），超限行原样返回作文本尾部
-- `embed_covers(client, items)` — 复用 `utils/downloader.download_images` 并发下载封面（带认证头，同源策略与 `download_cover` 一致），PIL 压缩为 120px 宽 JPEG 后以 base64 data URL 嵌入；失败置 `cover_data_url=None`（模板渲染占位块）
+- `embed_covers(client, items)` — 复用 `utils/downloader.download_images` 并发下载封面（带认证头，同源策略与 `download_cover` 一致），PIL 压缩为 320px 宽 JPEG 后以 base64 data URL 嵌入；失败置 `cover_data_url=None`（模板渲染占位块）
 - `render_card(html_render, tmpldata, timeout)` — `asyncio.wait_for` 包裹 `html_render(return_url=False)`，880px 宽 JPEG q95、1.8x 设备像素比（约 1584px 物理宽）；任何异常/超时返回 `None`（调用方回退纯文本）
 - `CardCache` — 以 `sha1(tmpldata)` 为键的 TTL 内存缓存（默认 600s），避免相同查询重复渲染；缓存文件由 `schedule_cleanup_file` 延后清理
 - 命令接入统一套路：开关开 → `embed_covers` → `render_card_cached`（成功 `yield` 图片 / 失败回退原文本）
@@ -184,15 +200,17 @@ astrbot_suwayomi_server/
 
 #### `utils/downloader.py` — 图片下载管道
 
-- `download_one(session, url, dest, retries)` — 单图下载，指数退避重试
-- `download_images(urls, concurrency, custom_tmp, retries, headers)` — 并行批量下载，返回 `(paths, tmp_dir)`。`headers` 参数用于注入认证头（`client.auth_headers`），确保认证服务器下的图片下载正常
+- `download_one(session, url, dest, retries, headers)` — 单图下载，指数退避重试；流式读取并对单响应设 64MB 字节上限（防恶意源超大响应打满内存/磁盘）；禁用自动重定向并逐跳校验目标（同 origin 或公网放行，跳向第三方私网拒绝，上限 4 跳），跨源跳转丢弃 `headers` 并对连接后的实际对端 IP 复检，防 302 绕过 `resolve_image_url` 的私网过滤与凭据泄露
+- `download_images(urls, concurrency, custom_tmp, retries, headers)` — 并行批量下载，返回 `(paths, tmp_dir)`。`headers` 参数用于注入认证头（`client.auth_headers`），逐请求传递（不设 session 级），确保认证服务器下的图片下载正常且跨源重定向不泄露凭据
 - `download_cover(client, thumbnail_url, custom_tmp, retries, headers)` — 下载单张漫画封面到临时目录，返回 `(local_path, tmp_dir)`；失败返回 `(None, None)`，供 `/漫画 章节` 列表顶部展示封面
-- `fetch_pages_local(client, chapter_id, max_pages, concurrency, custom_tmp, retries, headers)` — 获取页面列表并下载到临时目录，返回 `(total_pages, page_urls, local_paths, tmp_dir)`。透传 `headers` 到 `download_images`
+- `fetch_pages_local(client, chapter_id, max_pages, concurrency, custom_tmp, retries, headers)` — 获取页面列表并下载到临时目录，返回 `(total_pages, page_urls, local_paths, tmp_dir)`。透传 `headers` 到 `download_images`；文件打包路径（下载/AI 发送/file 推送）统一传 `max_pages=get_file_delivery_max_pages(config)`（配置 `file_delivery_max_pages`，默认 300）
+- `resolve_image_url(client, thumbnail_url, auth_headers)` — 封面 URL 决策：相对路径拼服务器地址并带认证头；绝对 URL 仅同源时附凭据；第三方绝对地址指向私网/环回（字面 IP，含十进制/八进制/十六进制写法，以及 localhost 与尾点写法）时拒绝（防 SSRF），调用方按无封面降级
 
 #### `utils/pusher.py` — 推送投递
 
 - `push_chapter_images(client, context, config, umo, title, chapter, fetch_pages_local_fn)` — 推送章节为图片（支持 `send_mode=forward` 合并转发）
-- `push_chapter_file(context, config, umo, title, chapter, fetch_pages_local_fn)` — 推送章节为打包文件（ZIP/CBZ/PDF）
+- `push_chapter_file(context, config, umo, title, chapter, fetch_pages_local_fn)` — 推送章节为打包文件（ZIP/CBZ/PDF），页数上限由 `file_delivery_max_pages` 控制（默认 300，可调）
+- 进入消息链的标题/章节名统一经 `service.sanitize_for_message` 清洗（源站可控文本，防伪造系统提示行）
 - `build_image_chain(...)` — 阅读、自动推送、AI 发送共用的图片/合并转发消息链构建器
 - `schedule_cleanup(tmp_dir, delay)` — 延迟清理临时目录；任务登记到 `_cleanup_tasks`，插件卸载时由 `cancel_pending_cleanups()` 统一取消
 - `is_aiocqhttp_target(context, umo)` — 检测平台是否为 aiocqhttp（用于 forward 模式判断）
@@ -243,14 +261,18 @@ astrbot_suwayomi_server/
 
 **搜索流程：**
 ```
-用户输入 → search_manga() → 遍历目标源 → client.search_manga() → GraphQL fetchSourceManga
-         → 合并结果 → 缓存到 _search_cache → 返回列表
+用户输入 → search_manga() → 选源（跳过本地源，优先不同扩展）
+         → Bangumi 别名解析 ∥ 全源并发 client.search_manga()（单源 15s 超时，链级 20s 预算）
+         → 截断标题刷新（详情页补全，上限 5 条）→ ranking.rank_items 相关度打分
+         → 无强命中时用 Bangumi 别名探针二轮重搜
+         → 显示前 N 条（search_display_limit，默认 20）→ 缓存编号到 _search_cache
 ```
 
 **批量订阅流程：**
 ```
 用户输入 → batch_subscribe() → 按逗号/分号分割名称列表
-          → 逐个 suwayomi.service.search_best_match() → client.search_manga() → 取第一个结果
+          → 逐个 suwayomi.service.search_best_match() → client.search_manga()
+            → 源内 rank_items 相关度选优（不再盲取第一条）
           → 检查是否已订阅 → sub_mgr.subscribe() + 快照章节水位线
           → 汇总报告（✅ 新增 / ⏭ 已存在 / ❌ 失败）
 ```
@@ -365,18 +387,17 @@ updater.check_updates() 检测到新章节 → 遍历订阅者：
 ```bash
 cd AstrBot/data/plugins/astrbot_suwayomi_server
 
-# uv 会自动创建 .venv 并安装依赖
-uv sync
-
-# 安装开发依赖
-uv add --dev pytest pytest-asyncio
+# pyproject.toml 不入库（见 .gitignore），不要用 uv sync；
+# 手动创建虚拟环境并安装运行时 + 开发依赖
+uv venv
+uv pip install -r requirements.txt pytest pytest-asyncio
 ```
 
 ### 运行测试
 
 ```bash
-# 全部单元测试（无需网络）
-uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_downloader.py tests/test_list_chapters.py tests/test_cards.py tests/test_card_commands.py tests/test_subscription.py tests/test_web_api.py tests/test_batch_subscribe.py tests/test_push.py tests/test_service.py tests/test_updater.py tests/test_ai_service.py tests/test_ai_tools.py tests/test_live_skip.py tests/test_t2i.py tests/test_config.py -v
+# 全部测试（live 集成测试在服务器不可达时自动跳过，离线也是全绿）
+uv run pytest -v
 
 # 实时 API 集成测试（需要 Suwayomi-Server 可访问）
 uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
@@ -386,9 +407,6 @@ $env:SUWAYOMI_URL="http://your-server:9330"; uv run pytest tests/test_live_api.p
 
 # 带认证的服务器
 $env:SUWAYOMI_URL="http://your-server:9330"; $env:SUWAYOMI_AUTH_MODE="basic"; $env:SUWAYOMI_USERNAME="user"; $env:SUWAYOMI_PASSWORD="pass"; uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
-
-# 全部测试
-uv run pytest -v
 ```
 
 ### 语法检查

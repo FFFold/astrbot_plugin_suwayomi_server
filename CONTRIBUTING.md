@@ -27,27 +27,22 @@
 git clone https://github.com/FFFold/astrbot_plugin_suwayomi_server.git
 cd astrbot_plugin_suwayomi_server
 
-# uv 会自动创建 .venv 并安装依赖
-uv sync
-
-# 安装开发依赖
-uv add --dev pytest pytest-asyncio
+# 创建虚拟环境并安装运行时 + 开发依赖（pyproject.toml 不入库，勿用 uv sync）
+uv venv
+uv pip install -r requirements.txt pytest pytest-asyncio
 ```
 
 ### 运行测试
 
 ```bash
-# 单元测试（无需网络）
-uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_subscription.py tests/test_web_api.py tests/test_batch_subscribe.py tests/test_push.py tests/test_service.py tests/test_ai_service.py tests/test_ai_tools.py -v
+# 全部测试（live 集成测试在服务器不可达时自动跳过，因此离线也是全绿）
+uv run pytest -v
 
-# 集成测试（需要 Suwayomi-Server）
+# 仅集成测试（需要可访问的 Suwayomi-Server）
 uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
 
 # 指定服务器地址（推荐先设置环境变量）
 $env:SUWAYOMI_URL="http://your-server:9330"; uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
-
-# 全部测试
-uv run pytest -v
 ```
 
 ### 语法检查
@@ -71,6 +66,8 @@ astrbot_plugin_suwayomi_server/
 │   ├── config.py              # 分组配置读写、旧版平铺配置迁移
 │   ├── models.py              # 数据模型（Source, Manga, Chapter, SearchResult）
 │   ├── service.py             # 业务逻辑层（漫画/章节解析、缓存策略、格式化）
+│   ├── ranking.py             # 搜索相关度打分器（归一化 + 五级证据，纯函数）
+│   ├── bangumi.py             # Bangumi 别名解析（简称→官方名、镜像回退链、探针）
 │   ├── cards.py               # 指令结果卡片（T2I 模板、数据准备、简介清洗、封面嵌入、渲染缓存）
 │   ├── t2i.py                 # 独立 T2I 端点客户端（t2i_source=custom 时使用）
 │   ├── ai_service.py          # Agent 结构化搜索、章节查询与订阅管理（无发送副作用）
@@ -90,20 +87,8 @@ astrbot_plugin_suwayomi_server/
 │       ├── index.html         # 管理面板页面（3 Tab: 仪表盘/订阅管理/设置）
 │       ├── app.js             # 前端逻辑（Tab 切换、API 调用、DOM 渲染）
 │       └── style.css          # 样式（支持 light/dark 主题）
-├── tests/
-│   ├── __init__.py
-│   ├── conftest.py             # Mock astrbot 模块（独立运行集成测试）
-│   ├── test_pack.py           # 打包功能单元测试
-│   ├── test_models.py         # 数据模型单元测试
-│   ├── test_client.py         # 客户端单元测试（mocked HTTP）
-│   ├── test_subscription.py   # 订阅管理单元测试
-│   ├── test_web_api.py        # WebUI API handler 单元测试
-│   ├── test_batch_subscribe.py # 批量订阅参数解析单元测试
-│   ├── test_push.py           # 自动推送单元测试
-│   ├── test_ai_service.py     # Agent Tool 服务层单元测试
-│   ├── test_ai_tools.py       # AstrBot Tool call() 调度回归测试
-│   ├── test_live_api.py       # Suwayomi 客户端集成测试
-│   └── test_live_web_api.py   # WebUI API handler 集成测试
+├── tests/                     # 单元测试（pytest）；test_live_*.py 为自动跳过的集成测试，
+│                              # 完整清单直接看目录，AGENTS.md 有分类说明
 ├── docs/
 │   ├── setup.md               # 用户配置教程
 │   ├── dev/                   # 开发者文档
@@ -135,8 +120,8 @@ git checkout -b fix/your-bug-fix
 ### 3. 测试
 
 ```bash
-# 确保所有单元测试通过
-uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_subscription.py tests/test_web_api.py tests/test_batch_subscribe.py tests/test_push.py -v
+# 全部测试（离线全绿，live 集成自动跳过）
+uv run pytest -v
 
 # 语法检查
 python -c "import ast; ast.parse(open('main.py', encoding='utf-8').read()); print('OK')"
@@ -205,7 +190,12 @@ test: 添加订阅管理单元测试
 async def favorite_manga(self, event: AstrMessageEvent, manga_name_or_id: str):
     '''收藏漫画。用法: /漫画 收藏 <漫画名或ID>'''
     try:
-        manga, err = await self._resolve_manga(event, manga_name_or_id, "收藏")
+        # 漫画解析是 service.py 的依赖注入式独立函数（非插件方法）
+        from .suwayomi.service import resolve_manga
+        manga, err = await resolve_manga(
+            self.client, self.sub_mgr, event.unified_msg_origin,
+            manga_name_or_id, "收藏",
+        )
         if err or manga is None:
             yield event.plain_result(err or "未找到该漫画。")
             return
@@ -292,13 +282,14 @@ SUWAYOMI_URL=http://localhost:4567 uv run pytest tests/test_live_api.py -v -s
 
 ### Q: 配置项如何添加？
 
-1. 在 `_conf_schema.json` 中添加配置定义
-2. 在 `main.py` 的 `__init__` 或使用处读取配置：`self.config.get("key", default)`
-3. 更新 `README.md` 配置表
+1. 在 `_conf_schema.json` 中添加配置定义（分组键）
+2. 读取时使用 `suwayomi/config.py` 的 `get_config_value(config, "key", default)`
+   （配置为分组存储，勿直接 `config.get()`）
+3. 更新 `README.md` 配置表；如需插件自带 WebUI 可编辑，同步 `web/api.py` 白名单与 `pages/dashboard/` 表单
 
 ### Q: 版本号在哪里更新？
 
-版本号在 `metadata.yaml` 和 `pyproject.toml` 中，发布时需要同步更新：
+版本号只在 `metadata.yaml`（`pyproject.toml` 不入库），发布时需要同步更新：
 1. 更新 `metadata.yaml` 中的 `version`
 2. 更新 `README.md` 中的版本 badge
 3. 更新 `CHANGELOG.md`

@@ -18,7 +18,7 @@
 
 ```bash
 # Unit tests (no network needed)
-uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_downloader.py tests/test_list_chapters.py tests/test_cards.py tests/test_card_commands.py tests/test_subscription.py tests/test_web_api.py tests/test_batch_subscribe.py tests/test_push.py tests/test_service.py tests/test_updater.py tests/test_ai_service.py tests/test_ai_tools.py tests/test_live_skip.py tests/test_t2i.py tests/test_config.py tests/test_config_reset.py -v
+uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_downloader.py tests/test_list_chapters.py tests/test_cards.py tests/test_card_commands.py tests/test_subscription.py tests/test_web_api.py tests/test_batch_subscribe.py tests/test_push.py tests/test_service.py tests/test_updater.py tests/test_ai_service.py tests/test_ai_tools.py tests/test_live_skip.py tests/test_t2i.py tests/test_config.py tests/test_config_reset.py tests/test_ranking.py tests/test_bangumi.py tests/test_search_ranking.py -v
 
 # Integration tests (requires live Suwayomi-Server)
 uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
@@ -44,6 +44,8 @@ main.py (SuwayomiPlugin — thin dispatch layer)
   ├── suwayomi/config.py (grouped config schema + legacy flat migration helpers)
   ├── suwayomi/models.py (Source, Manga, Chapter, SearchResult dataclasses)
   ├── suwayomi/service.py (resolve_manga, resolve_chapter, get_or_fetch_chapters, fmt helpers)
+  ├── suwayomi/ranking.py (pure search-result scoring: normalize + 5-tier evidence + stable rank; shared by command/AI/batch paths)
+  ├── suwayomi/bangumi.py (bgm.tv alias resolution for search expansion: top-5 subjects + JP-variant retry + probe builder + alias-boost arbiter + mirror fallback chain)
   ├── suwayomi/cards.py (T2I card template, data prep, embed_covers, render_card, CardCache)
   ├── suwayomi/t2i.py (standalone astrbot-t2i-service client for t2i_source=custom)
   ├── suwayomi/ai_service.py (structured, side-effect-free Agent search/chapter/subscription service)
@@ -96,7 +98,7 @@ main.py (SuwayomiPlugin — thin dispatch layer)
 
 10. **Command format**: AstrBot command groups use space separation. User types `/漫画 搜索`, not `/漫画搜索`. All user-facing text must use `「漫画 搜索」` format (with space).
 
-11. **Chapter data is lazy-loaded**: `fetchSourceManga` (search) only returns metadata. Chapters must be fetched separately via `fetchChapters` mutation. Use `_get_or_fetch_chapters()` helper which handles caching: reads from DB first, fetches from source if stale or empty. Cache duration is controlled by `chapter_cache_hours` config.
+11. **Chapter data is lazy-loaded**: `fetchSourceManga` (search) only returns metadata. Chapters must be fetched separately via `fetchChapters` mutation. Use `service.get_or_fetch_chapters()` which handles caching: reads from DB first, fetches from source if stale or empty. Cache duration is controlled by `chapter_cache_hours` config.
 
 12. **AstrBot arg splitting**: AstrBot's command handler splits arguments by spaces, so trailing keywords like `zip`/`pdf`/`cbz` or `--刷新` may be lost. Always parse from `event.message_str` for commands with optional trailing args.
 
@@ -112,28 +114,23 @@ main.py (SuwayomiPlugin — thin dispatch layer)
 
 18. **AstrBot's T2I endpoint is a module-level singleton**: `astrbot/core/__init__.py` builds `html_renderer = HtmlRenderer(astrbot_config.get("t2i_endpoint", ...))` at *import* time from the global config, and `Star.html_render` just forwards to it. Changing the global `t2i_endpoint` in the AstrBot WebUI therefore requires an **AstrBot restart** to take effect (documented in `docs/setup.md`). AstrBot's default is the overseas official endpoint `https://t2i.soulter.top/text2img`, plus a randomly-shuffled pool fetched from `api.soulter.top/astrbot/t2i-endpoints` — the reason the plugin offers a self-hosted `t2i_endpoint`. In contrast, the plugin's own `t2i_source`/`t2i_endpoint` are read per render, so they apply **without** a restart (the WebUI save path resets `_t2i_endpoint_warned`).
 
-## Key Helper Methods
+## Key Helpers
 
-- `_check_updates(force=False)` — Check all subscriptions for new chapters. `force=True` bypasses chapter cache and syncs title from source. Used by both manual `/漫画 更新` and background update loop (both always force). Pushes notifications to all subscribers.
-- `_get_or_fetch_chapters(manga_id, force=False)` — Get chapters from DB, auto-fetch from source if stale or empty. `force=True` bypasses cache. Used by chapter list command (respects cache) and `_check_updates` (always forces).
-- `_get_chapter_timestamp(manga_id)` / `_set_chapter_timestamp(manga_id)` — Manage per-manga chapter fetch timestamps in KV storage.
-- `_fmt_chapter_label(ch, num_counts)` — Format chapter display: `#num name` or `#num name (ID:xxx)` for duplicates. Shared by chapter list and update notifications.
-- `_fmt_chapter_display(ch)` — Return human-readable chapter name for messages. Uses `ch.name` if non-empty, falls back to `第X话`. Used by push, read, download, and updater.
-- `_fmt_chapter_num(num)` — Format chapter number as `int | float | "?"`. Still used internally by `fmt_chapter_display` and for command hint numbers.
-- `_resolve_manga(event, name_or_id, cmd)` — Resolve manga by ID or fuzzy name. Returns `(Manga, None)` or `(None, error_msg)`. `cmd` is used in disambiguation hints (e.g., "章节", "阅读", "下载").
-- `_resolve_chapter(chapters, chapter_num, manga_name_or_id, cmd)` — Resolve chapter by ID or number string. Returns `(Chapter, None)` or `(None, error_msg)`. Shared by read and download.
-- `_fetch_pages_local(chapter_id, max_pages)` — Fetch page URLs and download images to temp dir. Returns `(total_pages, page_urls, local_paths)`. Shared by read and download. Passes `client.auth_headers` for authorized servers.
-- `_download_images(urls)` — Parallel download with retry. Returns local file paths. Accepts optional `headers` dict for auth.
-- `_download_one(session, url, dest)` — Single image download with exponential backoff retry.
-- `_push_chapter_images(umo, title, chapter)` — Push chapter as images (reuses read send logic, respects `send_mode` for forward mode). Used by auto-push. Chapter label uses `ch.name` automatically.
-- `_push_chapter_file(umo, title, chapter)` — Push chapter as packaged file (reuses download logic). Used by auto-push. Chapter label uses `ch.name` automatically.
-- `_search_best_match(name, source_filter)` — Search manga name across sources, return first match. Used by batch subscribe.
-- `_prepare_chapter_delivery(event, chapter)` — Build the chapter image result for `/漫画 阅读` and explicitly requested AI image sending. Returns `(result, total_pages, delivered_pages, tmp_dir)`. Returns `None` as result when all images fail to download (e.g. auth misconfiguration), so callers can surface a meaningful error.
-- `_prepare_chapter_file_delivery(event, manga, chapter, fmt)` — Download all pages and build the AI Tool's PDF-default file result (PDF/ZIP/CBZ).
-- AI tools keep recent chapter candidates isolated by `(unified_msg_origin, sender_id)` for 10 minutes. The send tool only accepts a previously exposed `(manga_id, chapter_id)` pair, defaults to PDF unless the user names another supported format. The `asyncio.Lock` per scope prevents concurrent sends; failed sends can be retried.
-- `_ai_subscribe_manga_tool(event, manga_id, confirmed_user_intent, push_enabled=None)` — AI Tool: subscribe manga to current session, optionally set auto-push. `push_enabled=None` inherits session preference (set via `/漫画 推送 开`), `True`/`False` overrides explicitly. Already-subscribed case supports both upgrade and downgrade. Delegates to `subscribe_manga_for_agent()`.
-- `_ai_get_subscriptions_tool(event)` — AI Tool: return current session's subscription list with `push_enabled` status. Delegates to `get_subscriptions_for_agent()`.
-- `_ai_unsubscribe_manga_tool(event, manga_id, confirmed_user_intent)` — AI Tool: unsubscribe manga from current session, idempotent. Delegates to `unsubscribe_manga_for_agent()`.
+业务逻辑自 0.4.7 起从插件类迁出为依赖注入式独立函数（`main.py` 仅薄调度）。常用入口（均为模块级函数，非 `self.` 方法）：
+
+- `service.resolve_manga(client, sub_mgr, umo, name_or_id, cmd)` — 按 ID/订阅名/标题模糊解析漫画。返回 `(Manga, None)` 或 `(None, error_msg)`；多结果时返回带 ID 的引导列表
+- `service.resolve_chapter(chapters, chapter_num, manga_name_or_id, cmd)` — 按编号或 `ID:xxx` 解析章节（重号时提示用 ID 消歧）
+- `service.get_or_fetch_chapters(client, get_kv_data, put_kv_data, config, manga_id, force)` — 章节缓存读取/源拉取；`force=True` 绕过缓存（更新检查恒 force）
+- `service.get_chapter_timestamp(...)` / `service.set_chapter_timestamp(...)` — KV 中的章节拉取时间戳
+- `service.fmt_chapter_display(ch)` / `service.fmt_chapter_label(ch, num_counts)` — 章节的展示名 / `#num name (ID:xxx)` 标签；内部统一过 `sanitize_for_message` 清洗（源站文本防注入）
+- `service.search_best_match(client, config, name, source_filter)` — 批量订阅用：多源搜索 + 源内 `rank_items` 选优
+- `service.refresh_truncated_titles(client, mangas)` — 并发刷新源站截断标题（原地替换）
+- `ranking.rank_items(query, items, title_of)` — 相关度打分排序（命令/AI/批量共用）
+- `downloader.download_images(urls, ...)` / `downloader.fetch_pages_local(client, chapter_id, max_pages, ...)` — 并行下载；文件打包路径统一传 `get_file_delivery_max_pages(config)`（配置 `file_delivery_max_pages`，默认 300）
+- `pusher.push_chapter_images(...)` / `pusher.push_chapter_file(...)` — 自动推送（图片/文件）；`build_image_chain` 为阅读、推送、AI 发送共用的消息链构建器
+- `main._prepare_chapter_delivery(event, chapter)` / `main._prepare_chapter_file_delivery(event, manga, chapter, fmt)` — 插件方法：构建阅读图片结果 / 打包文件结果（全页下载失败时返回 None 供调用方报错）
+- AI 工具按 `(unified_msg_origin, sender_id)` 隔离最近章节候选 10 分钟；发送工具只接受已暴露的 `(manga_id, chapter_id)` 对，per-scope `asyncio.Lock` 防并发发送，失败可重试
+- `main._ai_subscribe_manga_tool / _ai_get_subscriptions_tool / _ai_unsubscribe_manga_tool` — AI 订阅管理工具的插件侧 handler（业务在 `ai_service.py`，见架构图）
 
 ## Config Options
 
@@ -154,8 +151,8 @@ main.py (SuwayomiPlugin — thin dispatch layer)
 
 - `metadata.yaml`: AstrBot plugin metadata (name, version, platforms)
 - `_conf_schema.json`: AstrBot WebUI config form schema
-- `requirements.txt`: Runtime deps (currently `aiohttp>=3.9.0`, `img2pdf>=0.5.0`, `opencc-python-reimplemented>=0.1.7`, `pillow>=10.0.0`, and `pydantic>=2.12.5`)
-- `pyproject.toml`: Dev deps (pytest, pytest-asyncio), gitignored
+- `requirements.txt`: Runtime deps (currently `aiohttp>=3.9.0`, `img2pdf>=0.5.0`, `opencc-python-reimplemented>=0.1.7`, `pillow>=10.0.0`, and `pydantic>=2.12.5,<3`)
+- `pyproject.toml`: Dev deps (pytest, pytest-asyncio), gitignored（不入库——环境搭建用 `uv venv` + `uv pip install -r requirements.txt pytest pytest-asyncio`，勿用 `uv sync`）
 - Tests in `tests/` - unit tests are synchronous or use `@pytest.mark.asyncio`; `test_ai_service.py` covers structured Agent search, chapter selection, and subscription management, while `test_ai_tools.py` guards `call()` dispatch across initial load and config re-sync for all six tools; `test_downloader.py` covers image/cover download helpers; `test_list_chapters.py` covers `/漫画 章节` cover logic and error paths; `test_config.py` covers grouped config read/write, legacy flat migration and schema/definition consistency
 - `test_live_api.py`: Integration tests for Suwayomi client, auto-skipped when server unreachable. Covers sources/search/chapters/pages, AI search & chapter selection, plus the real command main path (`test_download_and_pack_chapter`: fetch pages → download images → pack zip/pdf/cbz; `test_check_updates_detects_new_chapters_live`: real scan → notify → watermark → last-check timestamp). Manga sources rate-limit consecutive fetches, so AI-search tests retry once and skip when throttled (`_search_zh_for_agent`)
 - `test_live_web_api.py`: Integration tests for WebUI API handlers, auto-skipped when server unreachable

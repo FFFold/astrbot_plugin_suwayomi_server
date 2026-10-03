@@ -18,6 +18,8 @@ def _plugin(cards_enabled=True):
         "download_retries": 3,
         "result_cards_enabled": cards_enabled,
         "card_render_timeout_sec": 30,
+        # 单测禁用 Bangumi 扩展（避免真实网络请求）
+        "search_alias_expansion": False,
     }
     plugin.get_kv_data = AsyncMock(return_value={})
     plugin.put_kv_data = AsyncMock()

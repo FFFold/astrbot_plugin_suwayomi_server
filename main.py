@@ -34,10 +34,23 @@ from .suwayomi.cards import (
     render_card_cached,
 )
 from .suwayomi.client import SuwayomiClient, SuwayomiError
-from .suwayomi.config import get_config_value, migrate_legacy_config
-from .suwayomi.models import Manga, SearchResult
+from .suwayomi.config import config_bool, get_config_value, migrate_legacy_config
+from .suwayomi.bangumi import (
+    alias_boost,
+    api_bases,
+    build_probes,
+    confident_aliases,
+    resolve_aliases,
+)
+from .suwayomi.models import Manga
+from .suwayomi.ranking import (
+    STRONG_MATCH_THRESHOLD,
+    normalize_for_rank,
+    score_title,
+)
 from .suwayomi.service import (
     STATUS_EMOJI,
+    _bounded_int,
     fmt_chapter_display,
     fmt_chapter_label,
     fmt_chapter_num,
@@ -45,8 +58,10 @@ from .suwayomi.service import (
     get_or_fetch_chapters,
     match_source_hint,
     normalize_zh,
+    refresh_truncated_titles,
     resolve_chapter,
     resolve_manga,
+    sanitize_for_message,
     search_best_match,
     select_search_sources,
     split_search_query,
@@ -56,7 +71,11 @@ from .suwayomi.service import (
 from .suwayomi.t2i import make_endpoint_renderer, normalize_endpoint
 from .suwayomi.updater import check_updates as _check_updates
 from .suwayomi.updater import run_update_loop
-from .utils.downloader import download_cover, fetch_pages_local
+from .utils.downloader import (
+    download_cover,
+    fetch_pages_local,
+    get_file_delivery_max_pages,
+)
 from .utils.pack import (
     build_chapter_output_path,
     normalize_pack_format,
@@ -157,11 +176,8 @@ class SuwayomiPlugin(Star):
 
     @staticmethod
     def _config_bool(value, default: bool = False) -> bool:
-        if value is None:
-            return default
-        if isinstance(value, str):
-            return value.strip().lower() in {"1", "true", "yes", "on", "开启"}
-        return bool(value)
+        # 与 AI 路径共用 suwayomi.config.config_bool，避免同一开关解析不一致
+        return config_bool(value, default)
 
     def _sync_ai_tools(self):
         enabled = self._config_bool(get_config_value(self.config, "enable_ai_tools", True), True)
@@ -564,6 +580,9 @@ class SuwayomiPlugin(Star):
     async def terminate(self):
         if self._bg_task and not self._bg_task.done():
             self._bg_task.cancel()
+            # 等待取消传播完成（睡眠中的循环立即退出），避免与配置保存
+            # 路径行为不一致的悬挂任务噪音
+            await asyncio.gather(self._bg_task, return_exceptions=True)
         cancel_pending_cleanups()
         self._ai_state.clear()
         self._ai_send_locks.clear()
@@ -776,6 +795,7 @@ class SuwayomiPlugin(Star):
         total_pages, page_urls, local_paths, tmp_dir = await fetch_pages_local(
             self.client,
             target.id,
+            max_pages=get_file_delivery_max_pages(self.config),
             concurrency=concurrency,
             custom_tmp=custom_tmp,
             retries=retries,
@@ -858,7 +878,7 @@ class SuwayomiPlugin(Star):
                 return
             lines = ["📚 已安装的漫画源:"]
             for i, src in enumerate(sources, 1):
-                lines.append(f"  [{i}] {src.display_name} ({src.lang})")
+                lines.append(f"  [{i}] {sanitize_for_message(src.display_name, limit=40)} ({src.lang})")
             yield event.plain_result("\n".join(lines))
         except SuwayomiError as e:
             yield event.plain_result(f"获取源列表失败: {e}")
@@ -907,52 +927,244 @@ class SuwayomiPlugin(Star):
                     max_sources=5,
                 )
 
-            all_results: list[tuple[str, SearchResult]] = []
-            for src in target_sources:
+            ranking_on = self._config_bool(
+                get_config_value(self.config, "search_result_ranking", True), True
+            )
+            display_limit = _bounded_int(
+                get_config_value(self.config, "search_display_limit", 20), 20, 1, 50
+            )
+            # 截断刷新依赖排序开启：关闭 search_result_ranking 时须完整
+            # 恢复旧版行为（不刷新、按源分组原样输出）
+            refresh_on = ranking_on and self._config_bool(
+                get_config_value(self.config, "search_refresh_truncated_titles", True),
+                True,
+            )
+            expand_on = ranking_on and self._config_bool(
+                get_config_value(self.config, "search_alias_expansion", True), True
+            )
+            mirror_on = self._config_bool(
+                get_config_value(self.config, "bangumi_mirror", False), False
+            )
+            mirror_url = str(
+                get_config_value(self.config, "bangumi_mirror_url", "") or ""
+            ).strip()
+
+            async def _search_source(src):
                 try:
-                    result = await self.client.search_manga(src.id, search_query)
-                    all_results.append((src.display_name, result))
+                    result = await asyncio.wait_for(
+                        self.client.search_manga(src.id, search_query), timeout=15
+                    )
+                    # 来源显示名由源扩展控制，进入消息前过清洗
+                    return sanitize_for_message(src.display_name, limit=40), result
                 except Exception as e:
                     logger.warning(f"[{PLUGIN_NAME}] 搜索源 {src.name} 失败: {e}")
+                    return sanitize_for_message(src.display_name, limit=40), None
 
-            if not all_results:
-                yield event.plain_result("未找到相关漫画，请确认关键词。")
+            # Bangumi 别名解析与源搜索并行执行，互不等待
+            resolve_task = (
+                asyncio.create_task(
+                    resolve_aliases(
+                        search_query,
+                        bases=api_bases(mirror_on, mirror_url),
+                        deadline=20,
+                    )
+                ) if expand_on else None
+            )
+            # 并发请求全部源（与 AI 工具路径一致），单源 15s 超时；
+            # 失败源记为 None，不阻塞其它源的结果
+            try:
+                responses = await asyncio.gather(
+                    *(_search_source(src) for src in target_sources)
+                )
+            except BaseException:
+                # 命令协程被取消（插件热重载/卸载）时，并行的 Bangumi
+                # 解析任务不能变成失去外层兜底的孤儿
+                if resolve_task is not None:
+                    resolve_task.cancel()
+                raise
+            resolution = None
+            if resolve_task is not None:
+                try:
+                    # 整体预算兜底：Bangumi 请求最坏等待不允许拖住用户命令，
+                    # 超时按「解析失败」静默跳过扩展
+                    resolution = await asyncio.wait_for(resolve_task, timeout=20)
+                except Exception:
+                    resolution = None
+
+            # pool: (manga, 源显示名, Bangumi 溯源条目id|None)；排序开启时
+            # 统一按标题相关度混排，编号在排序后分配（同分保持源顺序）
+            pool: list[tuple[Manga, str, int | None]] = [
+                (m, source_name, None)
+                for source_name, result in responses
+                if result
+                for m in result.mangas
+            ]
+            if refresh_on and pool:
+                # 源站列表页截断的长标题（我的首推是恶役...）从详情页补全，
+                # 失败保留原标题（排序有反向包含兜底）
+                try:
+                    await refresh_truncated_titles(
+                        self.client, [m for m, _, _ in pool]
+                    )
+                except Exception as e:
+                    logger.warning(f"[{PLUGIN_NAME}] 截断标题刷新失败: {e}")
+
+            def _rank_pool(items):
+                decorated = []
+                for i, (m, source_name, prov) in enumerate(items):
+                    base = score_title(search_query, m.title)
+                    if resolution is not None:
+                        base = max(
+                            base,
+                            alias_boost(
+                                search_query, m.title, prov, resolution,
+                                base_score=base,
+                            ),
+                        )
+                    decorated.append((base, i, (m, source_name, prov)))
+                decorated.sort(key=lambda x: (-x[0], x[1]))
+                return [it for _, _, it in decorated], [sc for sc, _, _ in decorated]
+
+            if ranking_on:
+                pool, scores = _rank_pool(pool)
+                best = scores[0] if scores else 0.0
+            else:
+                best = 0.0
+
+            # ── 第二轮：无强命中时用 Bangumi 别名有界重搜 ──
+            expansion_note = ""
+            suggestion = ""
+            if (
+                ranking_on
+                and expand_on
+                and resolution is not None
+                and len(normalize_for_rank(search_query)) >= 2
+                and best < STRONG_MATCH_THRESHOLD
+            ):
+                probes = build_probes(search_query, resolution)
+                if probes:
+
+                    async def _probe(src, query, sid):
+                        try:
+                            result = await asyncio.wait_for(
+                                self.client.search_manga(src.id, query), timeout=15
+                            )
+                            return result, sanitize_for_message(src.display_name, limit=40), sid
+                        except Exception:
+                            return None, sanitize_for_message(src.display_name, limit=40), sid
+
+                    probe_responses = await asyncio.gather(
+                        *(
+                            _probe(src, query, sid)
+                            for query, sid in probes
+                            for src in target_sources
+                        )
+                    )
+                    seen_ids = {m.id for m, _, _ in pool}
+                    added: list[tuple[Manga, str, int | None]] = []
+                    for result, source_name, sid in probe_responses:
+                        if not result:
+                            continue
+                        for m in result.mangas:
+                            if m.id in seen_ids:
+                                continue
+                            seen_ids.add(m.id)
+                            added.append((m, source_name, sid))
+                    if added:
+                        if refresh_on:
+                            try:
+                                await refresh_truncated_titles(
+                                    self.client, [m for m, _, _ in added]
+                                )
+                            except Exception as e:
+                                logger.warning(f"[{PLUGIN_NAME}] 截断标题刷新失败: {e}")
+                        merged, merged_scores = _rank_pool(pool + added)
+                        if merged_scores and merged_scores[0] >= STRONG_MATCH_THRESHOLD:
+                            # 扩展带来强命中才并入展示；否则保持第一轮结果
+                            pool, scores = merged, merged_scores
+                            aliases = confident_aliases(search_query, resolution)
+                            used = "、".join(
+                                sanitize_for_message(a) for a in aliases[:3]
+                            ) or "、".join(
+                                sanitize_for_message(qr) for qr, _ in probes
+                            )
+                            expansion_note = (
+                                f"\n💡 关键词无强命中，已通过 Bangumi 别名"
+                                f"「{used[:80]}」扩展搜索"
+                            )
+                if best < STRONG_MATCH_THRESHOLD and not expansion_note:
+                    aliases = (
+                        confident_aliases(search_query, resolution)
+                        if resolution.confident
+                        else []
+                    )
+                    if aliases:
+                        cleaned = "》/《".join(
+                            sanitize_for_message(a) for a in aliases
+                        )
+                        suggestion = (
+                            f"\n💡 你说的可能是《{cleaned}》？"
+                            "试试完整标题或用别名重新搜索"
+                        )
+
+            if not pool:
+                yield event.plain_result("未找到相关漫画，请确认关键词。" + suggestion)
                 return
 
-            lines = []
+            lines: list[str] = []
             idx = 1
             cache: dict[str, Manga] = {}
             card_rows: list[dict] = []
-            for source_name, result in all_results:
-                if result.mangas:
-                    lines.append(f"\n🔍 搜索结果（源: {source_name}）:")
-                    for m in result.mangas:
-                        status = STATUS_EMOJI.get(m.status, "未知")
-                        lines.append(f"  [{idx}] {m.title} - {status}")
-                        cache[str(idx)] = m
-                        card_rows.append({
-                            "index": idx,
-                            "title": m.title,
-                            "status": m.status,
-                            "source": source_name,
-                            "thumbnail_url": m.thumbnail_url,
-                        })
-                        idx += 1
 
-            if idx == 1:
-                yield event.plain_result("未找到相关漫画，请确认关键词。")
-                return
+            def _append_row(m: Manga, source_name: str) -> None:
+                nonlocal idx, lines
+                cache[str(idx)] = m
+                card_rows.append({
+                    "index": idx,
+                    "title": m.title,
+                    "status": m.status,
+                    "source": source_name,
+                    "thumbnail_url": m.thumbnail_url,
+                })
+                idx += 1
 
-            lines.append("\n回复「漫画 订阅 <编号>」订阅，如「漫画 订阅 1」")
+            if ranking_on:
+                total = len(pool)
+                if expansion_note:
+                    lines.append(expansion_note)
+                lines.append(f"\n🔍 搜索结果（{total} 条，按相关度排序）:")
+                for m, source_name, _prov in pool[:display_limit]:
+                    status = STATUS_EMOJI.get(m.status, "未知")
+                    lines.append(f"  [{idx}] {sanitize_for_message(m.title, limit=80)} - {status}（{source_name}）")
+                    _append_row(m, source_name)
+                tail = "回复「漫画 订阅 <编号>」订阅，如「漫画 订阅 1」"
+                if idx - 1 < total:
+                    tail = f"已按相关度显示前 {idx - 1} 条（共 {total} 条）\n{tail}"
+                lines.append("\n" + tail)
+                subtitle = f"按相关度排序 · {total} 条"
+                if suggestion:
+                    lines.append(suggestion)
+            else:
+                # 关闭排序：保持旧版按源分组的输出格式
+                for source_name, result in responses:
+                    if result and result.mangas:
+                        lines.append(f"\n🔍 搜索结果（源: {source_name}）:")
+                        for m in result.mangas:
+                            status = STATUS_EMOJI.get(m.status, "未知")
+                            lines.append(f"  [{idx}] {sanitize_for_message(m.title, limit=80)} - {status}")
+                            _append_row(m, source_name)
+                # 旧版末尾的订阅提示行（关闭排序 = 完整恢复旧版输出）
+                lines.append("\n回复「漫画 订阅 <编号>」订阅，如「漫画 订阅 1」")
+                subtitle = (
+                    f"{' · '.join(dict.fromkeys(n for n, r in responses if r))}"
+                    f" · {len(card_rows)} 条"
+                )
+
             text = "\n".join(lines)
             self._set_search_cache(event.unified_msg_origin, cache)
 
             if self._result_cards_enabled():
                 try:
-                    subtitle = (
-                        f"{' · '.join(dict.fromkeys(source_name for source_name, _ in all_results))}"
-                        f" · {len(card_rows)} 条"
-                    )
                     tmpldata = build_search_card(
                         card_rows,
                         subtitle,
@@ -1020,7 +1232,9 @@ class SuwayomiPlugin(Star):
                         return
                 except Exception as e:
                     logger.warning(f"[{PLUGIN_NAME}] 订阅确认卡片渲染失败，回退文本: {e}")
-            yield event.plain_result(f"✅ 已订阅「{manga.title}」，有新章节时会推送。")
+            yield event.plain_result(
+                f"✅ 已订阅「{sanitize_for_message(manga.title, limit=80)}」，有新章节时会推送。"
+            )
         except Exception as e:
             logger.error(f"[{PLUGIN_NAME}] subscribe error: {e}")
             yield event.plain_result("订阅失败，请稍后重试。")
@@ -1040,7 +1254,10 @@ class SuwayomiPlugin(Star):
                 return
 
             sources = await self.client.get_sources()
-            src_map = {str(s.id): s.display_name for s in sources}
+            src_map = {
+                str(s.id): sanitize_for_message(s.display_name, limit=40)
+                for s in sources
+            }
             source_filter = None
             search_str = args_str
 
@@ -1081,7 +1298,7 @@ class SuwayomiPlugin(Star):
                 if manga.id in existing_ids:
                     status_text = STATUS_EMOJI.get(manga.status, "未知")
                     source_name = src_map.get(str(manga.source_id), "")
-                    results.append((name, "exists", f"{manga.title} - {status_text} - {source_name}"))
+                    results.append((name, "exists", f"{sanitize_for_message(manga.title, limit=80)} - {status_text} - {source_name}"))
                     card_rows.append({"status": "exists", "title": manga.title,
                                       "detail": f"{status_text} - {source_name}（已订阅）",
                                       "thumbnail_url": manga.thumbnail_url})
@@ -1101,7 +1318,7 @@ class SuwayomiPlugin(Star):
 
                 status_text = STATUS_EMOJI.get(manga.status, "未知")
                 source_name = src_map.get(str(manga.source_id), "")
-                results.append((name, "ok", f"{manga.title} - {status_text} - {source_name}"))
+                results.append((name, "ok", f"{sanitize_for_message(manga.title, limit=80)} - {status_text} - {source_name}"))
                 card_rows.append({"status": "ok", "title": manga.title,
                                   "detail": f"{status_text} - {source_name}",
                                   "thumbnail_url": manga.thumbnail_url})
@@ -1182,7 +1399,10 @@ class SuwayomiPlugin(Star):
                 yield event.plain_result("📭 你还没有订阅任何漫画。使用「漫画 搜索」来查找并订阅。")
                 return
             sources = await self.client.get_sources()
-            src_map = {str(s.id): s.display_name for s in sources}
+            src_map = {
+                str(s.id): sanitize_for_message(s.display_name, limit=40)
+                for s in sources
+            }
 
             if self._result_cards_enabled():
                 try:
@@ -1224,7 +1444,9 @@ class SuwayomiPlugin(Star):
             for s in subs:
                 source_name = src_map.get(str(s["source_id"]), "")
                 tag = f" - {source_name}" if source_name else ""
-                lines.append(f"  • {s['title']}{tag} - ID: {s['manga_id']}")
+                lines.append(
+                    f"  • {sanitize_for_message(s['title'], limit=80)}{tag} - ID: {s['manga_id']}"
+                )
             yield event.plain_result("\n".join(lines))
         except Exception as e:
             logger.error(f"[{PLUGIN_NAME}] my_subscriptions error: {e}")
@@ -1282,7 +1504,7 @@ class SuwayomiPlugin(Star):
             for s in subs:
                 enabled = self.sub_mgr.is_auto_push_enabled(all_subs, s["manga_id"], umo)
                 status = "✅ 开启" if enabled else "❌ 关闭"
-                lines.append(f"  • {s['title']} — {status}")
+                lines.append(f"  • {sanitize_for_message(s['title'], limit=80)} — {status}")
             yield event.plain_result("\n".join(lines))
         except Exception as e:
             logger.error(f"[{PLUGIN_NAME}] push_status error: {e}")
@@ -1347,12 +1569,13 @@ class SuwayomiPlugin(Star):
                 )
 
             if not chapters:
+                no_chapter_msg = f"「{sanitize_for_message(manga.title, limit=80)}」暂无章节。"
                 if cover_path:
-                    msg = f"「{manga.title}」暂无章节。"
+                    msg = no_chapter_msg
                     schedule_cleanup(cover_tmp, delay=60)
                     yield event.chain_result([Comp.Image.fromFileSystem(cover_path), Comp.Plain(msg)])
                 else:
-                    yield event.plain_result(f"「{manga.title}」暂无章节。")
+                    yield event.plain_result(no_chapter_msg)
                 return
 
             chapters.sort(key=lambda ch: ch.source_order)
@@ -1362,7 +1585,14 @@ class SuwayomiPlugin(Star):
 
             try:
                 sources = await self.client.get_sources()
-                src_name = next((s.display_name for s in sources if str(s.id) == str(manga.source_id)), None)
+                src_name = next(
+                    (
+                        sanitize_for_message(s.display_name, limit=40)
+                        for s in sources
+                        if str(s.id) == str(manga.source_id)
+                    ),
+                    None,
+                )
             except Exception:
                 src_name = None
             src_tag = f" - {src_name}" if src_name else ""
@@ -1420,7 +1650,8 @@ class SuwayomiPlugin(Star):
                 except Exception as e:
                     logger.warning(f"[{PLUGIN_NAME}] 章节卡片渲染失败，回退旧路径: {e}")
 
-            header = f"📖「{manga.title}」{src_tag} 章节列表（共 {len(chapters)} 话）:"
+            safe_title = sanitize_for_message(manga.title, limit=80)
+            header = f"📖「{safe_title}」{src_tag} 章节列表（共 {len(chapters)} 话）:"
             chunks: list[list[str]] = [[]]
             for ch in chapters:
                 dl_mark = " 📥" if ch.is_downloaded else ""
@@ -1431,7 +1662,7 @@ class SuwayomiPlugin(Star):
                 chunks[-1].append(line)
 
             for i, chunk in enumerate(chunks):
-                prefix = header if i == 0 else f"📖「{manga.title}」{src_tag} 章节续 ({i + 1}/{len(chunks)}):"
+                prefix = header if i == 0 else f"📖「{safe_title}」{src_tag} 章节续 ({i + 1}/{len(chunks)}):"
                 msg = prefix + "\n" + "\n".join(chunk)
                 if i == 0 and cover_path:
                     schedule_cleanup(cover_tmp, delay=60)
@@ -1471,11 +1702,18 @@ class SuwayomiPlugin(Star):
                 yield event.plain_result(err_msg)
                 return
             if target is None:
-                yield event.plain_result(f"未找到「{manga.title}」指定的章节。")
+                yield event.plain_result(
+                    f"未找到「{sanitize_for_message(manga.title, limit=80)}」指定的章节。"
+                )
                 return
 
             try:
-                await event.send(event.plain_result(f"📖 正在加载「{manga.title}」{fmt_chapter_display(target)}，请稍后..."))
+                await event.send(
+                    event.plain_result(
+                        f"📖 正在加载「{sanitize_for_message(manga.title, limit=80)}」"
+                        f"{fmt_chapter_display(target)}，请稍后..."
+                    )
+                )
             except Exception:
                 pass
 
@@ -1533,17 +1771,24 @@ class SuwayomiPlugin(Star):
                 yield event.plain_result(err_msg)
                 return
             if target is None:
-                yield event.plain_result(f"未找到「{manga.title}」指定的章节。")
+                yield event.plain_result(
+                    f"未找到「{sanitize_for_message(manga.title, limit=80)}」指定的章节。"
+                )
                 return
 
             num_label = fmt_chapter_display(target)
-            await event.send(event.plain_result(f"⏳ 正在下载「{manga.title}」{num_label}，请稍候..."))
+            await event.send(
+                event.plain_result(
+                    f"⏳ 正在下载「{sanitize_for_message(manga.title, limit=80)}」{num_label}，请稍候..."
+                )
+            )
 
             concurrency = get_config_value(self.config, "download_concurrency", 6)
             custom_tmp = get_config_value(self.config, "temp_dir", "").strip()
             retries = get_config_value(self.config, "download_retries", 3)
             _, page_urls, local_paths, tmp_dir = await fetch_pages_local(
-                self.client, target.id, concurrency=concurrency, custom_tmp=custom_tmp, retries=retries,
+                self.client, target.id, max_pages=get_file_delivery_max_pages(self.config),
+                concurrency=concurrency, custom_tmp=custom_tmp, retries=retries,
                 headers=self.client.auth_headers,
             )
 

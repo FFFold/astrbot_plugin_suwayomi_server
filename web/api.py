@@ -37,6 +37,10 @@ ALLOWED_CONFIG_KEYS = {
     "temp_dir", "auto_push_mode",
     "enable_ai_tools", "allow_ai_send", "ai_max_sources",
     "ai_results_per_source", "ai_tool_timeout_sec",
+    "search_result_ranking", "search_display_limit",
+    "search_refresh_truncated_titles", "search_alias_expansion",
+    "bangumi_mirror", "bangumi_mirror_url",
+    "file_delivery_max_pages",
 }
 
 # Numeric config keys with their minimum allowed values
@@ -51,6 +55,8 @@ NUMERIC_CONFIG_KEYS = {
     "ai_max_sources": 1,
     "ai_results_per_source": 1,
     "ai_tool_timeout_sec": 10,
+    "search_display_limit": 1,
+    "file_delivery_max_pages": 1,
 }
 
 MAX_NUMERIC_CONFIG_KEYS = {
@@ -58,11 +64,15 @@ MAX_NUMERIC_CONFIG_KEYS = {
     "ai_max_sources": 10,
     "ai_results_per_source": 20,
     "ai_tool_timeout_sec": 300,
+    "search_display_limit": 50,
+    "file_delivery_max_pages": 2000,
 }
 
 BOOLEAN_CONFIG_KEYS = {
     "enable_ai_tools", "allow_ai_send",
     "result_cards_enabled", "chapter_list_show_cover",
+    "search_result_ranking", "search_refresh_truncated_titles",
+    "search_alias_expansion", "bangumi_mirror",
 }
 
 ENUM_CONFIG_KEYS = {
@@ -71,12 +81,17 @@ ENUM_CONFIG_KEYS = {
     "auto_push_mode": {"image", "file"},
     "download_format": {"zip", "pdf", "cbz"},
     "t2i_source": {"system", "custom"},
+    "auth_mode": {"none", "basic", "jwt"},
 }
 
 # Free-form string keys: non-string payloads (JSON numbers/objects) are dropped
 # instead of being stored, so downstream helpers never see unexpected types.
 STRING_CONFIG_KEYS = {
     "t2i_endpoint",
+    "username",
+    "password",
+    "temp_dir",
+    "bangumi_mirror_url",
 }
 
 
@@ -141,7 +156,11 @@ async def api_subscriptions(
 
     result = []
     for manga_id_str, info in all_subs.items():
-        manga_id = int(manga_id_str)
+        try:
+            manga_id = int(manga_id_str)
+        except (TypeError, ValueError):
+            # 与更新引擎一致：外部损坏的非数字键跳过而非让整个列表 500
+            continue
         source_id = info.get("source_id", 0)
         subscribers = info.get("subscribers", {})
         push_enabled_count = sum(
@@ -230,7 +249,10 @@ async def api_config_post(
     if not data:
         return {"success": False, "message": "请求体为空"}, 400
 
-    server_url = data.get("server_url", "").strip()
+    raw_server_url = data.get("server_url", "")
+    if not isinstance(raw_server_url, str):
+        return {"success": False, "message": "服务器地址必须是字符串"}, 400
+    server_url = raw_server_url.strip()
     if not server_url:
         return {"success": False, "message": "服务器地址不能为空"}, 400
 

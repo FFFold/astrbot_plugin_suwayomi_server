@@ -30,10 +30,25 @@ def pack_pdf(image_paths: list[str], output: Path):
         f.write(img2pdf.convert(valid))
 
 
+_WINDOWS_RESERVED_NAMES = (
+    {"CON", "PRN", "AUX", "NUL"}
+    | {f"COM{i}" for i in range(1, 10)}
+    | {f"LPT{i}" for i in range(1, 10)}
+)
+
+
 def sanitize_filename(name: str, max_len: int = 50) -> str:
     """Sanitize a name for safe use in filenames."""
-    cleaned = "".join(c for c in str(name) if c not in r'<>:"/\|?*').strip()
-    return cleaned[:max_len] or "untitled"
+    cleaned = "".join(
+        c for c in str(name)
+        if c not in r'<>:"/\|?*' and ord(c) >= 0x20 and c != "\x7f"
+    ).strip()
+    # Windows 不接受结尾的点/空格，保留名（CON/NUL/COM1…）需加前缀绕开；
+    # 先截断再去尾点/空格：截断位恰好是点时不留下结尾点
+    cleaned = cleaned[:max_len].rstrip(". ")
+    if cleaned.split(".")[0].upper() in _WINDOWS_RESERVED_NAMES:
+        cleaned = f"_{cleaned}"
+    return cleaned or "untitled"
 
 
 def normalize_pack_format(fmt: str) -> str:

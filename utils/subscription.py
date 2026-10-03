@@ -112,8 +112,13 @@ class SubscriptionManager:
         result = []
         for manga_id, info in data.items():
             if umo in info.get("subscribers", {}):
+                try:
+                    resolved_id = int(manga_id)
+                except (TypeError, ValueError):
+                    # 与更新引擎一致：外部损坏的非数字键跳过而非崩溃
+                    continue
                 result.append({
-                    "manga_id": int(manga_id),
+                    "manga_id": resolved_id,
                     "title": info["title"],
                     "source_id": info.get("source_id", 0),
                     "latest_chapter_id": info.get("latest_chapter_id", 0),

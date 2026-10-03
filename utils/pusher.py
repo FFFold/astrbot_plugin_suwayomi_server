@@ -12,7 +12,8 @@ from astrbot.api.event import MessageChain
 
 from ..suwayomi.config import get_config_value
 from ..suwayomi.models import Chapter
-from ..suwayomi.service import fmt_chapter_display
+from ..suwayomi.service import fmt_chapter_display, sanitize_for_message
+from .downloader import get_file_delivery_max_pages
 from .pack import build_chapter_output_path, normalize_pack_format, pack_images
 
 if TYPE_CHECKING:
@@ -145,6 +146,8 @@ async def push_chapter_images(
     fetch_pages_local_fn: Callable,
 ):
     ch_label = fmt_chapter_display(chapter)
+    # title 来自源站（订阅 KV 同步），进入消息链前统一清洗
+    title = sanitize_for_message(title, limit=80)
     max_pages = get_config_value(config, "max_pages", 30)
     fetch_mode = get_config_value(config, "image_fetch_mode", "download")
     send_mode = get_config_value(config, "send_mode", "image")
@@ -215,9 +218,13 @@ async def push_chapter_file(
     fetch_pages_local_fn: Callable,
 ):
     ch_label = fmt_chapter_display(chapter)
+    title = sanitize_for_message(title, limit=80)
     fmt = get_config_value(config, "download_format", "pdf")
 
-    _, page_urls, local_paths, tmp_dir = await fetch_pages_local_fn(chapter.id)
+    # 文件推送意图是整章打包，但仍设页数上限：恶意源可宣告超大页列表
+    _, page_urls, local_paths, tmp_dir = await fetch_pages_local_fn(
+        chapter.id, get_file_delivery_max_pages(config)
+    )
     if not page_urls:
         schedule_cleanup(tmp_dir, delay=120)
         return

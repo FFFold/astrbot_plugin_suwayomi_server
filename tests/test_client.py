@@ -197,3 +197,12 @@ async def test_search_manga_converts_plus_to_space():
 
     variables = client._post_graphql.await_args.args[1]
     assert variables["q"] == "香格里拉 再"
+
+
+@pytest.mark.asyncio
+async def test_session_carries_default_timeout(client):
+    """无外层 wait_for 的命令路径依赖会话级超时兜底（aiohttp 默认 5 分钟太长）。"""
+    session = await client._get_session()
+    assert session.timeout.total == 60
+    assert session.timeout.sock_connect == 10
+    await session.close()

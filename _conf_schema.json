@@ -121,7 +121,7 @@
         "default": 300,
         "min": 1,
         "max": 2000,
-        "hint": "下载/推送打包为文件时的单章页数上限，用于挡住恶意源宣告的超大页列表。「第一卷」这类整卷/合集章节可合法超过 300 页，推送被截断时按需调大"
+        "hint": "打包为文件时的单章页数上限，整卷/合集章节可调大"
       }
     }
   },
@@ -213,31 +213,31 @@
         "description": "搜索结果按相关度排序",
         "type": "bool",
         "default": true,
-        "hint": "跨源混合排序：标题与关键词越相关越靠前（相等 > 包含 > 简称子序列 > 部分重叠）；同分保持源顺序。关闭后恢复按源分组的原始顺序"
+        "hint": "跨源搜索结果按标题相关度排序；关闭恢复按源分组的原始顺序"
       },
       "search_alias_expansion": {
         "description": "Bangumi 别名扩展搜索",
         "type": "bool",
         "default": true,
-        "hint": "关键词无强命中时（如用简称「我推恶役」搜索），通过 Bangumi 番组计划解析官方译名/别名并自动换名重搜；需访问 api.bgm.tv，失败时自动跳过"
+        "hint": "无强命中时用 Bangumi 官方译名/别名重搜；失败自动跳过"
       },
       "search_refresh_truncated_titles": {
         "description": "修复被源站截断的标题",
         "type": "bool",
         "default": true,
-        "hint": "搜索结果标题以 ... 结尾时（如「我的首推是恶役...」），自动从源站详情页刷新为完整标题；刷新失败保留原标题。需同时开启「搜索结果按相关度排序」（关闭排序时完整恢复旧版行为）"
+        "hint": "自动从源站详情页补全被截断的搜索标题（需开启相关度排序）"
       },
       "bangumi_mirror": {
         "description": "Bangumi 公共镜像回退",
         "type": "bool",
         "default": false,
-        "hint": "网络受限环境（api.bgm.tv 无法直连）时启用：优先用下方自定义镜像，未填则按序尝试内置公共镜像（api.bangumi.vip / bgmapi.anibt.net，社区运营、可能轮换下线）；全部失败自动回退为不使用别名扩展。关闭时仅直连官方 api.bgm.tv"
+        "hint": "官方 api.bgm.tv 不可达时改用镜像回退"
       },
       "bangumi_mirror_url": {
         "description": "自定义 Bangumi API 镜像地址",
         "type": "string",
         "default": "",
-        "hint": "留空使用内置公共镜像。填写 API 根地址即可（如 https://bgmapi.anibt.net），搜索关键词将经该镜像转发，请自行评估镜像运营方的可信度"
+        "hint": "自定义 Bangumi API 镜像根地址；留空使用内置镜像"
       },
       "search_display_limit": {
         "description": "搜索结果显示条数",
@@ -245,7 +245,7 @@
         "default": 20,
         "min": 1,
         "max": 50,
-        "hint": "开启相关度排序后最多显示的搜索结果条数，超出部分以「已显示前 X 条」提示"
+        "hint": "相关度排序下最多显示的搜索结果条数"
       },
       "temp_dir": {
         "description": "临时文件目录",

@@ -326,6 +326,47 @@ async def test_config_post_save(config):
 
 
 @pytest.mark.asyncio
+async def test_config_post_search_and_pack_keys_live(config):
+    """Search/Bangumi/page-cap keys round-trip through the real handlers."""
+    rebuild_called = False
+
+    async def rebuild(cfg):
+        nonlocal rebuild_called
+        rebuild_called = True
+
+    result = await api_config_post(config, {
+        "server_url": SERVER_URL,
+        "search_result_ranking": "false",
+        "search_display_limit": 12,
+        "search_refresh_truncated_titles": True,
+        "search_alias_expansion": True,
+        "bangumi_mirror": False,
+        "bangumi_mirror_url": "",
+        "file_delivery_max_pages": 500,
+    }, rebuild)
+
+    assert result["success"] is True
+    assert rebuild_called is True
+    advanced = config["advanced"]
+    assert advanced["search_result_ranking"] is False
+    assert advanced["search_display_limit"] == 12
+    assert advanced["search_refresh_truncated_titles"] is True
+    assert advanced["search_alias_expansion"] is True
+    assert advanced["bangumi_mirror"] is False
+    assert advanced["bangumi_mirror_url"] == ""
+    assert config["pack"]["file_delivery_max_pages"] == 500
+
+    flat = api_config_get(config)
+    assert flat["search_result_ranking"] is False
+    assert flat["search_display_limit"] == 12
+    assert flat["file_delivery_max_pages"] == 500
+    print(
+        f"\n  search keys after save: ranking={flat['search_result_ranking']}, "
+        f"limit={flat['search_display_limit']}, max_pages={flat['file_delivery_max_pages']}"
+    )
+
+
+@pytest.mark.asyncio
 async def test_config_post_validation():
     """api_config_post rejects empty server_url."""
     cfg = FakeConfig({"server_url": "http://old:4567"})

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-03
+
 ### Added
 
 - **搜索结果相关度排序** — 跨源结果按标题相关度混排（完全匹配 > 包含 > 简称 > 模糊），同分保持原顺序；`/漫画 搜索`、AI 工具与批量订阅共用。新增 `search_result_ranking`（默认开，关闭恢复按源分组旧格式）与 `search_display_limit`（默认 20）配置

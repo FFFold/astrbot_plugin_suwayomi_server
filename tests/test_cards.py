@@ -1,5 +1,6 @@
 """Unit tests for suwayomi/cards.py (no network)."""
 import asyncio
+import threading
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import plugin_pkg.utils.downloader as downloader_mod
@@ -366,6 +367,35 @@ async def test_embed_covers_success(mock_cleanup, mock_download, tmp_path):
     assert result[1]["cover_data_url"].startswith("data:image/jpeg;base64,")
     assert "thumbnail_url" not in result[0]
     mock_cleanup.assert_called_once()
+
+
+@patch.object(downloader_mod, "download_images", new_callable=AsyncMock)
+@patch.object(pusher_mod, "schedule_cleanup")
+@pytest.mark.asyncio
+async def test_embed_covers_runs_compression_off_event_loop(mock_cleanup, mock_download, tmp_path, monkeypatch):
+    """封面压缩必须离开事件循环线程：压图期间同步执行会卡住整个机器人。"""
+    cover = tmp_path / "cover.jpg"
+    _pillow_cover(str(cover))
+    mock_download.return_value = ([str(cover)], tmp_path)
+
+    import plugin_pkg.suwayomi.cards as cards_mod
+    real_compress = cards_mod._cover_data_url
+    loop_thread = threading.get_ident()
+    seen_threads: list[int] = []
+
+    def spy(path):
+        seen_threads.append(threading.get_ident())
+        return real_compress(path)
+
+    monkeypatch.setattr(cards_mod, "_cover_data_url", spy)
+
+    result = await embed_covers(FakeClient(), [{"title": "A", "thumbnail_url": "/a"}], retries=1)
+
+    assert len(seen_threads) == 1
+    assert all(t != loop_thread for t in seen_threads), (
+        "封面压缩在事件循环线程内同步执行，会阻塞所有消息处理"
+    )
+    assert result[0]["cover_data_url"].startswith("data:image/jpeg;base64,")
 
 
 @patch.object(downloader_mod, "download_images", new_callable=AsyncMock)

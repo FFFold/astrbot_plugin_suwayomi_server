@@ -553,7 +553,12 @@ async def embed_covers(
                 covers[idx] = None
             continue
         for (idx, _), path in zip(entries, paths):
-            covers[idx] = _cover_data_url(path) if path else None
+            if not path:
+                covers[idx] = None
+                continue
+            # PIL 解码/缩放/编码是 CPU 密集操作，必须离开事件循环线程，
+            # 否则压图期间整个机器人（所有会话）都会停止响应。
+            covers[idx] = await asyncio.to_thread(_cover_data_url, path)
         if tmp_dir is not None:
             schedule_cleanup(tmp_dir, delay=60)
 

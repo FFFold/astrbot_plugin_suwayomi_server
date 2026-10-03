@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 ## [Unreleased]
 
+### Fixed
+
+- 卡片封面压缩移出事件循环：`embed_covers` 的 PIL 解码/缩放/编码改在工作线程执行，开启结果卡片后搜索、订阅列表与更新推送不再阻塞机器人消息处理
+
 ## [0.7.0] - 2026-10-03
 
 ### Added

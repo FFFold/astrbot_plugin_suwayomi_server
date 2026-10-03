@@ -750,6 +750,10 @@ async def test_bangumi_alias_expansion_live(client):
 
     sources = await client.get_sources()
     zh_sources = [s for s in sources if s.lang == "zh" and s.id != "0"]
+    # 探针在真实源站重搜：正篇（标题与官方名归一化后相等）必须出现。
+    # 仅凭“分数过强命中线”不够——番外/衍生作标题包含正篇全名时同样过线。
+    target_norms = {normalize_for_rank(a) for a in aliases}
+    searched = False
     for probe, _sid in probes[:2]:
         for src in zh_sources[:3]:
             try:
@@ -757,15 +761,18 @@ async def test_bangumi_alias_expansion_live(client):
             except SuwayomiError:
                 await asyncio.sleep(2)
                 continue
-            hits = [
+            searched = True
+            exact = [
                 m for m in result.mangas
-                if score_title("我推恶役", m.title) >= STRONG_MATCH_THRESHOLD
+                if normalize_for_rank(m.title) in target_norms
             ]
-            if hits:
-                print(f"    探针命中: {probe!r} -> {hits[0].title!r} ({src.display_name})")
+            if exact:
+                print(f"    探针命中正篇: {probe!r} -> {exact[0].title!r} ({src.display_name})")
                 return
             await asyncio.sleep(1)
-    pytest.skip("源站限流或探针未命中，跳过探针源站验证")
+    if not searched:
+        pytest.skip("源站限流，探针未发出任何成功请求，跳过")
+    pytest.fail("探针未能在源站找到正篇（与官方名归一化相等的标题）")
 
 
 @pytest.mark.asyncio

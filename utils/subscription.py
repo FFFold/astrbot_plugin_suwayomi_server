@@ -34,6 +34,9 @@ class SubscriptionManager:
         for key in list(data.keys()):
             info = data[key]
             if not isinstance(info, dict):
+                logger.warning(
+                    f"[suwayomi_subscription] 丢弃损坏的订阅条目 {key!r}（格式非法）"
+                )
                 data.pop(key, None)
                 migrated = True
                 continue
@@ -116,6 +119,9 @@ class SubscriptionManager:
                     resolved_id = int(manga_id)
                 except (TypeError, ValueError):
                     # 与更新引擎一致：外部损坏的非数字键跳过而非崩溃
+                    logger.debug(
+                        f"[suwayomi_subscription] 跳过损坏的非数字订阅键 {manga_id!r}"
+                    )
                     continue
                 result.append({
                     "manga_id": resolved_id,

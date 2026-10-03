@@ -503,7 +503,8 @@ def _cover_data_url(path: str) -> str | None:
         img.save(buf, format="JPEG", quality=80)
         return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
     except Exception as exc:
-        logger.warning(f"[{_PLUGIN_NAME}] 封面压缩失败（将显示占位块）: {path}: {exc}")
+        # 单张封面失败回退占位块即可，逐张 warning 会刷屏
+        logger.debug(f"[{_PLUGIN_NAME}] 封面压缩失败（将显示占位块）: {path}: {exc}")
         return None
 
 

@@ -10,7 +10,10 @@ import aiohttp
 
 from astrbot.api import logger
 
+from . import PLUGIN_NAME
 from .models import Chapter, Manga, SearchResult, Source
+
+_PLUGIN_NAME = PLUGIN_NAME
 
 
 class SuwayomiError(Exception):
@@ -185,7 +188,11 @@ class SuwayomiClient:
                 try:
                     await self._refresh_jwt()
                     return
-                except SuwayomiError:
+                except SuwayomiError as exc:
+                    logger.debug(
+                        f"[{_PLUGIN_NAME}] JWT refresh 失败，"
+                        f"改用账号密码重新登录: {exc}"
+                    )
                     self._jwt_access_token = None
                     self._jwt_refresh_token = None
 

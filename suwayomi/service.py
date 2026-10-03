@@ -421,8 +421,8 @@ async def resolve_manga(
                 str(s.id): sanitize_for_message(s.display_name, limit=40)
                 for s in sources
             }
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug(f"[{_PLUGIN_NAME}] 多结果引导获取源名失败: {exc}")
 
         lines = [f"找到多个结果，请使用 ID 指定。例如: /漫画 {cmd} {mangas[0].id}"]
         for m in mangas:

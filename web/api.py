@@ -160,6 +160,9 @@ async def api_subscriptions(
             manga_id = int(manga_id_str)
         except (TypeError, ValueError):
             # 与更新引擎一致：外部损坏的非数字键跳过而非让整个列表 500
+            logger.debug(
+                f"[{PLUGIN_NAME}] 订阅列表跳过损坏的非数字键 {manga_id_str!r}"
+            )
             continue
         source_id = info.get("source_id", 0)
         subscribers = info.get("subscribers", {})
@@ -274,6 +277,9 @@ async def api_config_post(
                 if key in MAX_NUMERIC_CONFIG_KEYS:
                     value = min(value, MAX_NUMERIC_CONFIG_KEYS[key])
             except (ValueError, TypeError):
+                logger.debug(
+                    f"[{PLUGIN_NAME}] 配置 {key} 数值非法，忽略: {value!r}"
+                )
                 continue
         if key in BOOLEAN_CONFIG_KEYS:
             if isinstance(value, str):
@@ -282,8 +288,14 @@ async def api_config_post(
                 value = bool(value)
         if key in ENUM_CONFIG_KEYS:
             if not isinstance(value, str) or value not in ENUM_CONFIG_KEYS[key]:
+                logger.debug(
+                    f"[{PLUGIN_NAME}] 配置 {key} 枚举值非法，忽略: {value!r}"
+                )
                 continue
         if key in STRING_CONFIG_KEYS and not isinstance(value, str):
+            logger.debug(
+                f"[{PLUGIN_NAME}] 配置 {key} 应为字符串，忽略: {value!r}"
+            )
             continue
         set_config_value(config, key, value)
 

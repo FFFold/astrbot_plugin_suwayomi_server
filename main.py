@@ -197,8 +197,8 @@ class SuwayomiPlugin(Star):
         for name in AI_TOOL_NAMES:
             try:
                 self.context.deactivate_llm_tool(name)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug(f"[{PLUGIN_NAME}] 停用 AI Tool {name} 失败: {exc}")
         self._ai_tools_config_enabled = False
         logger.info(f"[{PLUGIN_NAME}] AI 漫画工具已关闭")
 
@@ -1624,7 +1624,8 @@ class SuwayomiPlugin(Star):
                     ),
                     None,
                 )
-            except Exception:
+            except Exception as exc:
+                logger.debug(f"[{PLUGIN_NAME}] 章节列表获取源名失败: {exc}")
                 src_name = None
             src_tag = f" - {src_name}" if src_name else ""
 
@@ -1928,8 +1929,8 @@ class SuwayomiPlugin(Star):
         async def rebuild_client(cfg):
             try:
                 await self.client.close()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug(f"[{PLUGIN_NAME}] 关闭旧客户端失败: {exc}")
             self.client = SuwayomiClient(
                 server_url=get_config_value(cfg, "server_url", "http://localhost:4567"),
                 auth_mode=get_config_value(cfg, "auth_mode", "none"),

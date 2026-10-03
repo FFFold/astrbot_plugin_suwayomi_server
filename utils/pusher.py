@@ -94,14 +94,26 @@ def build_image_chain(
     tail_text: str,
 ) -> list:
     """Build the image/forward message chain shared by read, push and AI send."""
+    missing = 0
+    if fetch_mode == "download":
+        missing = sum(
+            1
+            for i in range(len(page_urls))
+            if not (i < len(local_paths) and local_paths[i])
+        )
+        if missing:
+            # 整链只提示一次，避免逐图 warning 刷屏
+            logger.warning(
+                f"[{_PLUGIN_NAME}] {missing}/{len(page_urls)} 张图片本地下载缺失，"
+                "已回退 URL 直连（带认证的服务器可能无法加载，请检查认证配置）"
+            )
 
     def _img(idx: int) -> Comp.Image:
         if fetch_mode == "download" and idx < len(local_paths) and local_paths[idx]:
             return Comp.Image.fromFileSystem(local_paths[idx])
         if fetch_mode == "download":
-            logger.warning(
-                f"[{_PLUGIN_NAME}] 图片 {idx + 1} 下载失败，将使用 URL 直连"
-                "（带认证的服务器可能无法加载，请检查认证配置）"
+            logger.debug(
+                f"[{_PLUGIN_NAME}] 图片 {idx + 1} 本地缺失，回退 URL 直连"
             )
         return Comp.Image.fromURL(page_urls[idx])
 
@@ -169,6 +181,9 @@ async def push_chapter_images(
         else:
             pages = await client.fetch_chapter_pages(chapter.id)
             if not pages:
+                logger.debug(
+                    f"[{_PLUGIN_NAME}] 自动推送 {ch_label}：源未返回任何页面"
+                )
                 return
             total_pages = len(pages)
             page_urls = [client.build_image_url(p) for p in pages[:max_pages]]
@@ -179,6 +194,9 @@ async def push_chapter_images(
                 )
 
         if not page_urls:
+            logger.debug(
+                f"[{_PLUGIN_NAME}] 自动推送 {ch_label}：无可用页面，跳过"
+            )
             return
 
         chain = build_image_chain(
@@ -226,11 +244,13 @@ async def push_chapter_file(
         chapter.id, get_file_delivery_max_pages(config)
     )
     if not page_urls:
+        logger.debug(f"[{_PLUGIN_NAME}] 文件推送 {ch_label}：源未返回任何页面，跳过")
         schedule_cleanup(tmp_dir, delay=120)
         return
 
     valid_paths = [p for p in local_paths if p]
     if not valid_paths:
+        logger.debug(f"[{_PLUGIN_NAME}] 文件推送 {ch_label}：所有页面下载失败，跳过")
         schedule_cleanup(tmp_dir, delay=120)
         return
 

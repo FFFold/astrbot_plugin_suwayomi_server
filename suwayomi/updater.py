@@ -31,6 +31,17 @@ _UPDATE_CONCURRENCY = 5
 _UPDATE_CARD_MAX_CHAPTERS = 24
 LAST_CHECK_KV_KEY = "suwayomi_last_update_check"
 
+# 损坏订阅条目的 key：只在首次遇到时 warning，避免每轮更新检查重复刷屏
+_WARNED_CORRUPT_KEYS: set[str] = set()
+
+
+def _warn_corrupt_subscription(key: str, reason: str) -> None:
+    if key in _WARNED_CORRUPT_KEYS:
+        logger.debug(f"[{_PLUGIN_NAME}] 订阅数据损坏: {reason} {key!r}（已提示过）")
+        return
+    _WARNED_CORRUPT_KEYS.add(key)
+    logger.warning(f"[{_PLUGIN_NAME}] 订阅数据损坏: {reason} {key!r}")
+
 
 async def _check_one_manga(
     client: SuwayomiClient,
@@ -49,16 +60,12 @@ async def _check_one_manga(
     is_error=True means the check itself failed (server/source error).
     """
     if not isinstance(info, dict):
-        logger.warning(
-            f"[{_PLUGIN_NAME}] 订阅数据损坏: 忽略非法订阅条目 {manga_id_str!r}"
-        )
+        _warn_corrupt_subscription(manga_id_str, "忽略非法订阅条目")
         return None, False
     try:
         manga_id = int(manga_id_str)
     except (TypeError, ValueError):
-        logger.warning(
-            f"[{_PLUGIN_NAME}] 订阅数据损坏: 忽略非法漫画 ID {manga_id_str!r}"
-        )
+        _warn_corrupt_subscription(manga_id_str, "忽略非法漫画 ID")
         return None, False
     title = info.get("title", f"ID:{manga_id}")
     latest_stored = info.get("latest_chapter_id", 0)
@@ -86,8 +93,10 @@ async def _check_one_manga(
                             f"「{title}」->「{manga.title}」(ID:{manga_id})"
                         )
                         title = manga.title
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug(
+                        f"[{_PLUGIN_NAME}] 同步漫画标题失败(manga={manga_id}): {exc}"
+                    )
 
         chapters = await get_or_fetch_chapters(
             client, get_kv_data, put_kv_data, config, manga_id, force=force
@@ -126,8 +135,10 @@ async def _check_one_manga(
             # 尽力拉取元数据，保证更新卡片有封面与状态。
             try:
                 manga_obj = await client.get_manga(manga_id)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug(
+                    f"[{_PLUGIN_NAME}] 拉取更新卡片元数据失败(manga={manga_id}): {exc}"
+                )
         return (manga_id, title, ch_info, new_chapters, subscribers, manga_obj), False
     except Exception as e:
         logger.warning(

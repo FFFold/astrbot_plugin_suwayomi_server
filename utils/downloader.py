@@ -153,12 +153,12 @@ async def download_one(
                     return True
                 elif resp.status < 500:
                     return False
-                logger.warning(
+                logger.debug(
                     f"[{_PLUGIN_NAME}] 图片下载 HTTP {resp.status}，"
                     f"重试 {attempt + 1}/{retries}: {url}"
                 )
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-            logger.warning(
+            logger.debug(
                 f"[{_PLUGIN_NAME}] 图片下载超时/网络错误，"
                 f"重试 {attempt + 1}/{retries}: {e}"
             )
@@ -203,6 +203,11 @@ async def download_images(
                 paths.append(str(matches[-1]) if matches else "")
             else:
                 paths.append("")
+        ok_count = sum(1 for path in paths if path)
+        if len(paths) > ok_count:
+            logger.debug(
+                f"[{_PLUGIN_NAME}] 图片批量下载: {ok_count}/{len(paths)} 张成功"
+            )
         return paths, tmp_dir
     except Exception:
         shutil.rmtree(tmp_dir, ignore_errors=True)

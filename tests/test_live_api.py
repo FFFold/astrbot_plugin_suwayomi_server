@@ -19,6 +19,19 @@ from suwayomi.ai_service import (
     search_manga_for_agent,
     select_search_sources,
 )
+from suwayomi.bangumi import (
+    OFFICIAL_API_BASE,
+    build_probes,
+    confident_aliases,
+    resolve_aliases,
+)
+from suwayomi.ranking import (
+    STRONG_MATCH_THRESHOLD,
+    looks_truncated,
+    normalize_for_rank,
+    score_title,
+)
+from suwayomi.service import refresh_truncated_titles
 
 SERVER_URL = os.environ.get("SUWAYOMI_URL", "http://100.87.49.15:4567")
 AUTH_MODE = os.environ.get("SUWAYOMI_AUTH_MODE", "none")
@@ -579,3 +592,249 @@ async def test_check_updates_detects_new_chapters_live(client):
         return
 
     pytest.skip("实例上无可扫描漫画（或源持续限流），跳过真实更新扫描验证")
+
+
+# ── PR #21: 排序 / 截断标题 / Bangumi 别名 / 页数上限 ────────────
+
+
+async def _search_zh_candidates(client, query="海贼", attempts=2):
+    """在 zh 源上搜索并重试；全部限流/无结果时跳过测试。"""
+    import asyncio
+
+    sources = await client.get_sources()
+    zh_sources = [s for s in sources if s.lang == "zh" and s.id != "0"]
+    assert zh_sources, "需要至少一个中文源"
+    last_error: Exception | None = None
+    for src in zh_sources[:3]:
+        for _ in range(attempts):
+            try:
+                result = await client.search_manga(src.id, query)
+                if result.mangas:
+                    return src, result
+            except SuwayomiError as exc:
+                last_error = exc
+            await asyncio.sleep(2)
+    pytest.skip(f"中文源搜索被限流或无结果，跳过（{last_error}）")
+
+
+@pytest.mark.asyncio
+async def test_ai_search_results_sorted_by_relevance_live(client):
+    """AI 搜索路径（与 /漫画 搜索 共用打分器）按相关度稳定降序。"""
+    import asyncio
+
+    config = {"ai_max_sources": 3, "ai_results_per_source": 10}
+    result = None
+    for _ in range(2):
+        result = await search_manga_for_agent(client, config, "海贼")
+        if result["success"]:
+            break
+        await asyncio.sleep(3)
+    if not result or not result["success"] or not result["results"]:
+        pytest.skip("中文源搜索被限流，跳过")
+
+    titles = [item["title"] for item in result["results"]]
+    scores = [score_title("海贼", t) for t in titles]
+    assert scores == sorted(scores, reverse=True), \
+        f"结果未按相关度降序: {list(zip(titles, scores))}"
+    print(f"\n  AI 搜索排序: {len(titles)} 条, top={titles[0]!r} score={scores[0]:.0f}")
+
+
+@pytest.mark.asyncio
+async def test_fetch_manga_details_persists_live(client):
+    """fetchManga 从详情页取回标题并写入 DB（截断标题刷新的基础能力）。"""
+    _src, result = await _search_zh_candidates(client, "海贼王")
+    manga = result.mangas[0]
+    details = await client.fetch_manga_details(manga.id)
+    assert details.id == manga.id
+    assert details.title
+    db_manga = await client.get_manga(manga.id)
+    assert db_manga.title == details.title, "fetchManga 应把详情页标题持久化到 DB"
+    print(f"\n  fetchManga({manga.id}): {details.title!r}")
+
+
+@pytest.mark.asyncio
+async def test_refresh_truncated_titles_live(client):
+    """截断标题经真实 fetchManga 刷新为完整标题；失败时保留原标题。"""
+    _src, result = await _search_zh_candidates(client, "海贼王")
+    manga = result.mangas[0]
+    details = await client.fetch_manga_details(manga.id)
+    if looks_truncated(details.title):
+        pytest.skip("该源详情页标题仍被截断，无法验证刷新路径")
+
+    fake = Manga(
+        id=manga.id, source_id=manga.source_id, url=manga.url,
+        title="伪造被截断的标题...", status=manga.status,
+        thumbnail_url=manga.thumbnail_url, description="",
+    )
+    assert looks_truncated(fake.title)
+    count = await refresh_truncated_titles(client, [fake])
+    assert count == 1
+    assert fake.title == details.title and not looks_truncated(fake.title)
+
+    missing = Manga(
+        id=999999999, source_id=manga.source_id, url="",
+        title="不存在的漫画...", status="UNKNOWN", description="",
+    )
+    assert await refresh_truncated_titles(client, [missing]) == 0
+    assert looks_truncated(missing.title)
+    print(f"\n  截断刷新: -> {fake.title!r}; 失败路径保留 {missing.title!r}")
+
+
+@pytest.mark.asyncio
+async def test_fetch_pages_local_max_pages_live(client):
+    """文件打包页数上限配置真实生效：fetch_pages_local 只取前 N 页。"""
+    import asyncio
+    import shutil
+
+    from plugin_pkg.utils.downloader import (
+        fetch_pages_local,
+        get_file_delivery_max_pages,
+    )
+
+    cap = get_file_delivery_max_pages({"file_delivery_max_pages": 2})
+    assert cap == 2
+    _src, result = await _search_zh_candidates(client, "海贼")
+    for manga in result.mangas[:5]:
+        chapters = await client.get_chapters(manga.id)
+        if not chapters:
+            try:
+                chapters = await client.fetch_chapters(manga.id)
+            except SuwayomiError:
+                continue
+        if not chapters:
+            continue
+        tmp_dir = None
+        try:
+            total, page_urls, local_paths, tmp_dir = await fetch_pages_local(
+                client, chapters[0].id, max_pages=cap, concurrency=2,
+                retries=1, headers=client.auth_headers,
+            )
+        except SuwayomiError:
+            await asyncio.sleep(2)
+            continue
+        finally:
+            if tmp_dir:
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+        if total == 0:
+            continue
+        assert len(page_urls) == min(cap, total), \
+            f"页数上限未生效: total={total}, urls={len(page_urls)}"
+        assert len(local_paths) == len(page_urls)
+        assert any(p for p in local_paths), "至少一页应下载成功"
+        print(f"\n  页数上限: total={total}, 实际取 {len(page_urls)} 页")
+        return
+    pytest.skip("实例上未找到可取页的章节（或源限流），跳过")
+
+
+@pytest.mark.asyncio
+async def test_bangumi_alias_expansion_live(client):
+    """真实 api.bgm.tv 解析简称 → 生成探针 → 源站重搜捞回强命中目标。"""
+    import asyncio
+
+    resolution = await resolve_aliases(
+        "我推恶役", bases=[OFFICIAL_API_BASE], deadline=20
+    )
+    if resolution is None:
+        pytest.skip("api.bgm.tv 不可达，跳过 Bangumi 别名集成验证")
+    assert resolution.by_subject, "解析应返回条目"
+    assert resolution.confident, "简称应命中官方别名并达到强命中阈值"
+    aliases = confident_aliases("我推恶役", resolution)
+    assert aliases
+    assert max(score_title("我推恶役", a) for a in aliases) >= STRONG_MATCH_THRESHOLD
+    probes = build_probes("我推恶役", resolution)
+    assert probes, "应能生成探针"
+    for probe, sid in probes:
+        assert len(normalize_for_rank(probe)) >= 4
+        assert sid in resolution.by_subject
+    print(f"\n  Bangumi 别名: {aliases[:3]}, 探针: {[p for p, _ in probes]}")
+
+    sources = await client.get_sources()
+    zh_sources = [s for s in sources if s.lang == "zh" and s.id != "0"]
+    for probe, _sid in probes[:2]:
+        for src in zh_sources[:3]:
+            try:
+                result = await client.search_manga(src.id, probe)
+            except SuwayomiError:
+                await asyncio.sleep(2)
+                continue
+            hits = [
+                m for m in result.mangas
+                if score_title("我推恶役", m.title) >= STRONG_MATCH_THRESHOLD
+            ]
+            if hits:
+                print(f"    探针命中: {probe!r} -> {hits[0].title!r} ({src.display_name})")
+                return
+            await asyncio.sleep(1)
+    pytest.skip("源站限流或探针未命中，跳过探针源站验证")
+
+
+@pytest.mark.asyncio
+async def test_search_command_ranking_and_cache_live(client):
+    """真实实例上跑 /漫画 搜索 命令主路径：并发搜索 → 排序 → 编号缓存。"""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from plugin_pkg.main import SuwayomiPlugin
+
+    plugin = SuwayomiPlugin.__new__(SuwayomiPlugin)
+    plugin.client = client
+    plugin.config = {
+        "result_cards_enabled": False,
+        "search_alias_expansion": False,  # 本用例聚焦排序与缓存
+        "search_display_limit": 10,
+    }
+    plugin._search_cache = {}
+
+    umo = "live:test:ranking"
+    event = MagicMock()
+    event.unified_msg_origin = umo
+    event.message_str = "/漫画 搜索 海贼"
+    event.plain_result = MagicMock(side_effect=lambda text: text)
+    event.chain_result = MagicMock(side_effect=lambda chain: chain)
+    event.send = AsyncMock()
+
+    messages = [msg async for msg in plugin.search_manga(event, "海贼")]
+    assert messages, "搜索命令应有回复"
+    text = messages[0]
+    if "未找到相关漫画" in text:
+        pytest.skip("实例上搜索无结果（源可能限流），跳过")
+
+    assert "按相关度排序" in text
+    shown = []
+    for i in range(1, 11):
+        cached = plugin._get_cached_manga(umo, str(i))
+        if cached is not None:
+            shown.append(cached)
+    assert shown, "展示结果应写入编号缓存"
+    scores = [score_title("海贼", m.title) for m in shown]
+    assert scores == sorted(scores, reverse=True), \
+        f"展示顺序应为相关度降序: {[(m.title, s) for m, s in zip(shown, scores)]}"
+    if len(shown) == 10:
+        assert "已按相关度显示前 10 条" in text
+        assert "[11]" not in text, "超过展示上限的条目不进入编号"
+    print(f"\n  命令搜索: {len(shown)} 条展示, top={shown[0].title!r}")
+
+
+@pytest.mark.asyncio
+async def test_download_cover_live(client):
+    """真实封面下载链路（resolve_image_url → download_images）可用。"""
+    import shutil
+
+    from plugin_pkg.utils.downloader import download_cover
+
+    library = await client.get_library_mangas()
+    candidate = next((m for m in library if m.thumbnail_url), None)
+    if candidate is None:
+        _src, result = await _search_zh_candidates(client, "海贼")
+        candidate = next((m for m in result.mangas if m.thumbnail_url), None)
+    if candidate is None:
+        pytest.skip("实例上没有带封面的漫画，跳过")
+
+    path, tmp_dir = await download_cover(
+        client, candidate.thumbnail_url, headers=client.auth_headers
+    )
+    try:
+        assert path and Path(path).exists() and Path(path).stat().st_size > 0
+        print(f"\n  封面下载: {candidate.title!r} -> {Path(path).stat().st_size} bytes")
+    finally:
+        if tmp_dir:
+            shutil.rmtree(tmp_dir, ignore_errors=True)

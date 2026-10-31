@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 ## [Unreleased]
 
+### Fixed
+
+- **Docker 跨容器文件发送权限** — 配置 `temp_dir` 后，每次下载的临时子目录由 `tempfile.mkdtemp` 的 0700 放开为 0755，修复 SnowLuma 等以非 root uid 运行的 OneBot 端发送 PDF/ZIP/CBZ 时报 `EACCES: permission denied, realpath`（#22）；未配置共享目录时仍保持 0700
+
 ## [0.7.1] - 2026-10-17
 
 ### Fixed

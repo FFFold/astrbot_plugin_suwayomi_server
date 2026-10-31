@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+import os
 import re
 import shutil
 import tempfile
@@ -170,6 +171,22 @@ async def download_one(
     return False
 
 
+def _open_tmp_dir_to_other_users(tmp_dir: Path) -> None:
+    """放宽共享临时子目录权限，允许其它 uid（如 OneBot 容器）穿越。
+
+    ``tempfile.mkdtemp()`` 固定以 0o700 创建目录，只有属主可以进入。Docker 部署
+    下 AstrBot 与聊天平台端通常是不同 uid，打包好的 PDF 放在该目录里会让发送端
+    ``realpath`` 报 EACCES。仅当用户配置了 ``temp_dir``（意味着目录需要跨容器共享）
+    时调用；系统默认临时目录保持 0o700。失败不影响下载。
+    """
+    if os.name != "posix":
+        return
+    try:
+        os.chmod(tmp_dir, 0o755)
+    except OSError as e:
+        logger.debug(f"[{_PLUGIN_NAME}] 放宽临时目录权限失败（不影响下载）: {e}")
+
+
 async def download_images(
     urls: list[str],
     concurrency: int = 6,
@@ -180,6 +197,8 @@ async def download_images(
     if custom_tmp:
         Path(custom_tmp).mkdir(parents=True, exist_ok=True)
     tmp_dir = Path(tempfile.mkdtemp(prefix="suwayomi_", dir=custom_tmp or None))
+    if custom_tmp:
+        _open_tmp_dir_to_other_users(tmp_dir)
     try:
         connector = aiohttp.TCPConnector(limit=concurrency)
         # headers 逐请求传递（不设 session 级）：跨 origin 跳转由

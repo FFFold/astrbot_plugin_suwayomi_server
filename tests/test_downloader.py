@@ -1,4 +1,6 @@
 """Tests for utils/downloader.py (no network)."""
+import os
+import stat
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -49,6 +51,70 @@ async def test_download_images_returns_empty_paths_on_failure(tmp_path, monkeypa
     )
 
     assert paths == ["", ""]
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX 目录权限语义")
+@pytest.mark.asyncio
+async def test_download_images_opens_shared_tmp_dir_to_other_users(
+    tmp_path, monkeypatch
+):
+    """Docker 下 OneBot 以不同 uid 运行（issue #22）：共享 temp_dir 的子目录须可穿越。"""
+
+    async def fake_download_one(session, url, dest, retries=3, headers=None):
+        dest.write_bytes(b"x")
+        return True
+
+    monkeypatch.setattr("plugin_pkg.utils.downloader.download_one", fake_download_one)
+
+    _, tmp_dir = await download_images(["http://x/1"], custom_tmp=str(tmp_path))
+
+    # mkdtemp 默认 0o700，属主之外（如 SnowLuma 默认 uid 1000）无法 realpath
+    assert stat.S_IMODE(tmp_dir.stat().st_mode) == 0o755
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX 目录权限语义")
+@pytest.mark.asyncio
+async def test_download_images_keeps_private_mode_without_custom_tmp(
+    tmp_path, monkeypatch
+):
+    """未配置共享临时目录时，保持 mkdtemp 的 0o700 私有语义。"""
+    private = tmp_path / "suwayomi_private"
+    private.mkdir(mode=0o700)
+    monkeypatch.setattr(
+        "plugin_pkg.utils.downloader.tempfile.mkdtemp",
+        lambda prefix="", dir=None: str(private),
+    )
+
+    async def fake_download_one(session, url, dest, retries=3, headers=None):
+        dest.write_bytes(b"x")
+        return True
+
+    monkeypatch.setattr("plugin_pkg.utils.downloader.download_one", fake_download_one)
+
+    _, tmp_dir = await download_images(["http://x/1"])
+
+    assert stat.S_IMODE(tmp_dir.stat().st_mode) == 0o700
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX 目录权限语义")
+@pytest.mark.asyncio
+async def test_download_images_ignores_chmod_failure(tmp_path, monkeypatch):
+    """共享目录所在文件系统不支持 chmod 时，下载不应失败。"""
+
+    async def fake_download_one(session, url, dest, retries=3, headers=None):
+        dest.write_bytes(b"x")
+        return True
+
+    def failing_chmod(path, mode):
+        raise OSError("operation not permitted")
+
+    monkeypatch.setattr("plugin_pkg.utils.downloader.download_one", fake_download_one)
+    monkeypatch.setattr(os, "chmod", failing_chmod)
+
+    paths, tmp_dir = await download_images(["http://x/1"], custom_tmp=str(tmp_path))
+
+    assert len(paths) == 1 and paths[0]
+    assert stat.S_IMODE(tmp_dir.stat().st_mode) == 0o700
 
 
 @pytest.mark.asyncio

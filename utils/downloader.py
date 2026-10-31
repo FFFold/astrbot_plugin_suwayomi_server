@@ -171,31 +171,81 @@ async def download_one(
     return False
 
 
-def _open_tmp_dir_to_other_users(tmp_dir: Path) -> None:
-    """放宽共享临时子目录权限，允许其它 uid（如 OneBot 容器）穿越。
+# 共享临时目录只能放宽“可穿越”（o+x），不能放开列目录（o+r），
+# 知道具体文件名的发送端仍可 realpath/open。
+_SHARED_TMP_DIR_MODE = 0o711
 
-    ``tempfile.mkdtemp()`` 固定以 0o700 创建目录，只有属主可以进入。Docker 部署
-    下 AstrBot 与聊天平台端通常是不同 uid，打包好的 PDF 放在该目录里会让发送端
-    ``realpath`` 报 EACCES。仅当用户配置了 ``temp_dir``（意味着目录需要跨容器共享）
-    时调用；系统默认临时目录保持 0o700。失败不影响下载。
+# 每个阻塞路径/失败根目录只告警一次，避免每次下载刷屏。
+_warned_shared_tmp: set[str] = set()
+
+
+def _warn_once(key: str, message: str) -> None:
+    if key in _warned_shared_tmp:
+        return
+    _warned_shared_tmp.add(key)
+    logger.warning(f"[{_PLUGIN_NAME}] {message}")
+
+
+def _open_tmp_dir_to_other_users(tmp_dir: Path) -> bool:
+    """放宽共享临时目录权限，允许其它 uid（如 OneBot 容器）穿越。
+
+    ``tempfile.mkdtemp()`` / ``Path.mkdir()`` 受 umask 影响，可能是 0o700，只有
+    属主可以进入。Docker 部署下 AstrBot 与聊天平台端通常是不同 uid，打包好的
+    PDF 放在该目录里会让发送端 ``realpath`` 报 EACCES。仅当用户配置了 ``temp_dir``
+    （意味着目录需要跨容器共享）时调用；系统默认临时目录保持 0o700。
 
     通过 ``O_NOFOLLOW`` 打开目录再 ``fchmod``：共享目录可能对其他 uid 可写，
-    避免在 ``mkdtemp`` 与 ``chmod`` 之间被替换成符号链接后误改链接目标。
+    避免在创建与 chmod 之间被替换成符号链接后误改链接目标。返回是否成功。
     """
     if os.name != "posix":
-        return
-    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+        return True
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
     try:
         fd = os.open(tmp_dir, flags)
     except OSError as e:
         logger.debug(f"[{_PLUGIN_NAME}] 打开临时目录失败（不影响下载）: {e}")
-        return
+        return False
     try:
-        os.fchmod(fd, 0o755)
+        os.fchmod(fd, _SHARED_TMP_DIR_MODE)
+        return True
     except OSError as e:
         logger.debug(f"[{_PLUGIN_NAME}] 放宽临时目录权限失败（不影响下载）: {e}")
+        return False
     finally:
         os.close(fd)
+
+
+def _prepare_shared_tmp_root(custom_tmp: str) -> None:
+    """创建共享临时根目录，并放宽本次新建的各级目录（受 umask 影响可能 0o700）。"""
+    root = Path(custom_tmp)
+    created: list[Path] = []
+    current = root
+    while not current.exists():
+        created.append(current)
+        if current.parent == current:
+            break
+        current = current.parent
+    root.mkdir(parents=True, exist_ok=True)
+    for directory in created:
+        _open_tmp_dir_to_other_users(directory)
+
+
+def _first_unreachable_ancestor(path: Path) -> Path | None:
+    """返回第一个缺少 o+x 的祖先目录；None 表示发送端可穿越整条路径。"""
+    if os.name != "posix":
+        return None
+    for parent in path.parents:
+        try:
+            mode = parent.stat().st_mode
+        except OSError:
+            return parent
+        if not mode & 0o001:
+            return parent
+    return None
 
 
 async def download_images(
@@ -206,10 +256,22 @@ async def download_images(
     headers: dict[str, str] | None = None,
 ) -> tuple[list[str], Path]:
     if custom_tmp:
-        Path(custom_tmp).mkdir(parents=True, exist_ok=True)
+        _prepare_shared_tmp_root(custom_tmp)
     tmp_dir = Path(tempfile.mkdtemp(prefix="suwayomi_", dir=custom_tmp or None))
     if custom_tmp:
-        _open_tmp_dir_to_other_users(tmp_dir)
+        if not _open_tmp_dir_to_other_users(tmp_dir):
+            _warn_once(
+                f"chmod:{tmp_dir.parent}",
+                f"无法放宽共享临时目录 {tmp_dir.parent} 的权限，"
+                "OneBot 端发送 PDF/ZIP/CBZ 可能报 EACCES；请检查 temp_dir 权限",
+            )
+        blocked = _first_unreachable_ancestor(tmp_dir)
+        if blocked is not None:
+            _warn_once(
+                f"traverse:{blocked}",
+                f"共享临时目录的上级 {blocked} 缺少其他用户穿越权限(o+x)，"
+                "OneBot 端发送文件可能报 EACCES；temp_dir 及其父目录需可被发送端 uid 穿越",
+            )
     try:
         connector = aiohttp.TCPConnector(limit=concurrency)
         # headers 逐请求传递（不设 session 级）：跨 origin 跳转由

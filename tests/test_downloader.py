@@ -1,13 +1,13 @@
 """Tests for utils/downloader.py (no network)."""
-import contextlib
 import os
 import stat
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from tests._helpers import umask
 from plugin_pkg.suwayomi.client import SuwayomiClient
 from plugin_pkg.utils.downloader import (
     download_cover,
@@ -54,16 +54,6 @@ async def test_download_images_returns_empty_paths_on_failure(tmp_path, monkeypa
     assert paths == ["", ""]
 
 
-@contextlib.contextmanager
-def _umask(mask: int):
-    """显式固定进程 umask，避免用例断言受运行环境影响。"""
-    old = os.umask(mask)
-    try:
-        yield
-    finally:
-        os.umask(old)
-
-
 @pytest.mark.skipif(os.name != "posix", reason="POSIX 目录权限语义")
 @pytest.mark.asyncio
 async def test_download_images_opens_shared_tmp_dir_to_other_users(
@@ -79,8 +69,9 @@ async def test_download_images_opens_shared_tmp_dir_to_other_users(
 
     _, tmp_dir = await download_images(["http://x/1"], custom_tmp=str(tmp_path))
 
-    # mkdtemp 默认 0o700，属主之外（如 SnowLuma 默认 uid 1000）无法 realpath
-    assert stat.S_IMODE(tmp_dir.stat().st_mode) == 0o755
+    # mkdtemp 默认 0o700，属主之外（如 SnowLuma 默认 uid 1000）无法 realpath；
+    # 0o711 足够穿越（realpath/open 已知路径），但不允许列目录
+    assert stat.S_IMODE(tmp_dir.stat().st_mode) == 0o711
 
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX 目录权限语义")
@@ -95,7 +86,7 @@ async def test_download_images_keeps_private_mode_without_custom_tmp(
         dest.write_bytes(b"x")
         return True
 
-    with _umask(0o022):
+    with umask(0o022):
         private.mkdir(mode=0o700)
         monkeypatch.setattr(
             "plugin_pkg.utils.downloader.tempfile.mkdtemp",
@@ -127,13 +118,16 @@ async def test_download_images_ignores_chmod_failure(tmp_path, monkeypatch):
     monkeypatch.setattr("plugin_pkg.utils.downloader.download_one", fake_download_one)
     monkeypatch.setattr(os, "fchmod", failing_fchmod)
 
-    with _umask(0o022):
+    with umask(0o022):
         paths, tmp_dir = await download_images(["http://x/1"], custom_tmp=str(tmp_path))
 
     assert len(paths) == 1 and paths[0]
     # 证明确实尝试过放宽权限（否则用例只验证了“下载成功”）
-    assert len(calls) == 1 and calls[0][1] == 0o755
+    assert len(calls) == 1 and calls[0][1] == 0o711
     assert stat.S_IMODE(tmp_dir.stat().st_mode) == 0o700
+    # fd 必须关闭，避免权限放宽路径泄漏描述符
+    with pytest.raises(OSError):
+        os.fstat(calls[0][0])
 
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX 目录权限语义")
@@ -149,6 +143,77 @@ def test_open_tmp_dir_does_not_follow_symlink(tmp_path):
     _open_tmp_dir_to_other_users(link)
 
     assert stat.S_IMODE(target.stat().st_mode) == 0o700
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX 目录权限语义")
+@pytest.mark.asyncio
+async def test_download_images_relaxes_created_shared_root(tmp_path, monkeypatch):
+    """严格 umask 下新建的 temp_dir 及其父目录也必须可穿越，否则仍会 EACCES。"""
+    root = tmp_path / "nested" / "shared"
+
+    async def fake_download_one(session, url, dest, retries=3, headers=None):
+        dest.write_bytes(b"x")
+        return True
+
+    monkeypatch.setattr("plugin_pkg.utils.downloader.download_one", fake_download_one)
+
+    with umask(0o077):
+        _, tmp_dir = await download_images(["http://x/1"], custom_tmp=str(root))
+
+    # 本次由插件创建的每一级目录都要放开 o+x
+    assert stat.S_IMODE(root.stat().st_mode) == 0o711
+    assert stat.S_IMODE(root.parent.stat().st_mode) == 0o711
+    assert stat.S_IMODE(tmp_dir.stat().st_mode) == 0o711
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX 目录权限语义")
+@pytest.mark.asyncio
+async def test_download_images_warns_once_when_shared_root_blocked(
+    tmp_path, monkeypatch
+):
+    """已存在的 temp_dir 为 0700 时无法自动修复，但必须留下可诊断的告警。"""
+    root = tmp_path / "shared"
+    root.mkdir(mode=0o700)
+    logger_mock = MagicMock()
+    # patch 模块属性而非 MagicMock 子属性（pytest 9.2 会 delattr 还原）
+    monkeypatch.setattr("plugin_pkg.utils.downloader.logger", logger_mock)
+
+    async def fake_download_one(session, url, dest, retries=3, headers=None):
+        dest.write_bytes(b"x")
+        return True
+
+    monkeypatch.setattr("plugin_pkg.utils.downloader.download_one", fake_download_one)
+
+    with umask(0o022):
+        await download_images(["http://x/1"], custom_tmp=str(root))
+        await download_images(["http://x/2"], custom_tmp=str(root))
+
+    # 同一个阻塞目录只告警一次，且信息里带出具体路径
+    assert logger_mock.warning.call_count == 1
+    assert str(root) in logger_mock.warning.call_args[0][0]
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX 目录权限语义")
+@pytest.mark.asyncio
+async def test_shared_tmp_dir_and_packed_file_are_sendable(tmp_path, monkeypatch):
+    """端到端契约：批次目录 0o711、打包产物 0o644。"""
+    from plugin_pkg.utils.pack import pack_images
+
+    async def fake_download_one(session, url, dest, retries=3, headers=None):
+        dest.write_bytes(b"x")
+        return True
+
+    monkeypatch.setattr("plugin_pkg.utils.downloader.download_one", fake_download_one)
+
+    with umask(0o077):
+        paths, tmp_dir = await download_images(
+            ["http://x/1", "http://x/2"], custom_tmp=str(tmp_path)
+        )
+        output = tmp_dir / "chapter.zip"
+        pack_images([p for p in paths if p], output, "zip")
+
+    assert stat.S_IMODE(tmp_dir.stat().st_mode) == 0o711
+    assert stat.S_IMODE(output.stat().st_mode) == 0o644
 
 
 @pytest.mark.asyncio

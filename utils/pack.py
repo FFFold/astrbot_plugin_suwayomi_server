@@ -68,7 +68,7 @@ def pack_images(image_paths: list[str], output: Path, fmt: str):
     else:
         pack_zip(image_paths, output)
     # 发送端（OneBot 容器）以自己的 uid 读取产物；AstrBot 若使用 0o077 之类
-    # 的 umask，文件会变成 0600 导致 EACCES。目录权限（0700/0755）才是访问
+    # 的 umask，文件会变成 0600 导致 EACCES。目录权限（0700/0711）才是访问
     # 边界，这里统一补成 0644 不影响私有临时目录的安全语义。
     try:
         os.chmod(output, 0o644)

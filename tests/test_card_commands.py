@@ -323,7 +323,7 @@ def test_card_render_fn_custom_empty_endpoint_warns_once(monkeypatch):
     plugin.config["t2i_source"] = "custom"
     plugin.config["t2i_endpoint"] = ""
     logger_mock = MagicMock()
-    # Patch the module attribute, not logger.warning: pytest >=9.2 restores a
+    # Patch the module attribute, not logger.warning: pytest 9.2 restores a
     # MagicMock child via delattr, which marks it _deleted for later tests.
     monkeypatch.setattr(main_mod, "logger", logger_mock)
 

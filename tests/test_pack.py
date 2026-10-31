@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from tests._helpers import umask
 from utils.pack import (
     pack_zip,
     pack_cbz,
@@ -210,11 +211,8 @@ class TestPackHelpers:
         """发送端以不同 uid 读取产物：0o077 umask 下仍须为 0644。"""
         images = _create_test_images(tmp_path)
         output = tmp_path / "test.zip"
-        old = os.umask(0o077)
-        try:
+        with umask(0o077):
             pack_images(images, output, "zip")
-        finally:
-            os.umask(old)
         assert stat.S_IMODE(output.stat().st_mode) == 0o644
 
 

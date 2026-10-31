@@ -289,7 +289,7 @@ uv pip install -r astrbot_suwayomi_server/requirements.txt
 | `bangumi_mirror` | bool | `false` | 网络受限环境启用 Bangumi 镜像回退：填写了下方自定义镜像时仅使用自定义镜像；留空时按序尝试内置公共镜像（api.bangumi.vip / bgmapi.anibt.net），全部失败则回退不使用别名扩展。关闭时仅直连官方 api.bgm.tv |
 | `bangumi_mirror_url` | string | `""` | 自定义 Bangumi API 镜像根地址，留空用内置公共镜像；需同时开启 `bangumi_mirror` 与 `search_alias_expansion`（后者依赖相关度排序） |
 | `search_display_limit` | int | `20` | 开启相关度排序后最多显示的搜索结果条数；超过显示上限的结果无法通过编号订阅，可调大（≤50）或用「搜索 关键词 源名」锁定单源 |
-| `temp_dir` | string | `""` | 临时文件目录。留空用系统默认；Docker 环境须设置为 AstrBot 与聊天平台容器共享的目录（如 `/AstrBot/data/temp`）。配置后每次下载的临时子目录会放开为 0755、打包文件补为 0644，供不同 uid 的 OneBot 端读取；留空时保持 0700 |
+| `temp_dir` | string | `""` | 临时文件目录。留空用系统默认；Docker 环境须设置为 AstrBot 与聊天平台容器共享的目录（如 `/AstrBot/data/temp`）。配置后本次新建的 `temp_dir` 及每次下载的临时子目录会放开为 0711（可穿越、不可列目录）、打包文件补为 0644，供不同 uid 的 OneBot 端读取；已存在的目录需自行保证可穿越；留空时保持 0700 |
 
 ### 认证模式说明
 

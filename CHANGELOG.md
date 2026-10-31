@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 ### Fixed
 
-- **Docker 跨容器文件发送权限** — 配置 `temp_dir` 后，每次下载的临时子目录由 `tempfile.mkdtemp` 的 0700 放开为 0755（`O_NOFOLLOW` 打开后 `fchmod`，避免符号链接重定向），打包产物统一补为 0644，修复 SnowLuma 等以非 root uid 运行的 OneBot 端发送 PDF/ZIP/CBZ 时报 `EACCES: permission denied, realpath`（#22）；未配置共享目录时仍保持 0700
+- **Docker 跨容器文件发送权限** — 配置 `temp_dir` 后，本次新建的各级临时目录及每次下载的子目录由 0700 放开为 0711（可穿越、不可列目录；`O_NOFOLLOW` 打开后 `fchmod`，避免符号链接重定向），打包产物统一补为 0644，修复 SnowLuma 等以非 root uid 运行的 OneBot 端发送 PDF/ZIP/CBZ 时报 `EACCES: permission denied, realpath`（#22）；未配置共享目录时仍保持 0700。已存在但不可穿越的 `temp_dir` 会输出一次性告警并指出阻塞路径
 
 ### Dev
 

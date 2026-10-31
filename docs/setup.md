@@ -319,7 +319,7 @@ python main.py
 | `RATE_LIMIT_MAX_REQUESTS` | `0` | 限流窗口内最大请求数，`0` 表示不限流 |
 | `RATE_LIMIT_WINDOW_SECONDS` | `0` | 限流窗口秒数 |
 
-> 多副本部署（K8s 等）时，JSON 模式生成的图片可能落在不同实例上导致 404，此时需配置 S3/R2 共享存储。本插件使用**直接返回图片字节**的模式（不落盘），单实例部署即可，无此问题。
+> 多副本部署（K8s 等）时，JSON 模式生成的图片可能落在不同实例上导致 404，此时需配置 S3/R2 共享存储；本插件默认直接返回图片字节，单实例部署无需额外配置。
 >
 > 完整环境变量与 API 说明见 [astrbot-t2i-service 仓库](https://github.com/AstrBotDevs/astrbot-t2i-service)。
 
@@ -405,14 +405,15 @@ AstrBot 所在机器需要能访问 Suwayomi 的图片 URL。如果 Suwayomi 在
 
 ### PDF/ZIP 文件发送失败（Docker 跨容器）
 
-报错 `EACCES: permission denied, realpath '/AstrBot/data/temp/suwayomi_xxx/xxx.pdf'` 时：
+日志出现 `EACCES: permission denied, realpath ...` 时，通常是 AstrBot 和 QQ 端容器看不到同一个临时目录。
 
-- `temp_dir` 必须使用**绝对路径**，并在 AstrBot 与 OneBot 实现（SnowLuma/NapCat 等）中挂载到**同一个绝对路径**，否则发送端看不到文件
-- 建议使用**专用共享卷**（只挂给这两个容器），不要指向宿主机多用户可写的 `/tmp`。配置后临时内容对所有能访问该卷的 uid 可读，请勿在其下存放其他数据
-- 插件会把本次新建的 `temp_dir` 各级目录及每次下载的临时子目录放开为 0711（可穿越、不可列目录）、打包产物补为 0644；已存在的目录不会被改写，若不可穿越会输出一次性告警并指出阻塞路径
-- 若仍然失败，检查发送端进程的 uid 是否能穿越 `temp_dir` 的父目录，以及容器是否启用了 userns-remap
-- 注意 `O_NOFOLLOW` 只保护权限放宽这一步；仍不要把 `temp_dir` 指向其他用户可写的目录，否则后续写入路径存在被替换为符号链接的风险
-- 临时规避：让 OneBot 容器以 root 运行（如 SnowLuma 的 `SNOWLUMA_UID: 0`），或改用 AstrBot 的文件服务（配置 `callback_api_base`）
+1. 在插件设置中把「临时文件目录」设为绝对路径，例如 `/AstrBot/data/temp`
+2. 在 AstrBot 和 SnowLuma（或 NapCat）容器中，把该目录挂载到**同一个绝对路径**
+3. 这个目录只给插件使用，不要选 `/tmp` 或 AstrBot 的数据目录
+
+目录不存在时插件会自动创建；如果是你手动创建的，确保 QQ 端容器能进入它（可执行 `chmod o+x 目录`，上级目录也需要）。
+
+仍然失败时，可临时让 OneBot 容器以 root 运行（如 SnowLuma 的 `SNOWLUMA_UID: 0`），或配置 `callback_api_base` 改用 AstrBot 的文件服务。
 
 ### 合并转发模式不生效（QQ）
 

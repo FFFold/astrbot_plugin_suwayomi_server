@@ -52,7 +52,7 @@ main.py (SuwayomiPlugin — thin dispatch layer)
   ├── suwayomi/ai_tools.py (FunctionTool schemas and registration factory)
   ├── suwayomi/updater.py (check_updates, run_update_loop)
   ├── utils/downloader.py (download_one, download_images, download_cover, fetch_pages_local)
-  ├── utils/pack.py (pack_zip, pack_cbz, pack_pdf — image packaging)
+  ├── utils/pack.py (pack_zip, pack_cbz, pack_pdf — image packaging; pack_images also chmods the output to 0644 for cross-uid delivery)
   ├── utils/pusher.py (push_chapter_images, push_chapter_file, schedule_cleanup)
   ├── utils/subscription.py (SubscriptionManager - AstrBot KV storage)
   ├── web/api.py (WebUI API handlers — standalone functions, dependency-injected)
@@ -114,7 +114,7 @@ main.py (SuwayomiPlugin — thin dispatch layer)
 
 18. **AstrBot's T2I endpoint is a module-level singleton**: `astrbot/core/__init__.py` builds `html_renderer = HtmlRenderer(astrbot_config.get("t2i_endpoint", ...))` at *import* time from the global config, and `Star.html_render` just forwards to it. Changing the global `t2i_endpoint` in the AstrBot WebUI therefore requires an **AstrBot restart** to take effect (documented in `docs/setup.md`). AstrBot's default is the overseas official endpoint `https://t2i.soulter.top/text2img`, plus a randomly-shuffled pool fetched from `api.soulter.top/astrbot/t2i-endpoints` — the reason the plugin offers a self-hosted `t2i_endpoint`. In contrast, the plugin's own `t2i_source`/`t2i_endpoint` are read per render, so they apply **without** a restart (the WebUI save path resets `_t2i_endpoint_warned`).
 
-19. **Shared temp dirs must be traversable by the sender's uid**: `download_images()` creates its batch dir with `tempfile.mkdtemp()` (always `0o700`, owner = AstrBot process). Docker deployments usually run the OneBot implementation as a different uid (SnowLuma defaults to `SNOWLUMA_UID=1000`) while AstrBot runs as root, and `Comp.File` is sent as a local `file://` path when `callback_api_base` is unset — the sender process itself opens the packed PDF/ZIP/CBZ, so a `0o700` dir yields `EACCES: permission denied, realpath`. When `temp_dir` is configured the plugin `chmod`s that batch dir to `0o755` (POSIX only, best-effort); the default system temp dir stays `0o700`. Images are unaffected (aiocqhttp converts them to base64 in the AstrBot process). The shared dir must also be mounted at the same path in both containers.
+19. **Shared temp dirs must be traversable by the sender's uid**: `download_images()` creates its batch dir with `tempfile.mkdtemp()` (always `0o700`, owner = AstrBot process). Docker deployments usually run the OneBot implementation as a different uid (SnowLuma defaults to `SNOWLUMA_UID=1000`) while AstrBot runs as root, and `Comp.File` is sent as a local `file://` path when `callback_api_base` is unset — the sender process itself opens the packed PDF/ZIP/CBZ, so a `0o700` dir yields `EACCES: permission denied, realpath`. When `temp_dir` is configured the plugin opens that batch dir with `O_NOFOLLOW` and `fchmod`s it to `0o755` (POSIX only, best-effort; the no-follow open prevents a swapped symlink from redirecting the chmod). `pack_images()` additionally sets the output file to `0o644`, because a strict AstrBot umask such as `0o077` would otherwise leave it `0o600` and the sender still gets EACCES. The default system temp dir stays `0o700`. Images are unaffected (aiocqhttp converts them to base64 in the AstrBot process). The shared dir must also be mounted at the same path in both containers.
 
 ## Key Helpers
 

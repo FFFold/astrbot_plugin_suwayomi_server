@@ -178,13 +178,24 @@ def _open_tmp_dir_to_other_users(tmp_dir: Path) -> None:
     下 AstrBot 与聊天平台端通常是不同 uid，打包好的 PDF 放在该目录里会让发送端
     ``realpath`` 报 EACCES。仅当用户配置了 ``temp_dir``（意味着目录需要跨容器共享）
     时调用；系统默认临时目录保持 0o700。失败不影响下载。
+
+    通过 ``O_NOFOLLOW`` 打开目录再 ``fchmod``：共享目录可能对其他 uid 可写，
+    避免在 ``mkdtemp`` 与 ``chmod`` 之间被替换成符号链接后误改链接目标。
     """
     if os.name != "posix":
         return
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
     try:
-        os.chmod(tmp_dir, 0o755)
+        fd = os.open(tmp_dir, flags)
+    except OSError as e:
+        logger.debug(f"[{_PLUGIN_NAME}] 打开临时目录失败（不影响下载）: {e}")
+        return
+    try:
+        os.fchmod(fd, 0o755)
     except OSError as e:
         logger.debug(f"[{_PLUGIN_NAME}] 放宽临时目录权限失败（不影响下载）: {e}")
+    finally:
+        os.close(fd)
 
 
 async def download_images(

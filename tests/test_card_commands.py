@@ -322,18 +322,20 @@ def test_card_render_fn_custom_empty_endpoint_warns_once(monkeypatch):
     plugin = _plugin(cards_enabled=True)
     plugin.config["t2i_source"] = "custom"
     plugin.config["t2i_endpoint"] = ""
-    warning = MagicMock()
-    monkeypatch.setattr(main_mod.logger, "warning", warning)
+    logger_mock = MagicMock()
+    # Patch the module attribute, not logger.warning: pytest >=9.2 restores a
+    # MagicMock child via delattr, which marks it _deleted for later tests.
+    monkeypatch.setattr(main_mod, "logger", logger_mock)
 
     assert plugin._card_render_fn() is plugin.html_render
     assert plugin._card_render_fn() is plugin.html_render
-    assert warning.call_count == 1
-    assert "端点为空" in warning.call_args[0][0]
+    assert logger_mock.warning.call_count == 1
+    assert "端点为空" in logger_mock.warning.call_args[0][0]
 
     # WebUI 保存配置后（rebuild_client）允许再次告警
     plugin._t2i_endpoint_warned = False
     plugin._card_render_fn()
-    assert warning.call_count == 2
+    assert logger_mock.warning.call_count == 2
 
 
 @pytest.mark.asyncio

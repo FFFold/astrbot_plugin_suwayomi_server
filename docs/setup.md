@@ -408,7 +408,8 @@ AstrBot 所在机器需要能访问 Suwayomi 的图片 URL。如果 Suwayomi 在
 报错 `EACCES: permission denied, realpath '/AstrBot/data/temp/suwayomi_xxx/xxx.pdf'` 时：
 
 - `temp_dir` 必须设置为 AstrBot 与 OneBot 实现（SnowLuma/NapCat 等）**共同挂载的目录**，否则发送端看不到文件
-- 插件会把每次下载的临时子目录放开为 0755；若仍然失败，检查发送端进程的 uid 是否能穿越 `temp_dir` 的父目录
+- 建议使用**专用共享卷**（只挂给这两个容器），不要指向宿主机多用户可写的 `/tmp`
+- 插件会把每次下载的临时子目录放开为 0755、打包产物补为 0644；若仍然失败，检查发送端进程的 uid 是否能穿越 `temp_dir` 的父目录，以及容器是否启用了 userns-remap
 - 临时规避：让 OneBot 容器以 root 运行（如 SnowLuma 的 `SNOWLUMA_UID: 0`），或改用 AstrBot 的文件服务（配置 `callback_api_base`）
 
 ### 合并转发模式不生效（QQ）

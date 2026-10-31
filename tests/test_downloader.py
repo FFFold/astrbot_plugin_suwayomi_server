@@ -1,4 +1,5 @@
 """Tests for utils/downloader.py (no network)."""
+import contextlib
 import os
 import stat
 from pathlib import Path
@@ -53,6 +54,16 @@ async def test_download_images_returns_empty_paths_on_failure(tmp_path, monkeypa
     assert paths == ["", ""]
 
 
+@contextlib.contextmanager
+def _umask(mask: int):
+    """显式固定进程 umask，避免用例断言受运行环境影响。"""
+    old = os.umask(mask)
+    try:
+        yield
+    finally:
+        os.umask(old)
+
+
 @pytest.mark.skipif(os.name != "posix", reason="POSIX 目录权限语义")
 @pytest.mark.asyncio
 async def test_download_images_opens_shared_tmp_dir_to_other_users(
@@ -79,19 +90,22 @@ async def test_download_images_keeps_private_mode_without_custom_tmp(
 ):
     """未配置共享临时目录时，保持 mkdtemp 的 0o700 私有语义。"""
     private = tmp_path / "suwayomi_private"
-    private.mkdir(mode=0o700)
-    monkeypatch.setattr(
-        "plugin_pkg.utils.downloader.tempfile.mkdtemp",
-        lambda prefix="", dir=None: str(private),
-    )
 
     async def fake_download_one(session, url, dest, retries=3, headers=None):
         dest.write_bytes(b"x")
         return True
 
-    monkeypatch.setattr("plugin_pkg.utils.downloader.download_one", fake_download_one)
+    with _umask(0o022):
+        private.mkdir(mode=0o700)
+        monkeypatch.setattr(
+            "plugin_pkg.utils.downloader.tempfile.mkdtemp",
+            lambda prefix="", dir=None: str(private),
+        )
+        monkeypatch.setattr(
+            "plugin_pkg.utils.downloader.download_one", fake_download_one
+        )
 
-    _, tmp_dir = await download_images(["http://x/1"])
+        _, tmp_dir = await download_images(["http://x/1"])
 
     assert stat.S_IMODE(tmp_dir.stat().st_mode) == 0o700
 
@@ -100,21 +114,41 @@ async def test_download_images_keeps_private_mode_without_custom_tmp(
 @pytest.mark.asyncio
 async def test_download_images_ignores_chmod_failure(tmp_path, monkeypatch):
     """共享目录所在文件系统不支持 chmod 时，下载不应失败。"""
+    calls: list[tuple[int, int]] = []
 
     async def fake_download_one(session, url, dest, retries=3, headers=None):
         dest.write_bytes(b"x")
         return True
 
-    def failing_chmod(path, mode):
+    def failing_fchmod(fd, mode):
+        calls.append((fd, mode))
         raise OSError("operation not permitted")
 
     monkeypatch.setattr("plugin_pkg.utils.downloader.download_one", fake_download_one)
-    monkeypatch.setattr(os, "chmod", failing_chmod)
+    monkeypatch.setattr(os, "fchmod", failing_fchmod)
 
-    paths, tmp_dir = await download_images(["http://x/1"], custom_tmp=str(tmp_path))
+    with _umask(0o022):
+        paths, tmp_dir = await download_images(["http://x/1"], custom_tmp=str(tmp_path))
 
     assert len(paths) == 1 and paths[0]
+    # 证明确实尝试过放宽权限（否则用例只验证了“下载成功”）
+    assert len(calls) == 1 and calls[0][1] == 0o755
     assert stat.S_IMODE(tmp_dir.stat().st_mode) == 0o700
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX 目录权限语义")
+def test_open_tmp_dir_does_not_follow_symlink(tmp_path):
+    """共享目录可能被其他 uid 写：替换成符号链接时不得修改链接目标权限。"""
+    from plugin_pkg.utils.downloader import _open_tmp_dir_to_other_users
+
+    target = tmp_path / "target"
+    target.mkdir(mode=0o700)
+    link = tmp_path / "link"
+    link.symlink_to(target, target_is_directory=True)
+
+    _open_tmp_dir_to_other_users(link)
+
+    assert stat.S_IMODE(target.stat().st_mode) == 0o700
 
 
 @pytest.mark.asyncio

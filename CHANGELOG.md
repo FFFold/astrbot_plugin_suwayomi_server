@@ -9,7 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/
 
 ### Fixed
 
-- **Docker 跨容器文件发送权限** — 配置 `temp_dir` 后，每次下载的临时子目录由 `tempfile.mkdtemp` 的 0700 放开为 0755，修复 SnowLuma 等以非 root uid 运行的 OneBot 端发送 PDF/ZIP/CBZ 时报 `EACCES: permission denied, realpath`（#22）；未配置共享目录时仍保持 0700
+- **Docker 跨容器文件发送权限** — 配置 `temp_dir` 后，每次下载的临时子目录由 `tempfile.mkdtemp` 的 0700 放开为 0755（`O_NOFOLLOW` 打开后 `fchmod`，避免符号链接重定向），打包产物统一补为 0644，修复 SnowLuma 等以非 root uid 运行的 OneBot 端发送 PDF/ZIP/CBZ 时报 `EACCES: permission denied, realpath`（#22）；未配置共享目录时仍保持 0700
+
+### Dev
+
+- 修复 pytest 9.2 下 `test_card_commands` 对 `MagicMock` 子属性打补丁后，teardown 将 `logger.warning` 标记为 `_deleted`、导致后续用例连锁失败的问题（改为 patch 模块级 `logger`）
 
 ## [0.7.1] - 2026-10-17
 

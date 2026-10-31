@@ -1,4 +1,6 @@
 """Tests for chapter image packing (ZIP, PDF, CBZ)."""
+import os
+import stat
 import zipfile
 from pathlib import Path
 
@@ -202,6 +204,18 @@ class TestPackHelpers:
         assert output.exists()
         with zipfile.ZipFile(output) as zf:
             assert len(zf.namelist()) == 3
+
+    @pytest.mark.skipif(os.name != "posix", reason="POSIX 文件权限语义")
+    def test_pack_images_output_readable_under_restrictive_umask(self, tmp_path):
+        """发送端以不同 uid 读取产物：0o077 umask 下仍须为 0644。"""
+        images = _create_test_images(tmp_path)
+        output = tmp_path / "test.zip"
+        old = os.umask(0o077)
+        try:
+            pack_images(images, output, "zip")
+        finally:
+            os.umask(old)
+        assert stat.S_IMODE(output.stat().st_mode) == 0o644
 
 
 class TestSanitizeFilenameHardening:

@@ -26,7 +26,7 @@ astrbot_suwayomi_server/
 ├── utils/
 │   ├── __init__.py
 │   ├── downloader.py          # 图片下载管道（download_one/download_images/download_cover/fetch_pages_local）
-│   ├── pack.py                # 图片打包工具（ZIP/CBZ/PDF）
+│   ├── pack.py                # 图片打包工具（ZIP/CBZ/PDF；pack_images 产物 chmod 0644 供跨 uid 发送）
 │   ├── pusher.py              # 推送投递（push_chapter_images/push_chapter_file）+ schedule_cleanup/schedule_cleanup_file
 │   └── subscription.py        # 订阅管理器（AstrBot KV 存储封装）
 ├── web/
@@ -43,7 +43,7 @@ astrbot_suwayomi_server/
 │   ├── test_pack.py           # 打包功能单元测试
 │   ├── test_models.py         # 数据模型单元测试
 │   ├── test_client.py         # 客户端单元测试（mocked HTTP）
-│   ├── test_downloader.py     # 图片下载/封面下载单元测试
+│   ├── test_downloader.py     # 图片下载/封面下载/共享临时目录权限单元测试
 │   ├── test_subscription.py   # 订阅管理单元测试
 │   ├── test_ranking.py        # 搜索相关度打分器单元测试
 │   ├── test_bangumi.py        # Bangumi 别名解析单元测试
@@ -201,7 +201,7 @@ bgm.tv 模糊搜索解析官方译名/别名（top-5 条目 + 日文字形变体
 #### `utils/downloader.py` — 图片下载管道
 
 - `download_one(session, url, dest, retries, headers)` — 单图下载，指数退避重试；流式读取并对单响应设 64MB 字节上限（防恶意源超大响应打满内存/磁盘）；禁用自动重定向并逐跳校验目标（同 origin 或公网放行，跳向第三方私网拒绝，上限 4 跳），跨源跳转丢弃 `headers` 并对连接后的实际对端 IP 复检，防 302 绕过 `resolve_image_url` 的私网过滤与凭据泄露
-- `download_images(urls, concurrency, custom_tmp, retries, headers)` — 并行批量下载，返回 `(paths, tmp_dir)`。`headers` 参数用于注入认证头（`client.auth_headers`），逐请求传递（不设 session 级），确保认证服务器下的图片下载正常且跨源重定向不泄露凭据
+- `download_images(urls, concurrency, custom_tmp, retries, headers)` — 并行批量下载，返回 `(paths, tmp_dir)`。`headers` 参数用于注入认证头（`client.auth_headers`），逐请求传递（不设 session 级），确保认证服务器下的图片下载正常且跨源重定向不泄露凭据。配置 `custom_tmp`（共享临时目录）时：`_prepare_shared_tmp_root` 只放宽本次新建的各级目录，`download_images` 再用 `O_NOFOLLOW` 打开 `mkdtemp` 子目录并 `fchmod 0o711`（可穿越、不可列目录），供不同 uid 的 OneBot 端访问；若失败或上级目录缺少 `o+x`，按路径输出一次性 `warning` 指出阻塞点。默认临时目录保持 `0o700`。打包产物由 `pack_images()` 统一补为 `0o644`，避免发送端在严格 umask 下读取失败。`O_NOFOLLOW` 仅保护权限放宽步骤，`temp_dir` 仍不应指向其他 uid 可写的目录
 - `download_cover(client, thumbnail_url, custom_tmp, retries, headers)` — 下载单张漫画封面到临时目录，返回 `(local_path, tmp_dir)`；失败返回 `(None, None)`，供 `/漫画 章节` 列表顶部展示封面
 - `fetch_pages_local(client, chapter_id, max_pages, concurrency, custom_tmp, retries, headers)` — 获取页面列表并下载到临时目录，返回 `(total_pages, page_urls, local_paths, tmp_dir)`。透传 `headers` 到 `download_images`；文件打包路径（下载/AI 发送/file 推送）统一传 `max_pages=get_file_delivery_max_pages(config)`（配置 `file_delivery_max_pages`，默认 300）
 - `resolve_image_url(client, thumbnail_url, auth_headers)` — 封面 URL 决策：相对路径拼服务器地址并带认证头；绝对 URL 仅同源时附凭据；第三方绝对地址指向私网/环回（字面 IP，含十进制/八进制/十六进制写法，以及 localhost 与尾点写法）时拒绝（防 SSRF），调用方按无封面降级

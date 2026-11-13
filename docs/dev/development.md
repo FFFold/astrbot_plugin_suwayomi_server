@@ -54,6 +54,7 @@ astrbot_suwayomi_server/
 │   ├── test_updater.py        # 更新引擎单元测试
 │   ├── test_ai_service.py     # Agent Tool 服务层单元测试
 │   ├── test_ai_tools.py       # AstrBot Tool call() 调度回归测试
+│   ├── test_help.py           # 帮助与工具描述中的章节选择写法回归测试
 │   ├── test_list_chapters.py  # /漫画 章节 封面逻辑单元测试
 │   ├── test_config.py         # 分组配置读写与旧版配置迁移单元测试
 │   ├── test_config_reset.py   # 配置回退/重置单元测试
@@ -406,7 +407,7 @@ for ch in chapters:
 **阅读流程：**
 ```
 用户输入 → read_chapter() → service.resolve_manga() (ID/名称/模糊匹配)
-         → service.get_or_fetch_chapters() → service.resolve_chapter()（支持 ID:xxx 语法）
+         → service.get_or_fetch_chapters() → service.resolve_chapter()（支持编号 / 第X话 / 第X卷 / 章节名 / ID:xxx）
          → event.send(loading hint)
          → client.fetch_chapter_pages() → 获取页面 URL 列表
          → url 模式: Comp.Image.fromURL()
@@ -418,7 +419,7 @@ for ch in chapters:
 **下载流程：**
 ```
 用户输入 → download_chapter() → service.resolve_manga() → service.get_or_fetch_chapters()
-         → service.resolve_chapter()（支持 ID:xxx 语法）
+         → service.resolve_chapter()（支持编号 / 第X话 / 第X卷 / 章节名 / ID:xxx）
          → event.send(loading hint)
          → downloader.fetch_pages_local() → 下载所有页面到临时目录
          → pack_zip/pack_pdf/pack_cbz() → 打包为文件

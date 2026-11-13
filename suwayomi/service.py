@@ -4,6 +4,7 @@ import asyncio
 import math
 import re
 import time
+import unicodedata
 from typing import TYPE_CHECKING, Any, Callable
 
 import opencc
@@ -38,14 +39,24 @@ KV_CHAPTER_TS = "suwayomi_chapter_timestamps"
 
 _ts_lock = asyncio.Lock()
 
-_CHAPTER_NUM_SUFFIX_RE = re.compile(r"(?:话|話|章)$")
+_CHAPTER_UNIT_MARKS = "话話章回集"
+_VOLUME_UNIT_MARKS = "卷冊册"
+_ALL_UNIT_MARKS = _CHAPTER_UNIT_MARKS + _VOLUME_UNIT_MARKS
+
+_CHAPTER_NUM_SUFFIX_RE = re.compile(rf"[{_ALL_UNIT_MARKS}]$")
+# 只删装饰性分隔符，保留 "." 与 "-"：否则 "第3.8话"/"第38话"、"第1-2话"/"第12话" 会互相粘连
+_NAME_SEPARATOR_RE = re.compile(r"[\s:：·・、,，。~()\[\]【】{}!?！？\"'“”‘’#*_]+")
+_LEADING_ZERO_RE = re.compile(r"(?<!\d)0+(?=\d)")
+_DIGIT_RUN_RE = re.compile(r"\d+(?:\.\d+)?")
 
 
 def parse_chapter_number_text(text: str) -> float | None:
-    """Parse user input like '5', '第5话', '第38.5話' into a chapter number."""
-    cleaned = str(text or "").strip()
+    """Parse user input like '5', '第5话', '第38.5話', '第01卷' into a chapter number."""
+    cleaned = unicodedata.normalize("NFKC", str(text or "")).strip()
+    if cleaned.startswith("#"):
+        cleaned = cleaned[1:].strip()
     if cleaned.startswith("第"):
-        cleaned = cleaned[1:]
+        cleaned = cleaned[1:].strip()
     cleaned = _CHAPTER_NUM_SUFFIX_RE.sub("", cleaned).strip()
     if not cleaned:
         return None
@@ -53,6 +64,126 @@ def parse_chapter_number_text(text: str) -> float | None:
         return float(cleaned)
     except ValueError:
         return None
+
+
+def chapter_name_key(text: str) -> str:
+    """Normalize a chapter name or user input into a comparison key.
+
+    NFKC (full-width -> ASCII) -> t2s (traditional -> simplified) -> casefold ->
+    drop decorative separators -> strip leading zeros from digit runs.
+    Leading-zero stripping lets "第1话" match "第01话"; "." and "-" survive so
+    different numbers never collapse into one another.
+    """
+    cleaned = unicodedata.normalize("NFKC", str(text or ""))
+    cleaned = normalize_zh(cleaned).casefold()
+    cleaned = _NAME_SEPARATOR_RE.sub("", cleaned)
+    return _LEADING_ZERO_RE.sub("", cleaned)
+
+
+def _digit_runs(key: str) -> tuple[str, ...]:
+    return tuple(_DIGIT_RUN_RE.findall(key))
+
+
+def _name_key_matches(chapter: Chapter, key: str) -> bool:
+    name_key = chapter_name_key(chapter.name)
+    return name_key == key and _digit_runs(name_key) == _digit_runs(key)
+
+
+def _number_text(num: float) -> str:
+    return str(fmt_chapter_num(num))
+
+
+def _unit_after_number(key: str, num: float) -> str | None:
+    """Return the unit right after this number in `key`: "chapter", "volume" or None.
+
+    Only an immediately adjacent unit counts: "07卷附录" is a volume for 7,
+    while "第15话" is not a chapter for 5 (no digit lookbehind would misread it).
+    """
+    num_text = _number_text(num)
+    if not num_text or not num_text[0].isdigit():
+        return None
+    match = re.search(
+        rf"(?<!\d){re.escape(num_text)}([{_ALL_UNIT_MARKS}])", key
+    )
+    if not match:
+        return None
+    return "chapter" if match.group(1) in _CHAPTER_UNIT_MARKS else "volume"
+
+
+def _chapter_name_unit(chapter: Chapter, num: float) -> str | None:
+    return _unit_after_number(chapter_name_key(chapter.name), num)
+
+
+def _name_has_other_number(chapter: Chapter, num: float, unit: str) -> bool:
+    """True when the name spells a *different* number with the same unit.
+
+    Catches sources that renumber chapters: chapterNumber 5 but the name says
+    "第15话"; a bare "5" still works, "第5话" asks for confirmation instead of
+    silently reading the wrong chapter.
+    """
+    marks = _CHAPTER_UNIT_MARKS if unit == "chapter" else _VOLUME_UNIT_MARKS
+    found = re.findall(rf"(?<!\d)(\d+(?:\.\d+)?)[{marks}]", chapter_name_key(chapter.name))
+    if not found:
+        return False
+    return all(abs(float(value) - num) >= 0.01 for value in found)
+
+
+def _substring_pattern(key: str):
+    prefix = r"(?<!\d)" if key[:1].isdigit() else ""
+    suffix = r"(?!\d)" if key[-1:].isdigit() else ""
+    return re.compile(prefix + re.escape(key) + suffix)
+
+
+def match_chapters(chapters: list[Chapter], text: str) -> tuple[list[Chapter], str]:
+    """Resolve user input to candidate chapters.
+
+    Returns (candidates, kind) where kind is one of "matched", "ambiguous",
+    "unit_mismatch", "name_conflict" or "not_found". Never picks silently when
+    more than one chapter fits.
+    """
+    raw = unicodedata.normalize("NFKC", str(text or "")).strip()
+    if not raw:
+        return [], "not_found"
+
+    number = parse_chapter_number_text(raw)
+    if number is not None:
+        candidates = find_chapters_by_num(chapters, number)
+        if not candidates:
+            return [], "not_found"
+        key = chapter_name_key(raw)
+        unit = _unit_after_number(key, number)
+        if unit:
+            preferred = [ch for ch in candidates if _chapter_name_unit(ch, number) == unit]
+            if preferred:
+                candidates = preferred
+            elif any(_chapter_name_unit(ch, number) for ch in candidates):
+                return candidates, "unit_mismatch"
+        exact = [ch for ch in candidates if _name_key_matches(ch, key)]
+        if len(exact) == 1:
+            return exact, "matched"
+        if len(candidates) == 1:
+            if unit and _name_has_other_number(candidates[0], number, unit):
+                return candidates, "name_conflict"
+            return candidates, "matched"
+        return candidates, "ambiguous"
+
+    key = chapter_name_key(raw)
+    if not key:
+        return [], "not_found"
+    exact = [ch for ch in chapters if _name_key_matches(ch, key)]
+    if len(exact) == 1:
+        return exact, "matched"
+    if not exact and len(key) >= 2:
+        pattern = _substring_pattern(key)
+        contained = [ch for ch in chapters if pattern.search(chapter_name_key(ch.name))]
+        if len(contained) == 1:
+            return contained, "matched"
+        if contained:
+            return contained, "ambiguous"
+    if exact:
+        return exact, "ambiguous"
+    return [], "not_found"
+
 
 
 def normalize_zh(text: str) -> str:
@@ -136,6 +267,31 @@ def find_chapter_by_id(chapters: list[Chapter], chapter_id: int) -> Chapter | No
     return None
 
 
+def _usage_line(cmd: str, manga_name_or_id: str, tail: str) -> str:
+    manga = sanitize_for_message(manga_name_or_id, limit=80)
+    return f"用法: /漫画 {cmd} {manga} {tail}"
+
+
+def _chapter_choice_line(chapter: Chapter) -> str:
+    name = sanitize_for_message(chapter.name, limit=80)
+    head = f"#{fmt_chapter_num(chapter.chapter_number)} {name}".strip()
+    return f"  {head} (ID:{chapter.id})"
+
+
+def _choice_block(
+    chapters: list[Chapter], cmd: str, manga_name_or_id: str, limit: int = 10
+) -> list[str]:
+    lines = [_chapter_choice_line(ch) for ch in chapters[:limit]]
+    if len(chapters) > limit:
+        lines.append(f"  … 共 {len(chapters)} 个")
+    lines.append(_usage_line(cmd, manga_name_or_id, f"ID:{chapters[0].id}"))
+    return lines
+
+
+def _selector_text(chapter_num: str) -> str:
+    return sanitize_for_message(chapter_num, limit=40) or "（空）"
+
+
 def resolve_chapter(
     chapters: list[Chapter], chapter_num: str, manga_name_or_id: str, cmd: str
 ) -> tuple[Chapter | None, str | None]:
@@ -149,19 +305,48 @@ def resolve_chapter(
         if target:
             return target, None
         return None, f"未找到 ID 为 {cid} 的章节。"
-    chapter_num_f = parse_chapter_number_text(chapter_num)
-    if chapter_num_f is None:
-        return None, "章节号无效。示例: 1, 38.5, 第5话 或 ID:123"
-    matches = find_chapters_by_num(chapters, chapter_num_f)
-    if len(matches) == 0:
-        return None, f"未找到第 {fmt_chapter_num(chapter_num_f)} 话。"
-    if len(matches) == 1:
+
+    input_text = _selector_text(chapter_num)
+    matches, kind = match_chapters(chapters, chapter_num)
+    if kind == "matched":
         return matches[0], None
-    ids = " 或 ".join(f"ID:{m.id}" for m in matches)
-    return None, (
-        f"第 {chapter_num} 话存在多个章节（可能为附录/番外），"
-        f"请使用 ID 指定: /漫画 {cmd} {manga_name_or_id} {ids}"
+
+    if kind == "not_found":
+        return None, (
+            f"未找到「{input_text}」对应的章节。"
+            "可用：1、38.5、第5话、第1卷、章节名，或 ID:123；\n"
+            f"也可先 /漫画 章节 {sanitize_for_message(manga_name_or_id, limit=80)} 查看列表。"
+        )
+
+    number = parse_chapter_number_text(chapter_num)
+    number_text = fmt_chapter_num(number) if number is not None else input_text
+
+    if kind == "unit_mismatch":
+        unit = _unit_after_number(chapter_name_key(chapter_num), number)
+        unit_label = "卷" if unit == "volume" else "章"
+        return None, "\n".join(
+            [f"「{input_text}」没有匹配到{unit_label}，编号 {number_text} 只有："]
+            + _choice_block(matches, cmd, manga_name_or_id)
+        )
+
+    if kind == "name_conflict":
+        chapter = matches[0]
+        name = sanitize_for_message(chapter.name, limit=80)
+        return None, "\n".join(
+            [
+                f"编号 {number_text} 的章节名是「{name}」，与输入「{input_text}」不一致：",
+                _chapter_choice_line(chapter).strip(),
+                _usage_line(
+                    cmd, manga_name_or_id, f"{number_text}  或  ID:{chapter.id}"
+                ),
+            ]
+        )
+
+    return None, "\n".join(
+        [f"「{input_text}」匹配到 {len(matches)} 个章节，请用 ID 指定："]
+        + _choice_block(matches, cmd, manga_name_or_id)
     )
+
 
 
 def split_search_query(message_str: str, keyword: str) -> tuple[str, str]:

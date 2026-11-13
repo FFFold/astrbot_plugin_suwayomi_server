@@ -2,7 +2,7 @@
 
 ## 意图
 
-`/漫画 阅读`（以及 `下载`、AI 章节选择）按编号选章节，在"单行本卷"与"正篇话"共用编号的漫画上
+`/漫画 阅读` 与 `/漫画 下载` 按编号选章节，在"单行本卷"与"正篇话"共用编号的漫画上
 （如《安达与岛村》：`单行本：第01卷` 与 `第01话` 的 `chapter_number` 都是 1）直接失灵：
 
 - `阅读 安达与岛村 1` 只回一串裸 ID，用户无从判断哪一个是正篇；
@@ -20,7 +20,8 @@
 ## 目标 / 非目标
 
 - 目标：编号、`第X话`、`第X卷`、章节名、`ID:数字` 都能用；歧义提示逐条列出名字 + ID；
-  帮助与错误示例与该能力一致；`阅读`/`下载`/AI 共用同一匹配核心。
+  帮助与错误示例与该能力一致。这些写法只服务于命令层：AI 工具拿到完整章节列表（含 `chapter_id`）
+  后按 ID 选择，`selector` 保持 `latest`/`list`/章节号/`ID:数字`。
 - 目标：任何"可能选错"的情形宁可报错并列出候选，也不静默选一个。
 - 非目标：中文数字（"第一卷"）→ 阿拉伯数字换算（但按名称/包含匹配仍可能命中）；不做"自动猜正篇"——
   用户已拍板：编号命中多个时**始终让用户选**。
@@ -35,8 +36,9 @@ kind ∈ {"matched", "ambiguous", "unit_mismatch", "name_conflict", "not_found"}
 ```
 
 `ID:` 分支保留在 `resolve_chapter` 与 `ai_service` 各自入口（它们的错误文案不同）。
-`resolve_chapter` 只负责把 `kind` 渲染成文案；`ai_service._select_chapter_candidates` 复用同一核心，
-`matched` 取唯一项，其余非 `not_found` 一律回"需要 chapter_id"。
+`resolve_chapter` 只负责把 `kind` 渲染成文案。`match_chapters` 仅用于命令层（阅读/下载）；
+`ai_service._select_chapter_candidates` 继续只认 `latest`/`list`/章节号/`ID:数字`——
+Agent 会拿到章节列表和稳定 `chapter_id`，不需要名称或卷解析，避免把不稳定的名字写进工具契约。
 
 ### 归一化（名称比较键）
 
@@ -141,11 +143,11 @@ kind ∈ {"matched", "ambiguous", "unit_mismatch", "name_conflict", "not_found"}
 ## 影响面
 
 - `suwayomi/service.py`：新增 `key`/单位/`match_chapters`，重写 `resolve_chapter`，扩展后缀表。
-- `suwayomi/ai_service.py`：复用 `match_chapters`（保持其"需要 chapter_id"语义）。
+- `suwayomi/ai_service.py`：`selector` 收窄为 `latest`/`list`/章节号/`ID:数字`，不参与名称解析。
 - `main.py`：帮助/docstring/用法文本。
 - 文档：`docs/dev/development.md` 关键函数、`CHANGELOG.md`、`ai_tools.py` selector 描述。
-- 测试：`tests/test_service.py`（真实语料夹具 + 合成边界）、`tests/test_ai_service.py` 覆盖 selector
-  名称命中与 unit_mismatch 不误选。
+- 测试：`tests/test_service.py`（真实语料夹具 + 合成边界）、`tests/test_ai_service.py` 固定
+  selector 的编号/ID 语义并拒绝名称与卷。
 
 ## 留给实现者
 

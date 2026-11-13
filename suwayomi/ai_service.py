@@ -11,9 +11,10 @@ from .models import Chapter, Manga, Source
 from .ranking import score_title
 from .service import (
     _bounded_int,
+    find_chapters_by_num,
     fmt_chapter_display,
+    fmt_chapter_num,
     get_or_fetch_chapters,
-    match_chapters,
     select_search_sources,
 )
 
@@ -23,6 +24,7 @@ from astrbot.api import logger
 _LATEST_SELECTORS = {"latest", "newest", "最新", "最新一话", "最新一話"}
 _LIST_SELECTORS = {"", "list", "all", "列表", "全部"}
 _CHAPTER_ID_RE = re.compile(r"^id\s*[:：]\s*(\d+)$", re.IGNORECASE)
+_NUMBER_SELECTOR_RE = re.compile(r"^#?(?:第)?\s*(\d+(?:\.\d+)?)\s*[话話章]?$")
 _RESET_SUCCESS_TEXT = "✅ Conversation reset successfully."
 _SOURCE_SEARCH_TIMEOUT_SEC = 15.0
 
@@ -273,12 +275,19 @@ def _select_chapter_candidates(
             return None, [], f"未找到章节 ID {chapter_id}"
         return candidates[0], candidates, None
 
-    candidates, kind = match_chapters(chapters, selector)
-    if kind == "not_found":
-        return None, [], f"未找到「{selector}」对应的章节"
-    if kind == "matched" and len(candidates) == 1:
-        return candidates[0], candidates, None
-    return None, candidates, "selector 无法唯一确定章节，请使用返回的 chapter_id 明确选择"
+    number_match = _NUMBER_SELECTOR_RE.fullmatch(normalized)
+    if not number_match:
+        return None, [], (
+            "selector 应为 latest、list、章节号或 ID:数字；"
+            f"当前值为 {selector!r}"
+        )
+    number = float(number_match.group(1))
+    candidates = find_chapters_by_num(ordered, number)
+    if not candidates:
+        return None, [], f"未找到第 {fmt_chapter_num(number)} 话"
+    if len(candidates) > 1:
+        return None, candidates, "同一章节号存在多个结果，需要使用 chapter_id 明确选择"
+    return candidates[0], candidates, None
 
 
 async def get_chapters_for_agent(

@@ -131,17 +131,25 @@ def test_select_chapter_candidates_missing_number_returns_friendly_error():
     assert err is not None and "未找到" in err
 
 
-def test_selector_accepts_chapter_name_and_volume():
+def test_selector_rejects_chapter_names_and_volumes():
+    from suwayomi.ai_service import _select_chapter_candidates
+
+    chapters = [_chapter_with_name(2531, "第01话", 1)]
+    for selector in ("番外篇1", "第1卷", "单行本：第01卷"):
+        selected, candidates, err = _select_chapter_candidates(chapters, selector)
+        assert selected is None and candidates == [] and err
+
+
+def test_selector_accepts_number_forms():
     from suwayomi.ai_service import _select_chapter_candidates
 
     chapters = [
         _chapter_with_name(2531, "第01话", 1),
-        _chapter_with_name(2539, "单行本：第01卷", 1),
+        _chapter_with_name(2539, "单行本：第02卷", 2),
     ]
-    selected, _, err = _select_chapter_candidates(chapters, "第1卷")
-    assert err is None and selected.id == 2539
-    selected, _, err = _select_chapter_candidates(chapters, "第01话")
-    assert err is None and selected.id == 2531
+    for selector in ("1", "第01话", "#1"):
+        selected, _, err = _select_chapter_candidates(chapters, selector)
+        assert err is None and selected.id == 2531
 
 
 def test_selector_accepts_fullwidth_id():
@@ -150,16 +158,6 @@ def test_selector_accepts_fullwidth_id():
     chapters = [_chapter_with_name(2531, "第01话", 1)]
     selected, _, err = _select_chapter_candidates(chapters, "ＩＤ：2531")
     assert err is None and selected.id == 2531
-
-
-def test_selector_unit_mismatch_returns_candidates_not_wrong_chapter():
-    from suwayomi.ai_service import _select_chapter_candidates
-
-    chapters = [_chapter_with_name(2529, "第03话", 3)]
-    selected, candidates, err = _select_chapter_candidates(chapters, "第3卷")
-    assert selected is None
-    assert [chapter.id for chapter in candidates] == [2529]
-    assert err
 
 
 def test_successful_conversation_reset_detection():

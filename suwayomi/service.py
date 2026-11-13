@@ -46,8 +46,10 @@ _ALL_UNIT_MARKS = _CHAPTER_UNIT_MARKS + _VOLUME_UNIT_MARKS
 _CHAPTER_NUM_SUFFIX_RE = re.compile(rf"[{_ALL_UNIT_MARKS}]$")
 # 只删装饰性分隔符，保留 "." 与 "-"：否则 "第3.8话"/"第38话"、"第1-2话"/"第12话" 会互相粘连
 _NAME_SEPARATOR_RE = re.compile(r"[\s:：·・、,，。~()\[\]【】{}!?！？\"'“”‘’#*_]+")
-_LEADING_ZERO_RE = re.compile(r"(?<!\d)0+(?=\d)")
+_LEADING_ZERO_RE = re.compile(r"(?<![\d.])0+(?=\d)")
 _DIGIT_RUN_RE = re.compile(r"\d+(?:\.\d+)?")
+_BARE_NUMBER_RE = re.compile(r"\d+(?:\.\d+)?")
+_UNIT_NUMBER_RE = re.compile(rf"(?<!\d)(\d+(?:\.\d+)?)([{_ALL_UNIT_MARKS}])")
 
 
 def parse_chapter_number_text(text: str) -> float | None:
@@ -89,25 +91,23 @@ def _name_key_matches(chapter: Chapter, key: str) -> bool:
     return name_key == key and _digit_runs(name_key) == _digit_runs(key)
 
 
-def _number_text(num: float) -> str:
-    return str(fmt_chapter_num(num))
-
-
 def _unit_after_number(key: str, num: float) -> str | None:
     """Return the unit right after this number in `key`: "chapter", "volume" or None.
 
-    Only an immediately adjacent unit counts: "07卷附录" is a volume for 7,
-    while "第15话" is not a chapter for 5 (no digit lookbehind would misread it).
+    Numbers are compared by value, so "38.50话" still marks chapter 38.5. Only
+    an immediately adjacent unit counts: "07卷附录" is a volume for 7, while
+    "第15话" is not a chapter for 5 (no digit lookbehind would misread it).
     """
-    num_text = _number_text(num)
-    if not num_text or not num_text[0].isdigit():
+    try:
+        target = float(num)
+    except (TypeError, ValueError):
         return None
-    match = re.search(
-        rf"(?<!\d){re.escape(num_text)}([{_ALL_UNIT_MARKS}])", key
-    )
-    if not match:
+    if math.isnan(target) or math.isinf(target):
         return None
-    return "chapter" if match.group(1) in _CHAPTER_UNIT_MARKS else "volume"
+    for value, mark in _UNIT_NUMBER_RE.findall(key):
+        if abs(float(value) - target) < 0.01:
+            return "chapter" if mark in _CHAPTER_UNIT_MARKS else "volume"
+    return None
 
 
 def _chapter_name_unit(chapter: Chapter, num: float) -> str | None:
@@ -128,9 +128,9 @@ def _name_has_other_number(chapter: Chapter, num: float, unit: str) -> bool:
     return all(abs(float(value) - num) >= 0.01 for value in found)
 
 
-def _substring_pattern(key: str):
-    prefix = r"(?<!\d)" if key[:1].isdigit() else ""
-    suffix = r"(?!\d)" if key[-1:].isdigit() else ""
+def _substring_pattern(key: str) -> re.Pattern[str]:
+    prefix = r"(?<![\d.\-]\d)(?<!\d)" if key[:1].isdigit() else ""
+    suffix = r"(?!\d)(?![.\-]\d)" if key[-1:].isdigit() else ""
     return re.compile(prefix + re.escape(key) + suffix)
 
 
@@ -144,13 +144,25 @@ def match_chapters(chapters: list[Chapter], text: str) -> tuple[list[Chapter], s
     raw = unicodedata.normalize("NFKC", str(text or "")).strip()
     if not raw:
         return [], "not_found"
+    key = chapter_name_key(raw)
+    if not key:
+        return [], "not_found"
+
+    # A displayed name beats its own source number: a chapter titled "第5话"
+    # stays selectable even when the source numbers it 12. Bare numbers ("5")
+    # still mean the #N column, so they skip this step.
+    if not _BARE_NUMBER_RE.fullmatch(key):
+        exact = [ch for ch in chapters if _name_key_matches(ch, key)]
+        if len(exact) == 1:
+            return exact, "matched"
+        if exact:
+            return exact, "ambiguous"
 
     number = parse_chapter_number_text(raw)
     if number is not None:
         candidates = find_chapters_by_num(chapters, number)
         if not candidates:
             return [], "not_found"
-        key = chapter_name_key(raw)
         unit = _unit_after_number(key, number)
         guard_other_unit = False
         if unit:
@@ -175,21 +187,13 @@ def match_chapters(chapters: list[Chapter], text: str) -> tuple[list[Chapter], s
             return candidates, "matched"
         return candidates, "ambiguous"
 
-    key = chapter_name_key(raw)
-    if not key:
-        return [], "not_found"
-    exact = [ch for ch in chapters if _name_key_matches(ch, key)]
-    if len(exact) == 1:
-        return exact, "matched"
-    if not exact and len(key) >= 2:
+    if len(key) >= 2:
         pattern = _substring_pattern(key)
         contained = [ch for ch in chapters if pattern.search(chapter_name_key(ch.name))]
         if len(contained) == 1:
             return contained, "matched"
         if contained:
             return contained, "ambiguous"
-    if exact:
-        return exact, "ambiguous"
     return [], "not_found"
 
 

@@ -265,6 +265,34 @@ class TestResolveChapterSelectors:
         assert target is None
         assert "ID:2538" in err and "ID:2539" in err
 
+    def test_fractional_title_does_not_collide_with_shorter_decimal(self):
+        chapters = [_chapter(1, "第3.08话", 3.8), _chapter(2, "第3.8话", 3.8)]
+        target, err = resolve_chapter(chapters, "第3.8话", "测试漫画", "阅读")
+        assert err is None
+        assert target is not None and target.id == 2
+
+    def test_unit_detection_accepts_equivalent_decimal_spelling(self):
+        chapters = [_chapter(1, "第38.50话", 38.5), _chapter(2, "第38.5卷", 38.5)]
+        target, err = resolve_chapter(chapters, "第38.5话", "测试漫画", "阅读")
+        assert err is None
+        assert target is not None and target.id == 1
+
+    def test_exact_displayed_name_wins_over_its_source_number(self):
+        chapters = [_chapter(1, "第5话", 12)]
+        target, err = resolve_chapter(chapters, "第5话", "测试漫画", "阅读")
+        assert err is None
+        assert target is not None and target.id == 1
+        target, err = resolve_chapter([_chapter(2, "第12话", 12)], "12", "测试漫画", "阅读")
+        assert err is None and target is not None and target.id == 2
+
+    def test_partial_name_does_not_extend_into_decimal_or_range(self):
+        for name in ("番外1.5", "番外1-2"):
+            target, err = resolve_chapter([_chapter(1, name, 1.5)], "番外1", "测试漫画", "阅读")
+            assert target is None, name
+            assert "未找到" in err
+        target, err = resolve_chapter([_chapter(1, "番外1", 1)], "番外1", "测试漫画", "阅读")
+        assert err is None and target is not None and target.id == 1
+
     def test_normalization_does_not_merge_different_numbers(self):
         chapters = [_chapter(1, "第1-2话", 12), _chapter(2, "第12话", 12)]
         target, err = resolve_chapter(chapters, "第12话", "测试漫画", "阅读")

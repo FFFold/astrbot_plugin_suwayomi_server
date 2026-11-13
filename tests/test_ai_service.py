@@ -110,6 +110,17 @@ def test_ai_interaction_state_evicts_oldest_beyond_max():
     assert state.was_chapter_exposed(("o", "u3"), 3, 30, now=301.0) is True
 
 
+def _chapter_with_name(chapter_id: int, name: str, number: float) -> Chapter:
+    return Chapter(
+        id=chapter_id,
+        url="",
+        name=name,
+        chapter_number=number,
+        source_order=chapter_id,
+        manga_id=10,
+    )
+
+
 def test_select_chapter_candidates_missing_number_returns_friendly_error():
     from suwayomi.ai_service import _select_chapter_candidates
 
@@ -117,7 +128,30 @@ def test_select_chapter_candidates_missing_number_returns_friendly_error():
     selected, candidates, err = _select_chapter_candidates(chapters, "第5话")
     assert selected is None
     assert candidates == []
-    assert err is not None and "未找到第 5 话" in err
+    assert err is not None and "未找到" in err
+
+
+def test_selector_accepts_chapter_name_and_volume():
+    from suwayomi.ai_service import _select_chapter_candidates
+
+    chapters = [
+        _chapter_with_name(2531, "第01话", 1),
+        _chapter_with_name(2539, "单行本：第01卷", 1),
+    ]
+    selected, _, err = _select_chapter_candidates(chapters, "第1卷")
+    assert err is None and selected.id == 2539
+    selected, _, err = _select_chapter_candidates(chapters, "第01话")
+    assert err is None and selected.id == 2531
+
+
+def test_selector_unit_mismatch_returns_candidates_not_wrong_chapter():
+    from suwayomi.ai_service import _select_chapter_candidates
+
+    chapters = [_chapter_with_name(2529, "第03话", 3)]
+    selected, candidates, err = _select_chapter_candidates(chapters, "第3卷")
+    assert selected is None
+    assert [chapter.id for chapter in candidates] == [2529]
+    assert err
 
 
 def test_successful_conversation_reset_detection():

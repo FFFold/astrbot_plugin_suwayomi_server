@@ -11,9 +11,8 @@ from .ranking import score_title
 from .service import (
     _bounded_int,
     fmt_chapter_display,
-    fmt_chapter_num,
     get_or_fetch_chapters,
-    parse_chapter_number_text,
+    match_chapters,
     select_search_sources,
 )
 
@@ -273,19 +272,12 @@ def _select_chapter_candidates(
             return None, [], f"未找到章节 ID {chapter_id}"
         return candidates[0], candidates, None
 
-    number = parse_chapter_number_text(normalized)
-    if number is None:
-        return None, [], (
-            "selector 应为 latest、list、章节号或 ID:数字；"
-            f"当前值为 {selector!r}"
-        )
-
-    candidates = [chapter for chapter in chapters if chapter.chapter_number == number]
-    if not candidates:
-        return None, [], f"未找到第 {fmt_chapter_num(number)} 话"
-    if len(candidates) > 1:
-        return None, candidates, "同一章节号存在多个结果，需要使用 chapter_id 明确选择"
-    return candidates[0], candidates, None
+    candidates, kind = match_chapters(chapters, selector)
+    if kind == "not_found":
+        return None, [], f"未找到「{selector}」对应的章节"
+    if kind == "matched" and len(candidates) == 1:
+        return candidates[0], candidates, None
+    return None, candidates, "同一章节号存在多个结果，需要使用 chapter_id 明确选择"
 
 
 async def get_chapters_for_agent(

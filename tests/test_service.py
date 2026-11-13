@@ -310,6 +310,33 @@ class TestResolveChapterSelectors:
         assert "/漫画 章节 安达与岛村" in err
         assert "安达与岛村 查看列表" not in err
 
+    def test_ambiguous_usage_suggests_unique_chapter_name(self):
+        target, err = resolve_chapter(self.REAL_CHAPTERS, "5话", "安达与岛村", "阅读")
+        assert target is None
+        assert "可用章节名或 ID 指定" in err
+        assert "用法: /漫画 阅读 安达与岛村 第05话" in err
+
+    def test_ambiguous_usage_prefers_canonical_chapter_name(self):
+        _, err = resolve_chapter(self.REAL_CHAPTERS, "5", "安达与岛村", "阅读")
+        assert err.endswith("用法: /漫画 阅读 安达与岛村 第05话")
+
+    def test_ambiguous_name_input_suggests_full_name(self):
+        _, err = resolve_chapter(self.REAL_CHAPTERS, "番外", "安达与岛村", "阅读")
+        assert "可用章节名或 ID 指定" in err
+        assert "用法: /漫画 阅读 安达与岛村 番外篇1" in err
+
+    def test_ambiguous_usage_falls_back_to_id_when_names_collide(self):
+        chapters = [_chapter(1, "第1话", 1), _chapter(3, "第1话", 1)]
+        _, err = resolve_chapter(chapters, "1", "测试漫画", "阅读")
+        assert "请用 ID 指定" in err
+        assert "用法: /漫画 阅读 测试漫画 ID:1" in err
+
+    def test_ambiguous_usage_avoids_multiword_names(self):
+        chapters = [_chapter(1, "特别篇 上", 1), _chapter(2, "特别篇 下", 1)]
+        _, err = resolve_chapter(chapters, "1", "测试漫画", "阅读")
+        assert "请用 ID 指定" in err
+        assert "用法: /漫画 阅读 测试漫画 ID:1" in err
+
     def test_normalization_does_not_merge_different_numbers(self):
         chapters = [_chapter(1, "第1-2话", 12), _chapter(2, "第12话", 12)]
         target, err = resolve_chapter(chapters, "第12话", "测试漫画", "阅读")

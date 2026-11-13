@@ -296,13 +296,56 @@ def _chapter_choice_line(chapter: Chapter) -> str:
 
 
 def _choice_block(
-    chapters: list[Chapter], cmd: str, manga_name_or_id: str, limit: int = 10
+    chapters: list[Chapter],
+    cmd: str,
+    manga_name_or_id: str,
+    limit: int = 10,
+    usage_tail: str | None = None,
 ) -> list[str]:
     lines = [_chapter_choice_line(ch) for ch in chapters[:limit]]
     if len(chapters) > limit:
         lines.append(f"  … 共 {len(chapters)} 个")
-    lines.append(_usage_line(cmd, manga_name_or_id, f"ID:{chapters[0].id}"))
+    lines.append(
+        _usage_line(cmd, manga_name_or_id, usage_tail or f"ID:{chapters[0].id}")
+    )
     return lines
+
+
+def _suggest_chapter_selector(chapters: list[Chapter], chapter: Chapter) -> str | None:
+    """Return a copy-pasteable selector for `chapter`, preferring its name.
+
+    Uses the name only when feeding it back resolves to this exact chapter and
+    it has no whitespace (the read command cannot carry multiword names yet).
+    """
+    name = (chapter.name or "").strip()
+    if not name or any(ch.isspace() for ch in name):
+        return None
+    if sanitize_for_message(name, limit=80) != name:
+        return None
+    matches, kind = match_chapters(chapters, name)
+    if kind == "matched" and matches and matches[0].id == chapter.id:
+        return name
+    return None
+
+
+def _is_canonical_chapter_name(chapter: Chapter, num: float) -> bool:
+    number_text = re.escape(str(fmt_chapter_num(num)))
+    return re.fullmatch(
+        rf"第?{number_text}[话話章]", chapter_name_key(chapter.name)
+    ) is not None
+
+
+def _first_chapter_suggestion(
+    chapters: list[Chapter], matches: list[Chapter], num: float | None
+) -> str | None:
+    ordered = matches
+    if num is not None:
+        ordered = sorted(matches, key=lambda ch: not _is_canonical_chapter_name(ch, num))
+    for chapter in ordered:
+        suggestion = _suggest_chapter_selector(chapters, chapter)
+        if suggestion:
+            return suggestion
+    return None
 
 
 def _selector_text(chapter_num: str) -> str:
@@ -360,9 +403,15 @@ def resolve_chapter(
             ]
         )
 
+    suggested = _first_chapter_suggestion(chapters, matches, number)
+    if suggested:
+        header = f"「{input_text}」匹配到 {len(matches)} 个章节，可用章节名或 ID 指定："
+        tail = suggested
+    else:
+        header = f"「{input_text}」匹配到 {len(matches)} 个章节，请用 ID 指定："
+        tail = f"ID:{matches[0].id}"
     return None, "\n".join(
-        [f"「{input_text}」匹配到 {len(matches)} 个章节，请用 ID 指定："]
-        + _choice_block(matches, cmd, manga_name_or_id)
+        [header] + _choice_block(matches, cmd, manga_name_or_id, usage_tail=tail)
     )
 
 

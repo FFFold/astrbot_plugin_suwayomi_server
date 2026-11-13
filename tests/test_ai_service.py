@@ -144,6 +144,14 @@ def test_selector_accepts_chapter_name_and_volume():
     assert err is None and selected.id == 2531
 
 
+def test_selector_accepts_fullwidth_id():
+    from suwayomi.ai_service import _select_chapter_candidates
+
+    chapters = [_chapter_with_name(2531, "第01话", 1)]
+    selected, _, err = _select_chapter_candidates(chapters, "ＩＤ：2531")
+    assert err is None and selected.id == 2531
+
+
 def test_selector_unit_mismatch_returns_candidates_not_wrong_chapter():
     from suwayomi.ai_service import _select_chapter_candidates
 

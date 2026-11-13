@@ -152,17 +152,25 @@ def match_chapters(chapters: list[Chapter], text: str) -> tuple[list[Chapter], s
             return [], "not_found"
         key = chapter_name_key(raw)
         unit = _unit_after_number(key, number)
+        guard_other_unit = False
         if unit:
             preferred = [ch for ch in candidates if _chapter_name_unit(ch, number) == unit]
             if preferred:
                 candidates = preferred
             elif any(_chapter_name_unit(ch, number) for ch in candidates):
                 return candidates, "unit_mismatch"
+            else:
+                guard_other_unit = True
         exact = [ch for ch in candidates if _name_key_matches(ch, key)]
         if len(exact) == 1:
             return exact, "matched"
         if len(candidates) == 1:
-            if unit and _name_has_other_number(candidates[0], number, unit):
+            chapter = candidates[0]
+            conflict = unit and _name_has_other_number(chapter, number, unit)
+            if guard_other_unit and unit:
+                other_unit = "volume" if unit == "chapter" else "chapter"
+                conflict = conflict or _name_has_other_number(chapter, number, other_unit)
+            if conflict:
                 return candidates, "name_conflict"
             return candidates, "matched"
         return candidates, "ambiguous"
@@ -295,7 +303,8 @@ def _selector_text(chapter_num: str) -> str:
 def resolve_chapter(
     chapters: list[Chapter], chapter_num: str, manga_name_or_id: str, cmd: str
 ) -> tuple[Chapter | None, str | None]:
-    norm = chapter_num.replace("：", ":").lower()
+    norm = unicodedata.normalize("NFKC", str(chapter_num or "")).strip().casefold()
+    norm = norm.replace("：", ":")
     if norm.startswith("id:"):
         try:
             cid = int(norm[3:])
@@ -323,9 +332,9 @@ def resolve_chapter(
 
     if kind == "unit_mismatch":
         unit = _unit_after_number(chapter_name_key(chapter_num), number)
-        unit_label = "卷" if unit == "volume" else "章"
+        unit_label = "卷" if unit == "volume" else "话"
         return None, "\n".join(
-            [f"「{input_text}」没有匹配到{unit_label}，编号 {number_text} 只有："]
+            [f"「{input_text}」未匹配到{unit_label}，编号 {number_text} 只有："]
             + _choice_block(matches, cmd, manga_name_or_id)
         )
 

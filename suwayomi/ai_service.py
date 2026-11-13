@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import re
 import time
+import unicodedata
 from typing import Any
 
 from .config import config_bool, get_config_value
@@ -258,7 +259,7 @@ async def search_manga_for_agent(
 def _select_chapter_candidates(
     chapters: list[Chapter], selector: str
 ) -> tuple[Chapter | None, list[Chapter], str | None]:
-    normalized = selector.strip().casefold()
+    normalized = unicodedata.normalize("NFKC", str(selector or "")).strip().casefold()
     ordered = sorted(chapters, key=lambda chapter: chapter.source_order)
 
     if normalized in _LATEST_SELECTORS:
@@ -277,7 +278,7 @@ def _select_chapter_candidates(
         return None, [], f"未找到「{selector}」对应的章节"
     if kind == "matched" and len(candidates) == 1:
         return candidates[0], candidates, None
-    return None, candidates, "同一章节号存在多个结果，需要使用 chapter_id 明确选择"
+    return None, candidates, "selector 无法唯一确定章节，请使用返回的 chapter_id 明确选择"
 
 
 async def get_chapters_for_agent(

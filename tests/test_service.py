@@ -127,6 +127,32 @@ class TestResolveChapter:
         assert err is None
         assert target is not None and target.id == 100
 
+    @pytest.mark.parametrize("text", ["ID:2531", "id：2531", "ＩＤ：2531", "ＩＤ:2531", "ｉｄ：2531"])
+    def test_by_id_fullwidth_letters_and_colon(self, text):
+        chapters = [_chapter(2531, "第01话", 1)]
+        target, err = resolve_chapter(chapters, text, "安达与岛村", "阅读")
+        assert err is None
+        assert target is not None and target.id == 2531
+
+    def test_volume_request_does_not_select_misnumbered_chapter_name(self):
+        chapters = [_chapter(2, "第15话", 5)]
+        target, err = resolve_chapter(chapters, "第5卷", "测试漫画", "阅读")
+        assert target is None
+        assert "ID:2" in err
+
+    def test_chapter_unit_mismatch_says_chapter_not_zhang(self):
+        chapters = [_chapter(2538, "单行本：第02卷", 2)]
+        target, err = resolve_chapter(chapters, "第2话", "测试漫画", "阅读")
+        assert target is None
+        assert "未匹配到话" in err
+
+    def test_many_candidates_are_truncated_with_total(self):
+        chapters = [_chapter(1000 + i, f"第09话 附录{i}", 9) for i in range(12)]
+        target, err = resolve_chapter(chapters, "9", "测试漫画", "阅读")
+        assert target is None
+        assert "共 12 个" in err
+        assert err.count("(ID:") == 10
+
     def test_by_number_decimal_with_traditional_suffix(self):
         chapters = [_chapter(100, "第38.5话", 38.5)]
         target, err = resolve_chapter(chapters, "第38.5話", "test", "阅读")
@@ -227,6 +253,17 @@ class TestResolveChapterSelectors:
         target, err = resolve_chapter(chapters, "第1话", "测试漫画", "阅读")
         assert target is None
         assert "ID:1" in err and "ID:3" in err
+
+    def test_afterword_name_and_volume_appendix_resolve(self):
+        target, err = resolve_chapter(self.REAL_CHAPTERS, "第05话后篇", "安达与岛村", "阅读")
+        assert err is None and target.id == 2526
+        target, err = resolve_chapter(self.REAL_CHAPTERS, "第7卷", "安达与岛村", "阅读")
+        assert err is None and target.id == 2477
+
+    def test_partial_volume_name_stays_ambiguous(self):
+        target, err = resolve_chapter(self.REAL_CHAPTERS, "单行本", "安达与岛村", "阅读")
+        assert target is None
+        assert "ID:2538" in err and "ID:2539" in err
 
     def test_normalization_does_not_merge_different_numbers(self):
         chapters = [_chapter(1, "第1-2话", 12), _chapter(2, "第12话", 12)]

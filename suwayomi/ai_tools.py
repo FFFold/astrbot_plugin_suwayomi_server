@@ -105,7 +105,7 @@ def build_ai_tools(plugin: Any) -> list[FunctionTool]:
                     },
                     "selector": {
                         "type": "string",
-                        "description": "取值：list（章节列表）、latest（最新一话）、章节号（如 38.5）或 ID:数字。",
+                        "description": "取值：list（章节列表）、latest（最新一话）、章节号（1 / 38.5）、第5话 / 第01卷、章节名或 ID:数字。",
                         "default": "latest",
                     },
                     "refresh": {

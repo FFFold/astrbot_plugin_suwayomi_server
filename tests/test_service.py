@@ -119,13 +119,39 @@ class TestResolveChapter:
 
     def test_invalid_number(self):
         _, err = resolve_chapter([], "abc", "test", "阅读")
-        assert err is not None and "章节号无效" in err
+        assert err is not None and "未找到" in err and "ID:123" in err
 
     def test_by_number_with_prefix_suffix(self):
         chapters = [_chapter(100, "第5话", 5)]
         target, err = resolve_chapter(chapters, "第5话", "test", "阅读")
         assert err is None
         assert target is not None and target.id == 100
+
+    @pytest.mark.parametrize("text", ["ID:2531", "id：2531", "ＩＤ：2531", "ＩＤ:2531", "ｉｄ：2531"])
+    def test_by_id_fullwidth_letters_and_colon(self, text):
+        chapters = [_chapter(2531, "第01话", 1)]
+        target, err = resolve_chapter(chapters, text, "安达与岛村", "阅读")
+        assert err is None
+        assert target is not None and target.id == 2531
+
+    def test_volume_request_does_not_select_misnumbered_chapter_name(self):
+        chapters = [_chapter(2, "第15话", 5)]
+        target, err = resolve_chapter(chapters, "第5卷", "测试漫画", "阅读")
+        assert target is None
+        assert "ID:2" in err
+
+    def test_chapter_unit_mismatch_says_chapter_not_zhang(self):
+        chapters = [_chapter(2538, "单行本：第02卷", 2)]
+        target, err = resolve_chapter(chapters, "第2话", "测试漫画", "阅读")
+        assert target is None
+        assert "未匹配到话" in err
+
+    def test_many_candidates_are_truncated_with_total(self):
+        chapters = [_chapter(1000 + i, f"第09话 附录{i}", 9) for i in range(12)]
+        target, err = resolve_chapter(chapters, "9", "测试漫画", "阅读")
+        assert target is None
+        assert "共 12 个" in err
+        assert err.count("(ID:") == 10
 
     def test_by_number_decimal_with_traditional_suffix(self):
         chapters = [_chapter(100, "第38.5话", 38.5)]
@@ -137,8 +163,157 @@ class TestResolveChapter:
         chapters = [_chapter(100, "第5话", 5)]
         _, err = resolve_chapter(chapters, "第9话", "test", "阅读")
         assert err is not None
-        assert "未找到第 9 话" in err
+        assert "未找到" in err
         assert "第第" not in err
+
+
+class TestResolveChapterSelectors:
+    """真实语料（manga 151《安达与岛村》，2026-11-13 取自运行中的 Suwayomi）。"""
+
+    REAL_CHAPTERS = [
+        _chapter(2531, "第01话", 1),
+        _chapter(2532, "番外篇1", 1),
+        _chapter(2539, "单行本：第01卷", 1),
+        _chapter(2538, "单行本：第02卷", 2),
+        _chapter(8485, "番外篇2", 2),
+        _chapter(2529, "第03话", 3),
+        _chapter(2527, "第05话", 5),
+        _chapter(2526, "第05话后篇", 5),
+        _chapter(2477, "07卷附录", 7),
+        _chapter(2524, "第07话", 7),
+        _chapter(2488, "第38.2话", 38.2),
+        _chapter(2522, "第09话", 9),
+    ]
+
+    @pytest.mark.parametrize("text", ["第1话", "第01话", "第１话", "第1話", "第１話"])
+    def test_chapter_name_ignores_leading_zero_width_and_traditional(self, text):
+        target, err = resolve_chapter(self.REAL_CHAPTERS, text, "安达与岛村", "阅读")
+        assert err is None
+        assert target is not None and target.id == 2531
+
+    @pytest.mark.parametrize(
+        "text,expected", [("第1卷", 2539), ("第01卷", 2539), ("01卷", 2539), ("第2卷", 2538)]
+    )
+    def test_volume_unit_selects_volume(self, text, expected):
+        target, err = resolve_chapter(self.REAL_CHAPTERS, text, "安达与岛村", "阅读")
+        assert err is None
+        assert target is not None and target.id == expected
+
+    def test_unit_mismatch_never_silently_picks_other_unit(self):
+        target, err = resolve_chapter(self.REAL_CHAPTERS, "第3卷", "安达与岛村", "阅读")
+        assert target is None
+        assert "卷" in err and "ID:2529" in err
+
+    def test_ambiguous_message_lists_names_and_one_usage_line(self):
+        target, err = resolve_chapter(self.REAL_CHAPTERS, "1", "安达与岛村", "阅读")
+        assert target is None
+        assert "第01话" in err and "番外篇1" in err and "单行本：第01卷" in err
+        assert err.count("用法:") == 1 and "ID:2531" in err
+        assert "第 1 话" not in err
+
+    def test_five_selects_plain_chapter_not_afterword(self):
+        target, err = resolve_chapter(self.REAL_CHAPTERS, "第5话", "安达与岛村", "阅读")
+        assert err is None
+        assert target is not None and target.id == 2527
+
+    def test_bare_number_five_is_ambiguous_between_both(self):
+        target, err = resolve_chapter(self.REAL_CHAPTERS, "5", "安达与岛村", "阅读")
+        assert target is None
+        assert "第05话" in err and "第05话后篇" in err
+
+    @pytest.mark.parametrize(
+        "text,expected",
+        [("番外篇1", 2532), ("附录", 2477), ("单行本：第01卷", 2539), ("第38.2话", 2488)],
+    )
+    def test_name_inputs_resolve(self, text, expected):
+        target, err = resolve_chapter(self.REAL_CHAPTERS, text, "安达与岛村", "阅读")
+        assert err is None
+        assert target is not None and target.id == expected
+
+    def test_partial_name_stays_ambiguous(self):
+        target, err = resolve_chapter(self.REAL_CHAPTERS, "番外", "安达与岛村", "阅读")
+        assert target is None
+        assert "番外篇1" in err and "番外篇2" in err
+
+    @pytest.mark.parametrize("text", ["卷", "", "   "])
+    def test_single_char_and_empty_input_are_not_matched(self, text):
+        target, err = resolve_chapter(self.REAL_CHAPTERS, text, "安达与岛村", "阅读")
+        assert target is None and "ID:123" in err
+
+    def test_name_conflict_is_reported_not_selected(self):
+        chapters = [_chapter(2, "第15话", 5)]
+        target, err = resolve_chapter(chapters, "第5话", "测试漫画", "阅读")
+        assert target is None
+        assert "ID:2" in err and "第15话" in err
+        target, err = resolve_chapter(chapters, "5", "测试漫画", "阅读")
+        assert err is None and target is not None and target.id == 2
+
+    def test_duplicate_names_stay_ambiguous(self):
+        chapters = [_chapter(1, "第1话", 1), _chapter(3, "第1话", 1)]
+        target, err = resolve_chapter(chapters, "第1话", "测试漫画", "阅读")
+        assert target is None
+        assert "ID:1" in err and "ID:3" in err
+
+    def test_afterword_name_and_volume_appendix_resolve(self):
+        target, err = resolve_chapter(self.REAL_CHAPTERS, "第05话后篇", "安达与岛村", "阅读")
+        assert err is None and target.id == 2526
+        target, err = resolve_chapter(self.REAL_CHAPTERS, "第7卷", "安达与岛村", "阅读")
+        assert err is None and target.id == 2477
+
+    def test_partial_volume_name_stays_ambiguous(self):
+        target, err = resolve_chapter(self.REAL_CHAPTERS, "单行本", "安达与岛村", "阅读")
+        assert target is None
+        assert "ID:2538" in err and "ID:2539" in err
+
+    def test_fractional_title_does_not_collide_with_shorter_decimal(self):
+        chapters = [_chapter(1, "第3.08话", 3.8), _chapter(2, "第3.8话", 3.8)]
+        target, err = resolve_chapter(chapters, "第3.8话", "测试漫画", "阅读")
+        assert err is None
+        assert target is not None and target.id == 2
+
+    def test_unit_detection_accepts_equivalent_decimal_spelling(self):
+        chapters = [_chapter(1, "第38.50话", 38.5), _chapter(2, "第38.5卷", 38.5)]
+        target, err = resolve_chapter(chapters, "第38.5话", "测试漫画", "阅读")
+        assert err is None
+        assert target is not None and target.id == 1
+
+    def test_exact_displayed_name_wins_over_its_source_number(self):
+        chapters = [_chapter(1, "第5话", 12)]
+        target, err = resolve_chapter(chapters, "第5话", "测试漫画", "阅读")
+        assert err is None
+        assert target is not None and target.id == 1
+        target, err = resolve_chapter([_chapter(2, "第12话", 12)], "12", "测试漫画", "阅读")
+        assert err is None and target is not None and target.id == 2
+
+    def test_partial_name_does_not_extend_into_decimal_or_range(self):
+        for name in ("番外1.5", "番外1-2"):
+            target, err = resolve_chapter([_chapter(1, name, 1.5)], "番外1", "测试漫画", "阅读")
+            assert target is None, name
+            assert "未找到" in err
+        target, err = resolve_chapter([_chapter(1, "番外1", 1)], "番外1", "测试漫画", "阅读")
+        assert err is None and target is not None and target.id == 1
+
+    def test_nearby_decimal_is_not_a_match(self):
+        chapters = [_chapter(1, "第3.08话", 3.08)]
+        target, err = resolve_chapter(chapters, "第3.09话", "测试漫画", "阅读")
+        assert target is None and "未找到" in err
+
+    def test_name_with_both_units_matches_either_request(self):
+        chapters = [_chapter(1, "第5卷 第5话", 5)]
+        for text in ("第5话", "第5卷"):
+            target, err = resolve_chapter(chapters, text, "测试漫画", "阅读")
+            assert err is None, text
+            assert target is not None and target.id == 1
+
+    def test_not_found_hint_command_is_runnable(self):
+        _, err = resolve_chapter([_chapter(1, "第1话", 1)], "第9话", "安达与岛村", "阅读")
+        assert "/漫画 章节 安达与岛村" in err
+        assert "安达与岛村 查看列表" not in err
+
+    def test_normalization_does_not_merge_different_numbers(self):
+        chapters = [_chapter(1, "第1-2话", 12), _chapter(2, "第12话", 12)]
+        target, err = resolve_chapter(chapters, "第12话", "测试漫画", "阅读")
+        assert err is None and target is not None and target.id == 2
 
 
 class TestChapterTimestampConcurrency:

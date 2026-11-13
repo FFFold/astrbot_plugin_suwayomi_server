@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import re
 import time
+import unicodedata
 from typing import Any
 
 from .config import config_bool, get_config_value
@@ -10,10 +11,10 @@ from .models import Chapter, Manga, Source
 from .ranking import score_title
 from .service import (
     _bounded_int,
+    find_chapters_by_num,
     fmt_chapter_display,
     fmt_chapter_num,
     get_or_fetch_chapters,
-    parse_chapter_number_text,
     select_search_sources,
 )
 
@@ -23,6 +24,9 @@ from astrbot.api import logger
 _LATEST_SELECTORS = {"latest", "newest", "最新", "最新一话", "最新一話"}
 _LIST_SELECTORS = {"", "list", "all", "列表", "全部"}
 _CHAPTER_ID_RE = re.compile(r"^id\s*[:：]\s*(\d+)$", re.IGNORECASE)
+_NUMBER_SELECTOR_RE = re.compile(
+    r"^#?(?:第)?\s*([+-]?(?:\d+(?:\.\d+)?|\.\d+))\s*[话話章]?$"
+)
 _RESET_SUCCESS_TEXT = "✅ Conversation reset successfully."
 _SOURCE_SEARCH_TIMEOUT_SEC = 15.0
 
@@ -259,7 +263,7 @@ async def search_manga_for_agent(
 def _select_chapter_candidates(
     chapters: list[Chapter], selector: str
 ) -> tuple[Chapter | None, list[Chapter], str | None]:
-    normalized = selector.strip().casefold()
+    normalized = unicodedata.normalize("NFKC", str(selector or "")).strip().casefold()
     ordered = sorted(chapters, key=lambda chapter: chapter.source_order)
 
     if normalized in _LATEST_SELECTORS:
@@ -273,14 +277,14 @@ def _select_chapter_candidates(
             return None, [], f"未找到章节 ID {chapter_id}"
         return candidates[0], candidates, None
 
-    number = parse_chapter_number_text(normalized)
-    if number is None:
+    number_match = _NUMBER_SELECTOR_RE.fullmatch(normalized)
+    if not number_match:
         return None, [], (
             "selector 应为 latest、list、章节号或 ID:数字；"
             f"当前值为 {selector!r}"
         )
-
-    candidates = [chapter for chapter in chapters if chapter.chapter_number == number]
+    number = float(number_match.group(1))
+    candidates = find_chapters_by_num(ordered, number)
     if not candidates:
         return None, [], f"未找到第 {fmt_chapter_num(number)} 话"
     if len(candidates) > 1:

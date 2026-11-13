@@ -110,6 +110,17 @@ def test_ai_interaction_state_evicts_oldest_beyond_max():
     assert state.was_chapter_exposed(("o", "u3"), 3, 30, now=301.0) is True
 
 
+def _chapter_with_name(chapter_id: int, name: str, number: float) -> Chapter:
+    return Chapter(
+        id=chapter_id,
+        url="",
+        name=name,
+        chapter_number=number,
+        source_order=chapter_id,
+        manga_id=10,
+    )
+
+
 def test_select_chapter_candidates_missing_number_returns_friendly_error():
     from suwayomi.ai_service import _select_chapter_candidates
 
@@ -117,7 +128,49 @@ def test_select_chapter_candidates_missing_number_returns_friendly_error():
     selected, candidates, err = _select_chapter_candidates(chapters, "第5话")
     assert selected is None
     assert candidates == []
-    assert err is not None and "未找到第 5 话" in err
+    assert err is not None and "未找到" in err
+
+
+def test_selector_rejects_chapter_names_and_volumes():
+    from suwayomi.ai_service import _select_chapter_candidates
+
+    chapters = [_chapter_with_name(2531, "第01话", 1)]
+    for selector in ("番外篇1", "第1卷", "单行本：第01卷"):
+        selected, candidates, err = _select_chapter_candidates(chapters, selector)
+        assert selected is None and candidates == [] and err
+
+
+def test_selector_accepts_number_forms():
+    from suwayomi.ai_service import _select_chapter_candidates
+
+    chapters = [
+        _chapter_with_name(2531, "第01话", 1),
+        _chapter_with_name(2539, "单行本：第02卷", 2),
+    ]
+    for selector in ("1", "第01话", "#1"):
+        selected, _, err = _select_chapter_candidates(chapters, selector)
+        assert err is None and selected.id == 2531
+
+
+def test_selector_accepts_negative_and_leading_dot_numbers():
+    from suwayomi.ai_service import _select_chapter_candidates
+
+    chapters = [
+        _chapter_with_name(300, "第-1话", -1),
+        _chapter_with_name(301, "第0.5话", 0.5),
+    ]
+    selected, _, err = _select_chapter_candidates(chapters, "-1")
+    assert err is None and selected.id == 300
+    selected, _, err = _select_chapter_candidates(chapters, ".5")
+    assert err is None and selected.id == 301
+
+
+def test_selector_accepts_fullwidth_id():
+    from suwayomi.ai_service import _select_chapter_candidates
+
+    chapters = [_chapter_with_name(2531, "第01话", 1)]
+    selected, _, err = _select_chapter_candidates(chapters, "ＩＤ：2531")
+    assert err is None and selected.id == 2531
 
 
 def test_successful_conversation_reset_detection():

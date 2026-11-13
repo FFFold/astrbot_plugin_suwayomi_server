@@ -18,7 +18,7 @@
 
 ```bash
 # Unit tests (no network needed)
-uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_downloader.py tests/test_list_chapters.py tests/test_cards.py tests/test_card_commands.py tests/test_subscription.py tests/test_web_api.py tests/test_batch_subscribe.py tests/test_push.py tests/test_service.py tests/test_updater.py tests/test_ai_service.py tests/test_ai_tools.py tests/test_live_skip.py tests/test_t2i.py tests/test_config.py tests/test_config_reset.py tests/test_ranking.py tests/test_bangumi.py tests/test_search_ranking.py -v
+uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_downloader.py tests/test_list_chapters.py tests/test_cards.py tests/test_card_commands.py tests/test_subscription.py tests/test_web_api.py tests/test_batch_subscribe.py tests/test_push.py tests/test_service.py tests/test_updater.py tests/test_ai_service.py tests/test_ai_tools.py tests/test_help.py tests/test_live_skip.py tests/test_t2i.py tests/test_config.py tests/test_config_reset.py tests/test_ranking.py tests/test_bangumi.py tests/test_search_ranking.py -v
 
 # Integration tests (requires live Suwayomi-Server)
 uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
@@ -92,7 +92,7 @@ main.py (SuwayomiPlugin — thin dispatch layer)
 
 7. **All command args are strings**: AstrBot passes raw strings, not typed values. Explicit `float()`/`int()` conversion required in command handlers. Use `str` type hints with manual conversion.
 
-8. **Duplicate chapter numbers**: Some manga have multiple chapters with same number (e.g., appendices). Plugin detects this and prompts users to use `ID:xxx` syntax (case-insensitive, supports both `:` and `：`) for disambiguation.
+8. **Duplicate chapter numbers**: Some manga have multiple chapters with same number (e.g., appendices). The plugin lists every candidate as `#num name (ID:xxx)` and lets the user pick by `ID:xxx` or by the displayed chapter name (exact name wins over the number); `resolve_chapter` is the single entry point.
 
 9. **QQ forward messages**: Use `Comp.Nodes([node1, node2, ...])` wrapper. Passing `[Node, Node, ...]` directly to `chain_result()` sends each as a separate forward.
 
@@ -100,7 +100,7 @@ main.py (SuwayomiPlugin — thin dispatch layer)
 
 11. **Chapter data is lazy-loaded**: `fetchSourceManga` (search) only returns metadata. Chapters must be fetched separately via `fetchChapters` mutation. Use `service.get_or_fetch_chapters()` which handles caching: reads from DB first, fetches from source if stale or empty. Cache duration is controlled by `chapter_cache_hours` config.
 
-12. **AstrBot arg splitting**: AstrBot's command handler splits arguments by spaces, so trailing keywords like `zip`/`pdf`/`cbz` or `--刷新` may be lost. Always parse from `event.message_str` for commands with optional trailing args.
+12. **AstrBot arg splitting**: AstrBot's command handler splits arguments by spaces, so trailing keywords like `zip`/`pdf`/`cbz` or `--刷新` may be lost. Always parse from `event.message_str` for commands with optional trailing args (`下载`, `章节` already do; `阅读` still takes the positional `chapter_num`, so multiword chapter names must be given by ID — tracked as issue #25).
 
 13. **PLUGIN_NAME must match metadata name**: AstrBot's Bridge SDK constructs WebUI API URLs using the plugin's `name` from `metadata.yaml` (e.g. `astrbot_plugin_suwayomi_server`), NOT the directory name on disk (e.g. `astrbot_suwayomi_server`). The `PLUGIN_NAME` constant in `main.py` and `web/api.py` must match the metadata name, or all WebUI API calls will return "未找到该路由".
 
@@ -127,7 +127,7 @@ main.py (SuwayomiPlugin — thin dispatch layer)
 业务逻辑自 0.4.7 起从插件类迁出为依赖注入式独立函数（`main.py` 仅薄调度）。常用入口（均为模块级函数，非 `self.` 方法）：
 
 - `service.resolve_manga(client, sub_mgr, umo, name_or_id, cmd)` — 按 ID/订阅名/标题模糊解析漫画。返回 `(Manga, None)` 或 `(None, error_msg)`；多结果时返回带 ID 的引导列表
-- `service.resolve_chapter(chapters, chapter_num, manga_name_or_id, cmd)` — 按编号或 `ID:xxx` 解析章节（重号时提示用 ID 消歧）
+- `service.resolve_chapter(chapters, chapter_num, manga_name_or_id, cmd)` — 解析章节选择（委托 `match_chapters`）：编号/`第X话`/`第X卷`/章节名/`ID:xxx`；重号、跨单位（`第3卷` 撞 `第03话`）、源站编号与名称冲突时列出候选让用户选
 - `service.get_or_fetch_chapters(client, get_kv_data, put_kv_data, config, manga_id, force)` — 章节缓存读取/源拉取；`force=True` 绕过缓存（更新检查恒 force）
 - `service.get_chapter_timestamp(...)` / `service.set_chapter_timestamp(...)` — KV 中的章节拉取时间戳
 - `service.fmt_chapter_display(ch)` / `service.fmt_chapter_label(ch, num_counts)` — 章节的展示名 / `#num name (ID:xxx)` 标签；内部统一过 `sanitize_for_message` 清洗（源站文本防注入）
@@ -161,7 +161,7 @@ main.py (SuwayomiPlugin — thin dispatch layer)
 - `_conf_schema.json`: AstrBot WebUI config form schema
 - `requirements.txt`: Runtime deps (currently `aiohttp>=3.9.0`, `img2pdf>=0.5.0`, `opencc-python-reimplemented>=0.1.7`, `pillow>=10.0.0`, and `pydantic>=2.12.5,<3`)
 - `pyproject.toml`: Dev deps (pytest, pytest-asyncio), gitignored（不入库——环境搭建用 `uv venv` + `uv pip install -r requirements.txt pytest pytest-asyncio`，勿用 `uv sync`）
-- Tests in `tests/` - unit tests are synchronous or use `@pytest.mark.asyncio`; `test_ai_service.py` covers structured Agent search, chapter selection, and subscription management, while `test_ai_tools.py` guards `call()` dispatch across initial load and config re-sync for all six tools; `test_downloader.py` covers image/cover download helpers; `test_list_chapters.py` covers `/漫画 章节` cover logic and error paths; `test_config.py` covers grouped config read/write, legacy flat migration and schema/definition consistency
+- Tests in `tests/` - unit tests are synchronous or use `@pytest.mark.asyncio`; `test_ai_service.py` covers structured Agent search, chapter selection, and subscription management, while `test_ai_tools.py` guards `call()` dispatch across initial load and config re-sync for all six tools; `test_help.py` guards help/工具描述里的章节选择写法；`test_downloader.py` covers image/cover download helpers; `test_list_chapters.py` covers `/漫画 章节` cover logic and error paths; `test_config.py` covers grouped config read/write, legacy flat migration and schema/definition consistency
 - `test_live_api.py`: Integration tests for Suwayomi client, auto-skipped when server unreachable. Covers sources/search/chapters/pages, AI search & chapter selection（相关度降序）, 截断标题刷新（`fetchManga` 持久化 + `refresh_truncated_titles`）, Bangumi 别名解析与探针源站命中, 文件打包页数上限, 封面下载, plus the real command main path (`test_download_and_pack_chapter`: fetch pages → download images → pack zip/pdf/cbz; `test_search_command_ranking_and_cache_live`: 搜索命令排序与编号缓存; `test_check_updates_detects_new_chapters_live`: real scan → notify → watermark → last-check timestamp). Manga sources rate-limit consecutive fetches, so search tests retry and skip when throttled (`_search_zh_for_agent` / `_search_zh_candidates`)
 - `test_live_web_api.py`: Integration tests for WebUI API handlers, auto-skipped when server unreachable
 - Version is in `metadata.yaml`, not `pyproject.toml`

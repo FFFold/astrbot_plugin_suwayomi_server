@@ -54,6 +54,7 @@ astrbot_suwayomi_server/
 │   ├── test_updater.py        # 更新引擎单元测试
 │   ├── test_ai_service.py     # Agent Tool 服务层单元测试
 │   ├── test_ai_tools.py       # AstrBot Tool call() 调度回归测试
+│   ├── test_help.py           # 帮助与工具描述中的章节选择写法回归测试
 │   ├── test_list_chapters.py  # /漫画 章节 封面逻辑单元测试
 │   ├── test_config.py         # 分组配置读写与旧版配置迁移单元测试
 │   ├── test_config_reset.py   # 配置回退/重置单元测试
@@ -155,7 +156,8 @@ bgm.tv 模糊搜索解析官方译名/别名（top-5 条目 + 日文字形变体
 
 - 独立 async 函数，依赖注入参数（`client`、`sub_mgr`、`get_kv_data` 等）
 - `resolve_manga(client, sub_mgr, umo, name_or_id, cmd)` — 按 ID 或名称模糊解析漫画
-- `resolve_chapter(chapters, chapter_num, manga_name_or_id, cmd)` — 按编号或 ID 解析章节（支持重复编号检测）；编号解析统一走 `parse_chapter_number_text`（支持 `5`、`第5话`、`第38.5話`）
+- `resolve_chapter(chapters, chapter_num, manga_name_or_id, cmd)` — 命令层章节选择，委托 `match_chapters`（返回候选 + 匹配结果）；支持编号 `5`、`38.5`、`第5话`、`第01卷`、章节名（精确/唯一包含）与 `ID:123`。名称归一化用 `chapter_name_key`（NFKC → 繁简 → casefold → 去装饰标点 → 剥整数部分前导零，保留 `.`/`-`）。编号命中多个时列候选让用户选；跨单位（如 `第3卷` 只有 `第03话`）或源站编号与名称不一致时也列出候选，不直接命中。AI 工具的 `selector` 不走这套解析，只接受 `latest`/`list`/章节号/`ID:数字`
+- `parse_chapter_number_text(text)` — 编号解析（`5`、`第5话`、`第38.5話`、`第01卷`）
 - 源选择：`select_search_sources`（默认源：排除本地源、扩展名去重、变体补位；命令与 AI 路径共用）、`match_source_hint`（命令侧源提示：前缀/语言代码匹配）、`split_search_query`（从完整消息解析关键词与尾部源提示，多词标题用 `+` 连接）
 - `get_or_fetch_chapters(client, get_kv_data, put_kv_data, config, manga_id, force)` — 智能缓存/拉取章节
 - `search_best_match(client, config, name, source_filter)` — 跨源搜索最佳匹配
@@ -405,7 +407,7 @@ for ch in chapters:
 **阅读流程：**
 ```
 用户输入 → read_chapter() → service.resolve_manga() (ID/名称/模糊匹配)
-         → service.get_or_fetch_chapters() → service.resolve_chapter()（支持 ID:xxx 语法）
+         → service.get_or_fetch_chapters() → service.resolve_chapter()（支持编号 / 第X话 / 第X卷 / 章节名 / ID:xxx）
          → event.send(loading hint)
          → client.fetch_chapter_pages() → 获取页面 URL 列表
          → url 模式: Comp.Image.fromURL()
@@ -417,7 +419,7 @@ for ch in chapters:
 **下载流程：**
 ```
 用户输入 → download_chapter() → service.resolve_manga() → service.get_or_fetch_chapters()
-         → service.resolve_chapter()（支持 ID:xxx 语法）
+         → service.resolve_chapter()（支持编号 / 第X话 / 第X卷 / 章节名 / ID:xxx）
          → event.send(loading hint)
          → downloader.fetch_pages_local() → 下载所有页面到临时目录
          → pack_zip/pack_pdf/pack_cbz() → 打包为文件

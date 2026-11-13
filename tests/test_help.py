@@ -11,7 +11,7 @@ def test_help_mentions_all_selector_forms():
     assert "第5话" in text
     assert "第01卷" in text
     assert "章节名" in text
-    assert "列表里重号会标注 ID" in text
+    assert "ID:123" in text
 
 
 def test_ai_tool_selector_description_mentions_volume_and_name():

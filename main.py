@@ -849,9 +849,8 @@ class SuwayomiPlugin(Star):
   /漫画 阅读 <漫画名或ID> <章节>        — 阅读章节
   /漫画 下载 <漫画名或ID> <章节> [格式]  — 下载并打包发送（格式: zip/pdf/cbz）
 
-  <章节> 可写：1 / 38.5 / 第5话 / 第01卷 / 章节名 / ID:123
+  <章节> 可写：编号（1 / 38.5）、第5话、第01卷、章节名或 ID:123
   例: /漫画 阅读 一拳超人 第5话
-  列表里重号会标注 ID，用 ID 可精确选择，例: /漫画 阅读 一拳超人 ID:123
 
   添加 --刷新 强制从源更新章节数据：
   /漫画 章节 <漫画名> --刷新
@@ -1715,13 +1714,12 @@ class SuwayomiPlugin(Star):
 
     @manga_group.command("阅读")
     async def read_chapter(self, event: AstrMessageEvent, manga_name_or_id: str, chapter_num: str = ""):
-        """阅读漫画章节。用法: /漫画 阅读 <漫画名或ID> <章节号|第X话|第X卷|章节名|ID:数字>"""
+        """阅读漫画章节。用法: /漫画 阅读 <漫画名或ID> <章节>"""
         if not chapter_num:
             yield event.plain_result(
                 "用法: /漫画 阅读 <漫画名或ID> <章节>\n"
-                "章节可写: 1 / 38.5 / 第5话 / 第01卷 / 章节名 / ID:123\n"
-                "示例: /漫画 阅读 一拳超人 第5话\n"
-                "列表里重号会标注 ID，用 ID 可精确选择。"
+                "章节可写: 编号（1 / 38.5）、第5话、第01卷、章节名或 ID:123\n"
+                "示例: /漫画 阅读 一拳超人 第5话"
             )
             return
 
@@ -1780,17 +1778,16 @@ class SuwayomiPlugin(Star):
 
     @manga_group.command("下载")
     async def download_chapter(self, event: AstrMessageEvent, manga_name_or_id: str, chapter_num: str = ""):
-        """下载漫画章节并打包发送。用法: /漫画 下载 <漫画名或ID> <章节号|第X话|第X卷|章节名|ID:数字> [zip/pdf/cbz]"""
+        """下载漫画章节并打包发送。用法: /漫画 下载 <漫画名或ID> <章节> [zip/pdf/cbz]"""
         default_fmt = get_config_value(self.config, "download_format", "pdf")
         manga_name_or_id, chapter_num, fmt = parse_download_args(event.message_str, default_fmt)
 
         if not manga_name_or_id or not chapter_num:
             yield event.plain_result(
                 "用法: /漫画 下载 <漫画名或ID> <章节> [格式]\n"
-                "章节可写: 1 / 38.5 / 第5话 / 第01卷 / 章节名 / ID:123\n"
+                "章节可写: 编号（1 / 38.5）、第5话、第01卷、章节名或 ID:123\n"
                 "示例: /漫画 下载 一拳超人 第5话\n"
-                "指定格式: /漫画 下载 一拳超人 1 pdf\n"
-                "列表里重号会标注 ID，用 ID 可精确选择。"
+                "指定格式: /漫画 下载 一拳超人 1 pdf"
             )
             return
 

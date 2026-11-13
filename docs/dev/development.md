@@ -156,7 +156,7 @@ bgm.tv 模糊搜索解析官方译名/别名（top-5 条目 + 日文字形变体
 
 - 独立 async 函数，依赖注入参数（`client`、`sub_mgr`、`get_kv_data` 等）
 - `resolve_manga(client, sub_mgr, umo, name_or_id, cmd)` — 按 ID 或名称模糊解析漫画
-- `resolve_chapter(chapters, chapter_num, manga_name_or_id, cmd)` — 解析章节选择，委托 `match_chapters`（返回候选 + 匹配结果）；支持编号 `5`、`38.5`、`第5话`、`第01卷`、章节名（精确/唯一包含）与 `ID:123`。名称归一化用 `chapter_name_key`（NFKC → 繁简 → casefold → 去装饰标点 → 剥前导零，保留 `.`/`-` 并校验数字序列）。编号命中多个时始终让用户选，并以 `ambiguous`/`unit_mismatch`（如 `第3卷` 撞上 `第03话`）/`name_conflict`（源站编号与名称不一致）三类提示拒绝静默误选；`ai_service` 复用同一核心
+- `resolve_chapter(chapters, chapter_num, manga_name_or_id, cmd)` — 解析章节选择，委托 `match_chapters`（返回候选 + 匹配结果）；支持编号 `5`、`38.5`、`第5话`、`第01卷`、章节名（精确/唯一包含）与 `ID:123`。名称归一化用 `chapter_name_key`（NFKC → 繁简 → casefold → 去装饰标点 → 剥整数部分前导零，保留 `.`/`-`）。编号命中多个时列候选让用户选；跨单位（如 `第3卷` 只有 `第03话`）或源站编号与名称不一致时也列出候选，不直接命中；`ai_service` 复用同一核心
 - `parse_chapter_number_text(text)` — 编号解析（`5`、`第5话`、`第38.5話`、`第01卷`）
 - 源选择：`select_search_sources`（默认源：排除本地源、扩展名去重、变体补位；命令与 AI 路径共用）、`match_source_hint`（命令侧源提示：前缀/语言代码匹配）、`split_search_query`（从完整消息解析关键词与尾部源提示，多词标题用 `+` 连接）
 - `get_or_fetch_chapters(client, get_kv_data, put_kv_data, config, manga_id, force)` — 智能缓存/拉取章节

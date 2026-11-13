@@ -136,8 +136,7 @@ kind ∈ {"matched", "ambiguous", "unit_mismatch", "name_conflict", "not_found"}
 也可先 /漫画 章节 安达与岛村 查看列表。
 ```
 
-帮助文案（`main.py` 的 `📚 阅读与下载`、`阅读`/`下载` docstring 与用法提示）同步说明这几种写法，
-并点明"列表里重号会标注 ID"。
+帮助文案（`main.py` 的 `📚 阅读与下载`、`阅读`/`下载` docstring 与用法提示）同步列出这几种写法。
 
 ## 影响面
 

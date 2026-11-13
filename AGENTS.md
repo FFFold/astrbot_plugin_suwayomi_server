@@ -127,7 +127,7 @@ main.py (SuwayomiPlugin — thin dispatch layer)
 业务逻辑自 0.4.7 起从插件类迁出为依赖注入式独立函数（`main.py` 仅薄调度）。常用入口（均为模块级函数，非 `self.` 方法）：
 
 - `service.resolve_manga(client, sub_mgr, umo, name_or_id, cmd)` — 按 ID/订阅名/标题模糊解析漫画。返回 `(Manga, None)` 或 `(None, error_msg)`；多结果时返回带 ID 的引导列表
-- `service.resolve_chapter(chapters, chapter_num, manga_name_or_id, cmd)` — 解析章节选择（委托 `match_chapters`）：编号/`第X话`/`第X卷`/章节名/`ID:xxx`；重号、跨单位（`第3卷` 撞 `第03话`）、源站编号与名称冲突时一律列出候选让用户选，不静默误选
+- `service.resolve_chapter(chapters, chapter_num, manga_name_or_id, cmd)` — 解析章节选择（委托 `match_chapters`）：编号/`第X话`/`第X卷`/章节名/`ID:xxx`；重号、跨单位（`第3卷` 撞 `第03话`）、源站编号与名称冲突时列出候选让用户选
 - `service.get_or_fetch_chapters(client, get_kv_data, put_kv_data, config, manga_id, force)` — 章节缓存读取/源拉取；`force=True` 绕过缓存（更新检查恒 force）
 - `service.get_chapter_timestamp(...)` / `service.set_chapter_timestamp(...)` — KV 中的章节拉取时间戳
 - `service.fmt_chapter_display(ch)` / `service.fmt_chapter_label(ch, num_counts)` — 章节的展示名 / `#num name (ID:xxx)` 标签；内部统一过 `sanitize_for_message` 清洗（源站文本防注入）

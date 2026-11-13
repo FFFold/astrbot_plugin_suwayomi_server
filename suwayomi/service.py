@@ -50,6 +50,7 @@ _LEADING_ZERO_RE = re.compile(r"(?<![\d.])0+(?=\d)")
 _DIGIT_RUN_RE = re.compile(r"\d+(?:\.\d+)?")
 _BARE_NUMBER_RE = re.compile(r"\d+(?:\.\d+)?")
 _UNIT_NUMBER_RE = re.compile(rf"(?<!\d)(\d+(?:\.\d+)?)([{_ALL_UNIT_MARKS}])")
+_NUMBER_EPS = 1e-6
 
 
 def parse_chapter_number_text(text: str) -> float | None:
@@ -91,27 +92,29 @@ def _name_key_matches(chapter: Chapter, key: str) -> bool:
     return name_key == key and _digit_runs(name_key) == _digit_runs(key)
 
 
-def _unit_after_number(key: str, num: float) -> str | None:
-    """Return the unit right after this number in `key`: "chapter", "volume" or None.
+def _units_after_number(key: str, num: float) -> set[str]:
+    """Return the units right after this number in `key`: "chapter" and/or "volume".
 
     Numbers are compared by value, so "38.50话" still marks chapter 38.5. Only
     an immediately adjacent unit counts: "07卷附录" is a volume for 7, while
     "第15话" is not a chapter for 5 (no digit lookbehind would misread it).
+    A title like "第5卷 第5话" carries both units and matches either request.
     """
     try:
         target = float(num)
     except (TypeError, ValueError):
-        return None
+        return set()
     if math.isnan(target) or math.isinf(target):
-        return None
+        return set()
+    units: set[str] = set()
     for value, mark in _UNIT_NUMBER_RE.findall(key):
-        if abs(float(value) - target) < 0.01:
-            return "chapter" if mark in _CHAPTER_UNIT_MARKS else "volume"
-    return None
+        if abs(float(value) - target) < _NUMBER_EPS:
+            units.add("chapter" if mark in _CHAPTER_UNIT_MARKS else "volume")
+    return units
 
 
-def _chapter_name_unit(chapter: Chapter, num: float) -> str | None:
-    return _unit_after_number(chapter_name_key(chapter.name), num)
+def _chapter_name_units(chapter: Chapter, num: float) -> set[str]:
+    return _units_after_number(chapter_name_key(chapter.name), num)
 
 
 def _name_has_other_number(chapter: Chapter, num: float, unit: str) -> bool:
@@ -125,7 +128,7 @@ def _name_has_other_number(chapter: Chapter, num: float, unit: str) -> bool:
     found = re.findall(rf"(?<!\d)(\d+(?:\.\d+)?)[{marks}]", chapter_name_key(chapter.name))
     if not found:
         return False
-    return all(abs(float(value) - num) >= 0.01 for value in found)
+    return all(abs(float(value) - num) >= _NUMBER_EPS for value in found)
 
 
 def _substring_pattern(key: str) -> re.Pattern[str]:
@@ -163,13 +166,13 @@ def match_chapters(chapters: list[Chapter], text: str) -> tuple[list[Chapter], s
         candidates = find_chapters_by_num(chapters, number)
         if not candidates:
             return [], "not_found"
-        unit = _unit_after_number(key, number)
+        unit = _units_after_number(key, number)
         guard_other_unit = False
         if unit:
-            preferred = [ch for ch in candidates if _chapter_name_unit(ch, number) == unit]
+            preferred = [ch for ch in candidates if _chapter_name_units(ch, number) & unit]
             if preferred:
                 candidates = preferred
-            elif any(_chapter_name_unit(ch, number) for ch in candidates):
+            elif any(_chapter_name_units(ch, number) for ch in candidates):
                 return candidates, "unit_mismatch"
             else:
                 guard_other_unit = True
@@ -178,10 +181,12 @@ def match_chapters(chapters: list[Chapter], text: str) -> tuple[list[Chapter], s
             return exact, "matched"
         if len(candidates) == 1:
             chapter = candidates[0]
-            conflict = unit and _name_has_other_number(chapter, number, unit)
-            if guard_other_unit and unit:
-                other_unit = "volume" if unit == "chapter" else "chapter"
-                conflict = conflict or _name_has_other_number(chapter, number, other_unit)
+            conflict = any(_name_has_other_number(chapter, number, u) for u in unit)
+            if guard_other_unit:
+                other_units = {"chapter", "volume"} - unit
+                conflict = conflict or any(
+                    _name_has_other_number(chapter, number, u) for u in other_units
+                )
             if conflict:
                 return candidates, "name_conflict"
             return candidates, "matched"
@@ -269,7 +274,7 @@ def fmt_delivery_failure_message(total_pages: int, fetch_mode: str, auth_mode: s
 
 
 def find_chapters_by_num(chapters: list[Chapter], chapter_num_f: float) -> list[Chapter]:
-    return [ch for ch in chapters if abs(ch.chapter_number - chapter_num_f) < 0.01]
+    return [ch for ch in chapters if abs(ch.chapter_number - chapter_num_f) < _NUMBER_EPS]
 
 
 def find_chapter_by_id(chapters: list[Chapter], chapter_id: int) -> Chapter | None:
@@ -328,15 +333,15 @@ def resolve_chapter(
         return None, (
             f"未找到「{input_text}」对应的章节。"
             "可用：1、38.5、第5话、第1卷、章节名，或 ID:123；\n"
-            f"也可先 /漫画 章节 {sanitize_for_message(manga_name_or_id, limit=80)} 查看列表。"
+            f"也可先看章节列表：/漫画 章节 {sanitize_for_message(manga_name_or_id, limit=80)}"
         )
 
     number = parse_chapter_number_text(chapter_num)
     number_text = fmt_chapter_num(number) if number is not None else input_text
 
     if kind == "unit_mismatch":
-        unit = _unit_after_number(chapter_name_key(chapter_num), number)
-        unit_label = "卷" if unit == "volume" else "话"
+        units = _units_after_number(chapter_name_key(chapter_num), number)
+        unit_label = "卷" if "volume" in units else "话"
         return None, "\n".join(
             [f"「{input_text}」未匹配到{unit_label}，编号 {number_text} 只有："]
             + _choice_block(matches, cmd, manga_name_or_id)

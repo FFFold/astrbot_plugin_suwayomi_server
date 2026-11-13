@@ -319,17 +319,19 @@ class SuwayomiPlugin(Star):
                     refresh,
                     limit,
                 )
-            if result.get("success"):
-                resolved_manga_id = int(result["manga"]["manga_id"])
-                chapter_ids = {
-                    int(chapter["chapter_id"])
-                    for chapter in result.get("chapters", [])
-                    if chapter.get("chapter_id") is not None
-                }
-                selected = result.get("selected_chapter")
-                if selected and selected.get("chapter_id") is not None:
-                    chapter_ids.add(int(selected["chapter_id"]))
-                self._remember_ai_chapters(event, resolved_manga_id, chapter_ids)
+            resolved_manga = result.get("manga") or {}
+            chapter_ids = {
+                int(chapter["chapter_id"])
+                for chapter in result.get("chapters", [])
+                if chapter.get("chapter_id") is not None
+            }
+            selected = result.get("selected_chapter")
+            if selected and selected.get("chapter_id") is not None:
+                chapter_ids.add(int(selected["chapter_id"]))
+            if chapter_ids and resolved_manga.get("manga_id") is not None:
+                self._remember_ai_chapters(
+                    event, int(resolved_manga["manga_id"]), chapter_ids
+                )
             return self._tool_json(result)
         except TimeoutError:
             return self._tool_json({"success": False, "error": "获取漫画章节超时，请稍后重试"})

@@ -152,6 +152,19 @@ def test_selector_accepts_number_forms():
         assert err is None and selected.id == 2531
 
 
+def test_selector_accepts_negative_and_leading_dot_numbers():
+    from suwayomi.ai_service import _select_chapter_candidates
+
+    chapters = [
+        _chapter_with_name(300, "第-1话", -1),
+        _chapter_with_name(301, "第0.5话", 0.5),
+    ]
+    selected, _, err = _select_chapter_candidates(chapters, "-1")
+    assert err is None and selected.id == 300
+    selected, _, err = _select_chapter_candidates(chapters, ".5")
+    assert err is None and selected.id == 301
+
+
 def test_selector_accepts_fullwidth_id():
     from suwayomi.ai_service import _select_chapter_candidates
 

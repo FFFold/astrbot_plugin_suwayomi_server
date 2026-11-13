@@ -4,14 +4,23 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+_HELP_BLOCK_RE = re.compile(r'async def help_cmd.*?text = """(.*?)"""', re.S)
+
+
+def _help_text() -> str:
+    text = (ROOT / "main.py").read_text(encoding="utf-8")
+    match = _HELP_BLOCK_RE.search(text)
+    assert match is not None, "help command text block not found"
+    return match.group(1)
 
 
 def test_help_mentions_all_selector_forms():
-    text = (ROOT / "main.py").read_text(encoding="utf-8")
-    assert "第5话" in text
-    assert "第01卷" in text
-    assert "章节名" in text
-    assert "ID:123" in text
+    help_text = _help_text()
+    assert "📖 Suwayomi 漫画助手" in help_text
+    assert "第5话" in help_text
+    assert "第01卷" in help_text
+    assert "章节名" in help_text
+    assert "ID:123" in help_text
 
 
 def test_ai_tool_selector_description_stays_id_based():

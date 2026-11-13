@@ -293,6 +293,23 @@ class TestResolveChapterSelectors:
         target, err = resolve_chapter([_chapter(1, "番外1", 1)], "番外1", "测试漫画", "阅读")
         assert err is None and target is not None and target.id == 1
 
+    def test_nearby_decimal_is_not_a_match(self):
+        chapters = [_chapter(1, "第3.08话", 3.08)]
+        target, err = resolve_chapter(chapters, "第3.09话", "测试漫画", "阅读")
+        assert target is None and "未找到" in err
+
+    def test_name_with_both_units_matches_either_request(self):
+        chapters = [_chapter(1, "第5卷 第5话", 5)]
+        for text in ("第5话", "第5卷"):
+            target, err = resolve_chapter(chapters, text, "测试漫画", "阅读")
+            assert err is None, text
+            assert target is not None and target.id == 1
+
+    def test_not_found_hint_command_is_runnable(self):
+        _, err = resolve_chapter([_chapter(1, "第1话", 1)], "第9话", "安达与岛村", "阅读")
+        assert "/漫画 章节 安达与岛村" in err
+        assert "安达与岛村 查看列表" not in err
+
     def test_normalization_does_not_merge_different_numbers(self):
         chapters = [_chapter(1, "第1-2话", 12), _chapter(2, "第12话", 12)]
         target, err = resolve_chapter(chapters, "第12话", "测试漫画", "阅读")

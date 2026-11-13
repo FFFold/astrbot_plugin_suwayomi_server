@@ -177,6 +177,42 @@ async def test_search_tool_dispatches_single_all_source_request():
 
 
 @pytest.mark.asyncio
+async def test_ambiguous_chapter_candidates_are_remembered(monkeypatch):
+    from unittest.mock import AsyncMock, MagicMock
+
+    import plugin_pkg.main as plugin_main
+    from plugin_pkg.main import SuwayomiPlugin
+    from plugin_pkg.suwayomi.ai_service import AiInteractionState
+
+    plugin = SuwayomiPlugin.__new__(SuwayomiPlugin)
+    plugin.config = {"enable_ai_tools": True}
+    plugin.client = MagicMock()
+    plugin.get_kv_data = AsyncMock()
+    plugin.put_kv_data = AsyncMock()
+    plugin._ai_state = AiInteractionState()
+    monkeypatch.setattr(
+        plugin_main,
+        "get_chapters_for_agent",
+        AsyncMock(
+            return_value={
+                "success": False,
+                "manga": {"manga_id": 151},
+                "selector": "1",
+                "selected_chapter": None,
+                "chapters": [{"chapter_id": 2531}, {"chapter_id": 2532}],
+                "error": "需要 chapter_id",
+            }
+        ),
+    )
+    event = SimpleNamespace(unified_msg_origin="umo", get_sender_id=lambda: "u1")
+
+    await plugin._ai_get_chapters_tool(event, 151, "1")
+
+    assert plugin._ai_state.was_chapter_exposed(("umo", "u1"), 151, 2531) is True
+    assert plugin._ai_state.was_chapter_exposed(("umo", "u1"), 151, 2532) is True
+
+
+@pytest.mark.asyncio
 async def test_subscribe_tool_dispatches():
     plugin = _Plugin()
     tools = build_ai_tools(plugin)

@@ -24,7 +24,9 @@ from astrbot.api import logger
 _LATEST_SELECTORS = {"latest", "newest", "最新", "最新一话", "最新一話"}
 _LIST_SELECTORS = {"", "list", "all", "列表", "全部"}
 _CHAPTER_ID_RE = re.compile(r"^id\s*[:：]\s*(\d+)$", re.IGNORECASE)
-_NUMBER_SELECTOR_RE = re.compile(r"^#?(?:第)?\s*(\d+(?:\.\d+)?)\s*[话話章]?$")
+_NUMBER_SELECTOR_RE = re.compile(
+    r"^#?(?:第)?\s*([+-]?(?:\d+(?:\.\d+)?|\.\d+))\s*[话話章]?$"
+)
 _RESET_SUCCESS_TEXT = "✅ Conversation reset successfully."
 _SOURCE_SEARCH_TIMEOUT_SEC = 15.0
 

@@ -1,5 +1,7 @@
 # 章节选择解析与提示修复 Implementation Plan
 
+> **执行后调整（2026-11-13）**：命令层按本计划落地；AI 侧最终**未**复用匹配核心 —— `selector` 收窄为 `latest`/`list`/章节号/`ID:数字`，Agent 按返回的 `chapter_id` 选择（Task 2 的共享方案被放弃）。现状以 `docs/superpowers/specs/2026-11-13-chapter-resolution-design.md` 为准。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 让 `/漫画 阅读/下载` 与 AI 章节选择同时接受编号、`第X话/第X卷`、章节名和 `ID:数字`，并在无法唯一确定时列出带名字的候选而不是裸 ID。

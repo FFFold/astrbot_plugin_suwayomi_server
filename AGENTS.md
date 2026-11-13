@@ -92,7 +92,7 @@ main.py (SuwayomiPlugin — thin dispatch layer)
 
 7. **All command args are strings**: AstrBot passes raw strings, not typed values. Explicit `float()`/`int()` conversion required in command handlers. Use `str` type hints with manual conversion.
 
-8. **Duplicate chapter numbers**: Some manga have multiple chapters with same number (e.g., appendices). Plugin detects this and prompts users to use `ID:xxx` syntax (case-insensitive, supports both `:` and `：`) for disambiguation.
+8. **Duplicate chapter numbers**: Some manga have multiple chapters with same number (e.g., appendices). The plugin lists every candidate as `#num name (ID:xxx)` and lets the user pick by `ID:xxx` or by the displayed chapter name (exact name wins over the number); `resolve_chapter` is the single entry point.
 
 9. **QQ forward messages**: Use `Comp.Nodes([node1, node2, ...])` wrapper. Passing `[Node, Node, ...]` directly to `chain_result()` sends each as a separate forward.
 
@@ -100,7 +100,7 @@ main.py (SuwayomiPlugin — thin dispatch layer)
 
 11. **Chapter data is lazy-loaded**: `fetchSourceManga` (search) only returns metadata. Chapters must be fetched separately via `fetchChapters` mutation. Use `service.get_or_fetch_chapters()` which handles caching: reads from DB first, fetches from source if stale or empty. Cache duration is controlled by `chapter_cache_hours` config.
 
-12. **AstrBot arg splitting**: AstrBot's command handler splits arguments by spaces, so trailing keywords like `zip`/`pdf`/`cbz` or `--刷新` may be lost. Always parse from `event.message_str` for commands with optional trailing args.
+12. **AstrBot arg splitting**: AstrBot's command handler splits arguments by spaces, so trailing keywords like `zip`/`pdf`/`cbz` or `--刷新` may be lost. Always parse from `event.message_str` for commands with optional trailing args (`下载`, `章节` already do; `阅读` still takes the positional `chapter_num`, so multiword chapter names must be given by ID — tracked as issue #25).
 
 13. **PLUGIN_NAME must match metadata name**: AstrBot's Bridge SDK constructs WebUI API URLs using the plugin's `name` from `metadata.yaml` (e.g. `astrbot_plugin_suwayomi_server`), NOT the directory name on disk (e.g. `astrbot_suwayomi_server`). The `PLUGIN_NAME` constant in `main.py` and `web/api.py` must match the metadata name, or all WebUI API calls will return "未找到该路由".
 

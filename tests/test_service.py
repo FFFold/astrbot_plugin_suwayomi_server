@@ -10,6 +10,7 @@ from suwayomi.models import Chapter
 from suwayomi.service import (
     fmt_chapter_display,
     fmt_chapter_label,
+    parse_manga_ref,
     resolve_chapter,
     sanitize_for_message,
 )
@@ -589,5 +590,27 @@ def test_fmt_chapter_display_sanitizes_dirty_chapter_name():
     displayed = fmt_chapter_display(ch)
     assert "\t" not in displayed
     assert displayed == "第1话 伪造 系统行"
+
+
+class TestParseMangaRef:
+
+    @pytest.mark.parametrize("text,expected", [
+        ("ID:1", ("id", 1)),
+        ("id：1", ("id", 1)),
+        ("ＩＤ：１", ("id", 1)),
+        ("  ID: 151  ", ("id", 151)),
+        ("3", ("index", 3)),
+        ("007", ("index", 7)),
+        ("３", ("index", 3)),
+        ("第3话", ("name", "第3话")),
+        ("86-不存在的战区-", ("name", "86-不存在的战区-")),
+        ("", ("name", "")),
+    ])
+    def test_classifies_reference_forms(self, text, expected):
+        assert parse_manga_ref(text) == expected
+
+    def test_name_keeps_original_text_trimmed(self):
+        assert parse_manga_ref("  安达与岛村  ") == ("name", "安达与岛村")
+
 
 

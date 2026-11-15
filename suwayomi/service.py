@@ -635,6 +635,26 @@ async def get_or_fetch_chapters(
     return chapters
 
 
+_ID_REF_RE = re.compile(r"id\s*[:：]\s*(\d+)", re.IGNORECASE)
+_BARE_INDEX_RE = re.compile(r"\d+")
+
+
+def parse_manga_ref(text: str) -> tuple[str, int | str]:
+    """Classify a manga reference as ("id", n) | ("index", n) | ("name", text).
+
+    ``ID:151`` (any case, full-width colon/digits, spaces around the number)
+    is an explicit manga id. A bare integer is a search-result index. Anything
+    else stays a name, returned as the caller's original text.
+    """
+    norm = unicodedata.normalize("NFKC", str(text)).strip()
+    id_match = _ID_REF_RE.fullmatch(norm)
+    if id_match:
+        return "id", int(id_match.group(1))
+    if _BARE_INDEX_RE.fullmatch(norm):
+        return "index", int(norm)
+    return "name", str(text).strip()
+
+
 async def resolve_manga(
     client: SuwayomiClient,
     sub_mgr: SubscriptionManager,

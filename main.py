@@ -848,16 +848,20 @@ class SuwayomiPlugin(Star):
   /漫画 搜索 <关键词> [源名]  — 搜索漫画（多词用 + 连接）
   /漫画 订阅 <编号>            — 订阅搜索结果
   /漫画 批量订阅 <名称1>, <名称2>, ... [源名] — 批量订阅多部漫画
-  /漫画 取消订阅 <ID或名称>    — 取消订阅
+  /漫画 取消订阅 <ID:编号或名称> — 取消订阅
   /漫画 我的订阅               — 查看订阅列表
 
-📚 阅读与下载
-  /漫画 章节 <漫画名或ID>               — 查看章节列表
-  /漫画 阅读 <漫画名或ID> <章节>        — 阅读章节
-  /漫画 下载 <漫画名或ID> <章节> [格式]  — 下载并打包发送（格式: zip/pdf/cbz）
+  搜索结果编号 10 分钟内可直接用于阅读/章节/下载，如「漫画 阅读 1 5」
 
+📚 阅读与下载
+  /漫画 章节 <漫画名或编号>               — 查看章节列表
+  /漫画 阅读 <漫画名或编号> <章节>        — 阅读章节
+  /漫画 下载 <漫画名或编号> <章节> [格式]  — 下载并打包发送（格式: zip/pdf/cbz）
+
+  <漫画名或编号>：作品名、搜索结果编号（如 1）或漫画 ID（如 ID:151）
   <章节> 可写：编号（1 / 38.5）、第5话、第01卷、章节名或 ID:123
   例: /漫画 阅读 一拳超人 第5话
+  例: /漫画 阅读 ID:151 5
 
   添加 --刷新 强制从源更新章节数据：
   /漫画 章节 <漫画名> --刷新
@@ -1175,7 +1179,10 @@ class SuwayomiPlugin(Star):
                     status = STATUS_EMOJI.get(m.status, "未知")
                     lines.append(f"  [{idx}] {sanitize_for_message(m.title, limit=80)} - {status}（{source_name}）")
                     _append_row(m, source_name)
-                tail = "回复「漫画 订阅 <编号>」订阅，如「漫画 订阅 1」"
+                tail = (
+                    "回复「漫画 订阅 <编号>」订阅，如「漫画 订阅 1」\n"
+                    "编号也可用于「漫画 阅读 <编号> <章节>」（10 分钟内有效）"
+                )
                 if idx - 1 < total:
                     tail = f"已按相关度显示前 {idx - 1} 条（共 {total} 条）\n{tail}"
                 lines.append("\n" + tail)
@@ -1192,7 +1199,10 @@ class SuwayomiPlugin(Star):
                             lines.append(f"  [{idx}] {sanitize_for_message(m.title, limit=80)} - {status}")
                             _append_row(m, source_name)
                 # 旧版末尾的订阅提示行（关闭排序 = 完整恢复旧版输出）
-                lines.append("\n回复「漫画 订阅 <编号>」订阅，如「漫画 订阅 1」")
+                lines.append(
+                    "\n回复「漫画 订阅 <编号>」订阅，如「漫画 订阅 1」\n"
+                    "编号也可用于「漫画 阅读 <编号> <章节>」（10 分钟内有效）"
+                )
                 subtitle = (
                     f"{' · '.join(dict.fromkeys(n for n, r in responses if r))}"
                     f" · {len(card_rows)} 条"
@@ -1482,7 +1492,7 @@ class SuwayomiPlugin(Star):
                         tag = f" - {src_name}" if src_name else ""
                         card_rows.append({
                             "title": s["title"],
-                            "detail": f"{STATUS_EMOJI.get(status, '未知')}{tag} · {push} · ID: {s['manga_id']}",
+                            "detail": f"{STATUS_EMOJI.get(status, '未知')}{tag} · {push} · ID:{s['manga_id']}",
                             "thumbnail_url": thumbnail,
                         })
                     tmpldata = build_subscriptions_card(card_rows)
@@ -1504,7 +1514,7 @@ class SuwayomiPlugin(Star):
                 source_name = src_map.get(str(s["source_id"]), "")
                 tag = f" - {source_name}" if source_name else ""
                 lines.append(
-                    f"  • {sanitize_for_message(s['title'], limit=80)}{tag} - ID: {s['manga_id']}"
+                    f"  • {sanitize_for_message(s['title'], limit=80)}{tag} - ID:{s['manga_id']}"
                 )
             yield event.plain_result("\n".join(lines))
         except Exception as e:
@@ -1573,7 +1583,7 @@ class SuwayomiPlugin(Star):
 
     @manga_group.command("章节")
     async def list_chapters(self, event: AstrMessageEvent, manga_name_or_id: str):
-        """查看漫画章节列表。用法: /漫画 章节 <漫画名或ID> [--刷新]"""
+        """查看漫画章节列表。用法: /漫画 章节 <漫画名或编号> [--刷新]"""
         try:
             tokens = event.message_str.strip().split()
             try:
@@ -1585,7 +1595,7 @@ class SuwayomiPlugin(Star):
             force = "--刷新" in args
             manga_name_or_id = " ".join(a for a in args if a != "--刷新").strip()
             if not manga_name_or_id:
-                yield event.plain_result("用法: /漫画 章节 <漫画名或ID> [--刷新]")
+                yield event.plain_result("用法: /漫画 章节 <漫画名或编号> [--刷新]")
                 return
 
             manga, err = await resolve_manga(
@@ -1746,10 +1756,11 @@ class SuwayomiPlugin(Star):
 
     @manga_group.command("阅读")
     async def read_chapter(self, event: AstrMessageEvent, manga_name_or_id: str, chapter_num: str = ""):
-        """阅读漫画章节。用法: /漫画 阅读 <漫画名或ID> <章节>"""
+        """阅读漫画章节。用法: /漫画 阅读 <漫画名或编号> <章节>"""
         if not chapter_num:
             yield event.plain_result(
-                "用法: /漫画 阅读 <漫画名或ID> <章节>\n"
+                "用法: /漫画 阅读 <漫画名或编号> <章节>\n"
+                "漫画可写: 作品名、搜索结果编号（如 1）或 ID:151\n"
                 "章节可写: 编号（1 / 38.5）、第5话、第01卷、章节名或 ID:123\n"
                 "示例: /漫画 阅读 一拳超人 第5话"
             )
@@ -1814,13 +1825,14 @@ class SuwayomiPlugin(Star):
 
     @manga_group.command("下载")
     async def download_chapter(self, event: AstrMessageEvent, manga_name_or_id: str, chapter_num: str = ""):
-        """下载漫画章节并打包发送。用法: /漫画 下载 <漫画名或ID> <章节> [zip/pdf/cbz]"""
+        """下载漫画章节并打包发送。用法: /漫画 下载 <漫画名或编号> <章节> [zip/pdf/cbz]"""
         default_fmt = get_config_value(self.config, "download_format", "pdf")
         manga_name_or_id, chapter_num, fmt = parse_download_args(event.message_str, default_fmt)
 
         if not manga_name_or_id or not chapter_num:
             yield event.plain_result(
-                "用法: /漫画 下载 <漫画名或ID> <章节> [格式]\n"
+                "用法: /漫画 下载 <漫画名或编号> <章节> [格式]\n"
+                "漫画可写: 作品名、搜索结果编号（如 1）或 ID:151\n"
                 "章节可写: 编号（1 / 38.5）、第5话、第01卷、章节名或 ID:123\n"
                 "示例: /漫画 下载 一拳超人 第5话\n"
                 "指定格式: /漫画 下载 一拳超人 1 pdf"

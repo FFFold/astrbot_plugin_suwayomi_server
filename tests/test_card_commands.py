@@ -221,6 +221,20 @@ async def test_my_subscriptions_card_render_failure_text(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_my_subscriptions_text_uses_parseable_id(monkeypatch):
+    plugin = _plugin(cards_enabled=False)
+    plugin.sub_mgr.get_subscriptions = AsyncMock(return_value=[
+        {"manga_id": 151, "title": "安达与岛村", "source_id": 2, "push_enabled": False},
+    ])
+    plugin.client.get_sources = AsyncMock(return_value=[_source()])
+    event = _event()
+
+    results = [msg async for msg in plugin.my_subscriptions(event)]
+
+    assert "ID:151" in results[0] and "ID: 151" not in results[0]
+
+
+@pytest.mark.asyncio
 async def test_card_render_failure_enters_cooldown(monkeypatch):
     plugin = _plugin(cards_enabled=True)
     _plugin_with_search(plugin, [_manga("咒术回战", 1)])

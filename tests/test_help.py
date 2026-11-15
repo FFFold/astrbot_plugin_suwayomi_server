@@ -23,6 +23,14 @@ def test_help_mentions_all_selector_forms():
     assert "ID:123" in help_text
 
 
+def test_help_documents_search_index_reference():
+    help_text = _help_text()
+    assert "ID:123" in help_text
+    assert "编号" in help_text
+    assert "10 分钟" in help_text
+    assert "ID:151" in help_text
+
+
 def test_ai_tool_selector_description_stays_id_based():
     text = (ROOT / "suwayomi" / "ai_tools.py").read_text(encoding="utf-8")
     match = re.search(r'"selector":\s*\{.*?"description":\s*"([^"]*)"', text, re.S)

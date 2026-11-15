@@ -14,7 +14,7 @@
     <img src="https://img.shields.io/badge/AstrBot-%3E%3D4.16-blue?style=flat-square" alt="AstrBot >= 4.16">
     <img src="https://img.shields.io/badge/Python-3.12%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.12+">
     <img src="https://img.shields.io/badge/license-AGPL--3.0-orange?style=flat-square" alt="License AGPL-3.0">
-    <img src="https://img.shields.io/badge/version-0.7.3-8A2BE2?style=flat-square" alt="Version 0.7.3">
+    <img src="https://img.shields.io/badge/version-0.8.0-8A2BE2?style=flat-square" alt="Version 0.8.0">
     <img src="https://img.shields.io/badge/support-8%20platforms-green?style=flat-square" alt="8 platforms">
   </p>
   <p align="center">
@@ -69,18 +69,23 @@
 |---|---|
 | `/漫画 源` | 列出所有已安装的漫画源 |
 | `/漫画 搜索 <关键词> [源名]` | 从多个源搜索漫画（多词标题用 `+` 连接，如 `香格里拉+再`；`源名` 可用「漫画 源」查看） |
-| `/漫画 订阅 <编号>` | 订阅搜索结果中的漫画 |
+| `/漫画 订阅 <编号或 ID:编号>` | 订阅搜索结果中的漫画 |
 | `/漫画 批量订阅 <名称1>, <名称2>, ... [源名]` | 批量订阅多部漫画（逗号分隔） |
-| `/漫画 取消订阅 <ID或名称>` | 取消订阅指定漫画 |
+| `/漫画 取消订阅 <ID:编号或名称>` | 取消订阅指定漫画 |
 | `/漫画 我的订阅` | 查看当前会话的订阅列表 |
 | `/漫画 更新` | 手动触发更新检查（全局推送） |
-| `/漫画 章节 <漫画名或ID> [--刷新]` | 查看章节列表，`--刷新` 强制从源拉取最新数据 |
-| `/漫画 阅读 <漫画名或ID> <章节选择>` | 阅读指定章节（发送页面图片） |
-| `/漫画 下载 <漫画名或ID> <章节选择> [格式]` | 下载章节并打包发送（格式: zip/pdf/cbz） |
+| `/漫画 章节 <漫画名或编号> [--刷新]` | 查看章节列表，`--刷新` 强制从源拉取最新数据 |
+| `/漫画 阅读 <漫画名或编号> <章节选择>` | 阅读指定章节（发送页面图片） |
+| `/漫画 下载 <漫画名或编号> <章节选择> [格式]` | 下载章节并打包发送（格式: zip/pdf/cbz） |
 | `/漫画 推送 开/关/状态` | 控制自动推送（开记住偏好，新订阅自动继承；关清除偏好） |
 | `/漫画 帮助` | 显示完整用法说明 |
 
+> `<漫画名或编号>` 可写作品名、搜索结果编号（`1`）或漫画 ID（`ID:151`）。
 > `<章节选择>` 可写编号（`1` / `38.5`）、`第5话`、`第01卷`、章节名或 `ID:123`。
+
+> 搜索结果的 `[编号]` 在 10 分钟内可直接用于章节/阅读/下载，与订阅共用同一套编号。
+> 纯数字一律按搜索结果编号解释；**漫画 ID 必须写成 `ID:151`**。纯数字标题（如《86》）
+> 请先用「漫画 搜索」拿到编号，或使用 `ID:数字`。
 
 ---
 

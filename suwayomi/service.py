@@ -13,7 +13,7 @@ from astrbot.api import logger
 
 from . import PLUGIN_NAME
 from .config import get_config_value
-from .client import SuwayomiError
+from .client import MangaNotFoundError, SuwayomiError
 from .models import Chapter, Manga, Source
 from .ranking import looks_truncated, rank_items
 
@@ -635,21 +635,110 @@ async def get_or_fetch_chapters(
     return chapters
 
 
+_ID_REF_RE = re.compile(r"id\s*[:：]\s*(\d+)", re.IGNORECASE)
+_BARE_INDEX_RE = re.compile(r"\d+")
+
+
+def parse_manga_ref(text: str) -> tuple[str, int | str]:
+    """Classify a manga reference as ("id", n) | ("index", n) | ("name", text).
+
+    ``ID:151`` (any case, full-width colon/digits, spaces around the number)
+    is an explicit manga id. A bare integer is a search-result index. Anything
+    else stays a name, returned as the caller's original text.
+    """
+    norm = unicodedata.normalize("NFKC", str(text)).strip()
+    id_match = _ID_REF_RE.fullmatch(norm)
+    if id_match:
+        return "id", int(id_match.group(1))
+    if _BARE_INDEX_RE.fullmatch(norm):
+        return "index", int(norm)
+    return "name", str(text).strip()
+
+
+async def _resolve_by_search_index(
+    client: SuwayomiClient,
+    index_lookup: Callable[[str, str], tuple[Manga | None, int]] | None,
+    umo: str,
+    number: int,
+    cmd: str,
+) -> tuple[Manga | None, str | None]:
+    """Resolve a search-result index, explaining the miss in actionable terms."""
+    manga: Manga | None = None
+    count = 0
+    if index_lookup is not None:
+        try:
+            manga, count = index_lookup(umo, str(number))
+        except Exception as exc:
+            logger.debug(f"[{_PLUGIN_NAME}] 搜索编号查询失败 {number}: {exc}")
+            manga, count = None, 0
+    if manga is not None:
+        logger.debug(
+            f"[{_PLUGIN_NAME}] 按搜索编号命中: #{number} -> manga_id={manga.id} "
+            f"(缓存 {count} 条)"
+        )
+        return manga, None
+
+    id_exists = False
+    try:
+        await client.get_manga(number)
+        id_exists = True
+    except MangaNotFoundError:
+        pass
+    except Exception as exc:
+        # The probe is best-effort, but a transport/GraphQL failure means we
+        # cannot tell "no such manga" from "server is down"; say so instead of
+        # telling the user to search again.
+        logger.warning(f"[{_PLUGIN_NAME}] 编号 {number} 的 ID 探测失败: {exc}")
+        return None, "漫画服务暂时不可用，请稍后重试。"
+    logger.debug(
+        f"[{_PLUGIN_NAME}] 搜索编号未命中: #{number} (缓存 {count} 条, "
+        f"ID存在={id_exists})"
+    )
+
+    suffix = "" if cmd == "章节" else " <章节>"
+    if not count:
+        if id_exists:
+            return None, (
+                "当前没有可用的搜索结果编号（搜索结果 10 分钟内有效）。\n"
+                f"若你指的是漫画 ID，请用: /漫画 {cmd} ID:{number}{suffix}"
+            )
+        return None, (
+            "当前没有可用的搜索结果编号（搜索结果 10 分钟内有效）。\n"
+            "请先「漫画 搜索 <关键词>」，或用「ID:数字」/ 名称指定漫画。"
+        )
+    if id_exists:
+        return None, (
+            f"{number} 是漫画 ID，但不在本次搜索结果里。\n"
+            f"改用: /漫画 {cmd} ID:{number}{suffix}"
+        )
+    return None, (
+        f"本次搜索结果只有 1–{count} 号，没有 {number} 号。\n"
+        "请重新「漫画 搜索」，或用名称指定漫画。"
+    )
+
+
 async def resolve_manga(
     client: SuwayomiClient,
     sub_mgr: SubscriptionManager,
     umo: str,
     name_or_id: str,
     cmd: str,
+    *,
+    index_lookup: Callable[[str, str], tuple[Manga | None, int]] | None = None,
 ) -> tuple[Manga | None, str | None]:
-    try:
-        manga_id = int(name_or_id)
-        manga = await client.get_manga(manga_id)
-        return manga, None
-    except (ValueError, SuwayomiError):
-        pass
+    kind, value = parse_manga_ref(name_or_id)
+    if kind == "id":
+        try:
+            return await client.get_manga(int(value)), None
+        except MangaNotFoundError:
+            return None, f"未找到 ID:{value} 的漫画。"
+    if kind == "index":
+        return await _resolve_by_search_index(
+            client, index_lookup, umo, int(value), cmd
+        )
 
-    norm_input = normalize_zh(name_or_id)
+    manga_name = str(value)
+    norm_input = normalize_zh(manga_name)
     subs = await sub_mgr.get_subscriptions(umo)
     for s in subs:
         if norm_input in normalize_zh(s["title"]):
@@ -660,7 +749,7 @@ async def resolve_manga(
                 continue
 
     try:
-        mangas = await client.search_manga_by_title(name_or_id)
+        mangas = await client.search_manga_by_title(manga_name)
         if len(mangas) == 0:
             return None, "未找到该漫画。"
         if len(mangas) == 1:
@@ -676,12 +765,12 @@ async def resolve_manga(
         except Exception as exc:
             logger.debug(f"[{_PLUGIN_NAME}] 多结果引导获取源名失败: {exc}")
 
-        lines = [f"找到多个结果，请使用 ID 指定。例如: /漫画 {cmd} {mangas[0].id}"]
+        lines = [f"找到多个结果，请使用 ID 指定。例如: /漫画 {cmd} ID:{mangas[0].id}"]
         for m in mangas:
             status = STATUS_EMOJI.get(m.status, "未知")
             src_name = src_map.get(str(m.source_id), f"源{m.source_id}")
             lines.append(
-                f"  ID {m.id}: {sanitize_for_message(m.title, limit=80)} [{status}] ({src_name})"
+                f"  ID:{m.id}: {sanitize_for_message(m.title, limit=80)} [{status}] ({src_name})"
             )
         return None, "\n".join(lines)
     except Exception as e:

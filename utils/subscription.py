@@ -100,15 +100,22 @@ class SubscriptionManager:
                 data[key]["subscribers"][umo] = {"push_enabled": await self.get_push_default(umo)}
             await self._save(data)
 
-    async def unsubscribe(self, manga_id: int, umo: str):
+    async def unsubscribe(self, manga_id: int, umo: str) -> bool:
+        """Remove one subscriber; return whether this call removed it.
+
+        The membership test and the removal happen under the same lock so two
+        concurrent requests cannot both report success.
+        """
         async with self._write_lock:
             data = await self._load()
             key = str(manga_id)
-            if key in data:
-                data[key]["subscribers"].pop(umo, None)
-                if not data[key]["subscribers"]:
-                    del data[key]
+            if key not in data or umo not in data[key]["subscribers"]:
+                return False
+            data[key]["subscribers"].pop(umo, None)
+            if not data[key]["subscribers"]:
+                del data[key]
             await self._save(data)
+            return True
 
     async def get_subscriptions(self, umo: str) -> list[dict[str, Any]]:
         data = await self._load()

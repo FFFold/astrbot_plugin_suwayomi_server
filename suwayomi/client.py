@@ -20,6 +20,10 @@ class SuwayomiError(Exception):
     pass
 
 
+class MangaNotFoundError(SuwayomiError):
+    """Suwayomi answered successfully but has no manga for the requested id."""
+
+
 _SOURCES_CACHE_TTL = 60
 
 # Suwayomi 会代理源站请求（fetchChapters/fetchSourceManga 等），慢源会把单个
@@ -245,7 +249,13 @@ class SuwayomiClient:
             'query($id:Int!){manga(id:$id){id title url sourceId status thumbnailUrl inLibrary author artist description genre chapters{totalCount}}}',
             {"id": manga_id},
         )
-        return Manga.from_dict(data["manga"])
+        payload = data.get("manga")
+        if not isinstance(payload, dict):
+            # A successful response with ``manga: null`` means "no such id";
+            # surface it distinctly from transport/GraphQL failures so callers
+            # do not report an outage as a missing manga.
+            raise MangaNotFoundError(f"manga {manga_id} not found")
+        return Manga.from_dict(payload)
 
     async def fetch_manga_details(self, manga_id: int) -> Manga:
         """Trigger a source-side refresh of manga details (updates the DB record).

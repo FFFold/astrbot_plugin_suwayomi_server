@@ -845,3 +845,58 @@ async def test_download_cover_live(client):
     finally:
         if tmp_dir:
             shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+@pytest.mark.asyncio
+async def test_live_index_reference_resolves_to_searched_manga(client):
+    """真实实例：搜索编号可被 resolve_manga 消费，ID: 形式指向同一部漫画。"""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from plugin_pkg.main import SuwayomiPlugin
+
+    from suwayomi.service import resolve_manga
+
+    plugin = SuwayomiPlugin.__new__(SuwayomiPlugin)
+    plugin.client = client
+    plugin.config = {
+        "result_cards_enabled": False,
+        "search_alias_expansion": False,
+        "search_display_limit": 10,
+    }
+    plugin._search_cache = {}
+
+    umo = "live:test:index-ref"
+    event = MagicMock()
+    event.unified_msg_origin = umo
+    event.message_str = "/漫画 搜索 海贼"
+    event.plain_result = MagicMock(side_effect=lambda text: text)
+    event.chain_result = MagicMock(side_effect=lambda chain: chain)
+    event.send = AsyncMock()
+
+    messages = [msg async for msg in plugin.search_manga(event, "海贼")]
+    if not messages or "未找到相关漫画" in messages[0]:
+        pytest.skip("实例上搜索无结果（源可能限流），跳过")
+
+    cached = plugin._get_cached_manga(umo, "1")
+    assert cached is not None, "展示结果应写入编号缓存"
+
+    sub_mgr = MagicMock()
+    sub_mgr.get_subscriptions = AsyncMock(return_value=[])
+
+    by_index, err = await resolve_manga(
+        client, sub_mgr, umo, "1", "阅读",
+        index_lookup=plugin._search_index_lookup,
+    )
+    assert err is None and by_index is not None and by_index.id == cached.id
+
+    by_id, id_err = await resolve_manga(
+        client, sub_mgr, umo, f"ID:{cached.id}", "阅读"
+    )
+    assert id_err is None and by_id is not None and by_id.id == cached.id
+
+    miss, miss_err = await resolve_manga(
+        client, sub_mgr, umo, "99", "阅读",
+        index_lookup=plugin._search_index_lookup,
+    )
+    assert miss is None and miss_err
+    print(f"\n  编号引用: #1 -> {cached.title!r} (ID:{cached.id}); 越界提示: {miss_err!r}")

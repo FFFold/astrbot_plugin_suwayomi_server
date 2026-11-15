@@ -33,7 +33,7 @@ from .suwayomi.cards import (
     embed_covers,
     render_card_cached,
 )
-from .suwayomi.client import SuwayomiClient, SuwayomiError
+from .suwayomi.client import MangaNotFoundError, SuwayomiClient, SuwayomiError
 from .suwayomi.config import config_bool, get_config_value, migrate_legacy_config
 from .suwayomi.bangumi import (
     alias_boost,
@@ -58,6 +58,7 @@ from .suwayomi.service import (
     get_or_fetch_chapters,
     match_source_hint,
     normalize_zh,
+    parse_manga_ref,
     refresh_truncated_titles,
     resolve_chapter,
     resolve_manga,
@@ -652,11 +653,15 @@ class SuwayomiPlugin(Star):
 
     # ── Search cache ───────────────────────────────────────────────
 
-    def _get_cached_manga(self, umo: str, key: str) -> Manga | None:
+    def _search_index_lookup(self, umo: str, key: str) -> tuple[Manga | None, int]:
+        """Return the cached search entry and how many entries the session has."""
         cache = ttl_cache_lookup(self._search_cache, umo, _CACHE_TTL)
-        if cache is None:
-            return None
-        return cache.get(key)
+        if not cache:
+            return None, 0
+        return cache.get(key), len(cache)
+
+    def _get_cached_manga(self, umo: str, key: str) -> Manga | None:
+        return self._search_index_lookup(umo, key)[0]
 
     def _set_search_cache(self, umo: str, cache: dict[str, Manga]):
         ttl_cache_store(
@@ -841,18 +846,22 @@ class SuwayomiPlugin(Star):
 
 🔍 搜索与订阅
   /漫画 搜索 <关键词> [源名]  — 搜索漫画（多词用 + 连接）
-  /漫画 订阅 <编号>            — 订阅搜索结果
+  /漫画 订阅 <编号或 ID:编号>   — 订阅搜索结果
   /漫画 批量订阅 <名称1>, <名称2>, ... [源名] — 批量订阅多部漫画
-  /漫画 取消订阅 <ID或名称>    — 取消订阅
+  /漫画 取消订阅 <ID:编号或名称> — 取消订阅
   /漫画 我的订阅               — 查看订阅列表
 
-📚 阅读与下载
-  /漫画 章节 <漫画名或ID>               — 查看章节列表
-  /漫画 阅读 <漫画名或ID> <章节>        — 阅读章节
-  /漫画 下载 <漫画名或ID> <章节> [格式]  — 下载并打包发送（格式: zip/pdf/cbz）
+  搜索结果编号 10 分钟内可直接用于阅读/章节/下载，如「漫画 阅读 1 5」
 
+📚 阅读与下载
+  /漫画 章节 <漫画名或编号>               — 查看章节列表
+  /漫画 阅读 <漫画名或编号> <章节>        — 阅读章节
+  /漫画 下载 <漫画名或编号> <章节> [格式]  — 下载并打包发送（格式: zip/pdf/cbz）
+
+  <漫画名或编号>：作品名、搜索结果编号（如 1）或漫画 ID（如 ID:151）
   <章节> 可写：编号（1 / 38.5）、第5话、第01卷、章节名或 ID:123
   例: /漫画 阅读 一拳超人 第5话
+  例: /漫画 阅读 ID:151 5
 
   添加 --刷新 强制从源更新章节数据：
   /漫画 章节 <漫画名> --刷新
@@ -1141,6 +1150,8 @@ class SuwayomiPlugin(Star):
                         )
 
             if not pool:
+                # 无结果的一次搜索必须让上一批编号失效，否则 阅读/下载 会落到旧结果
+                self._search_cache.pop(event.unified_msg_origin, None)
                 yield event.plain_result("未找到相关漫画，请确认关键词。" + suggestion)
                 return
 
@@ -1170,7 +1181,10 @@ class SuwayomiPlugin(Star):
                     status = STATUS_EMOJI.get(m.status, "未知")
                     lines.append(f"  [{idx}] {sanitize_for_message(m.title, limit=80)} - {status}（{source_name}）")
                     _append_row(m, source_name)
-                tail = "回复「漫画 订阅 <编号>」订阅，如「漫画 订阅 1」"
+                tail = (
+                    "回复「漫画 订阅 <编号>」订阅，如「漫画 订阅 1」\n"
+                    "编号也可用于「漫画 阅读 <编号> <章节>」（10 分钟内有效）"
+                )
                 if idx - 1 < total:
                     tail = f"已按相关度显示前 {idx - 1} 条（共 {total} 条）\n{tail}"
                 lines.append("\n" + tail)
@@ -1187,14 +1201,21 @@ class SuwayomiPlugin(Star):
                             lines.append(f"  [{idx}] {sanitize_for_message(m.title, limit=80)} - {status}")
                             _append_row(m, source_name)
                 # 旧版末尾的订阅提示行（关闭排序 = 完整恢复旧版输出）
-                lines.append("\n回复「漫画 订阅 <编号>」订阅，如「漫画 订阅 1」")
+                lines.append(
+                    "\n回复「漫画 订阅 <编号>」订阅，如「漫画 订阅 1」\n"
+                    "编号也可用于「漫画 阅读 <编号> <章节>」（10 分钟内有效）"
+                )
                 subtitle = (
                     f"{' · '.join(dict.fromkeys(n for n, r in responses if r))}"
                     f" · {len(card_rows)} 条"
                 )
 
             text = "\n".join(lines)
-            self._set_search_cache(event.unified_msg_origin, cache)
+
+            def _remember_index() -> None:
+                # 在展示的那一刻才落缓存：两次搜索重叠时，编号必须对应
+                # 最后显示给用户的那一批结果，而不是最后算完的那一批。
+                self._set_search_cache(event.unified_msg_origin, cache)
 
             if self._result_cards_enabled():
                 try:
@@ -1211,11 +1232,13 @@ class SuwayomiPlugin(Star):
                     )
                     path = await self._render_card_result(tmpldata)
                     if path:
+                        _remember_index()
                         yield event.chain_result([Comp.Image.fromFileSystem(path)])
                         return
                 except Exception as e:
                     logger.warning(f"[{PLUGIN_NAME}] 搜索卡片渲染失败，回退文本: {e}")
 
+            _remember_index()
             yield event.plain_result(text)
 
         except SuwayomiError as e:
@@ -1226,9 +1249,23 @@ class SuwayomiPlugin(Star):
 
     @manga_group.command("订阅")
     async def subscribe_manga(self, event: AstrMessageEvent, index: str):
-        """订阅漫画。用法: /漫画 订阅 <搜索结果编号>"""
+        """订阅漫画。用法: /漫画 订阅 <搜索结果编号或 ID:编号>"""
         try:
-            manga = self._get_cached_manga(event.unified_msg_origin, index)
+            kind, value = parse_manga_ref(index)
+            if kind == "id":
+                try:
+                    manga = await self.client.get_manga(int(value))
+                except MangaNotFoundError:
+                    yield event.plain_result(f"未找到 ID:{value} 的漫画。")
+                    return
+            elif kind == "index":
+                manga = self._get_cached_manga(event.unified_msg_origin, str(value))
+            else:
+                yield event.plain_result(
+                    "订阅请用搜索结果编号（如「漫画 订阅 1」）或 ID:151；"
+                    "按名称订阅请用「漫画 批量订阅」。"
+                )
+                return
             if manga is None:
                 yield event.plain_result("未找到该编号的漫画，请先使用「漫画 搜索」。")
                 return
@@ -1397,16 +1434,24 @@ class SuwayomiPlugin(Star):
 
     @manga_group.command("取消订阅")
     async def unsubscribe_manga(self, event: AstrMessageEvent, manga_id_or_name: str):
-        """取消订阅。用法: /漫画 取消订阅 <漫画ID或名称>"""
+        """取消订阅。用法: /漫画 取消订阅 <ID:编号或名称>"""
         try:
             umo = event.unified_msg_origin
+            kind, value = parse_manga_ref(manga_id_or_name)
+            subs = await self.sub_mgr.get_subscriptions(umo)
+
+            if kind == "index":
+                yield event.plain_result(
+                    f"取消订阅不支持搜索结果编号，请用 ID:{value} 或订阅名称。"
+                )
+                return
+
             manga_id = None
             manga_title = manga_id_or_name
-            try:
-                manga_id = int(manga_id_or_name)
-            except ValueError:
-                norm_input = normalize_zh(manga_id_or_name)
-                subs = await self.sub_mgr.get_subscriptions(umo)
+            if kind == "id":
+                manga_id = int(value)
+            else:
+                norm_input = normalize_zh(str(value))
                 for s in subs:
                     if norm_input in normalize_zh(s["title"]):
                         manga_id = s["manga_id"]
@@ -1414,11 +1459,18 @@ class SuwayomiPlugin(Star):
                         break
 
             if manga_id is None:
-                yield event.plain_result("未找到匹配的订阅，请使用漫画 ID 或名称。")
+                yield event.plain_result("未找到匹配的订阅，请使用 ID:编号 或名称。")
                 return
-            await self.sub_mgr.unsubscribe(manga_id, umo)
+
+            removed = await self.sub_mgr.unsubscribe(manga_id, umo)
+            if not removed:
+                yield event.plain_result(
+                    f"未找到该订阅（ID:{manga_id}），可用「漫画 我的订阅」查看。"
+                )
+                return
+
             logger.info(f"[{PLUGIN_NAME}] 用户取消订阅「{manga_title}」(ID:{manga_id})")
-            yield event.plain_result(f"✅ 已取消订阅（漫画 ID: {manga_id}）。")
+            yield event.plain_result(f"✅ 已取消订阅（ID:{manga_id}）。")
         except Exception as e:
             logger.error(f"[{PLUGIN_NAME}] unsubscribe error: {e}")
             yield event.plain_result("取消订阅失败，请稍后重试。")
@@ -1456,7 +1508,7 @@ class SuwayomiPlugin(Star):
                         tag = f" - {src_name}" if src_name else ""
                         card_rows.append({
                             "title": s["title"],
-                            "detail": f"{STATUS_EMOJI.get(status, '未知')}{tag} · {push} · ID: {s['manga_id']}",
+                            "detail": f"{STATUS_EMOJI.get(status, '未知')}{tag} · {push} · ID:{s['manga_id']}",
                             "thumbnail_url": thumbnail,
                         })
                     tmpldata = build_subscriptions_card(card_rows)
@@ -1478,7 +1530,7 @@ class SuwayomiPlugin(Star):
                 source_name = src_map.get(str(s["source_id"]), "")
                 tag = f" - {source_name}" if source_name else ""
                 lines.append(
-                    f"  • {sanitize_for_message(s['title'], limit=80)}{tag} - ID: {s['manga_id']}"
+                    f"  • {sanitize_for_message(s['title'], limit=80)}{tag} - ID:{s['manga_id']}"
                 )
             yield event.plain_result("\n".join(lines))
         except Exception as e:
@@ -1547,7 +1599,7 @@ class SuwayomiPlugin(Star):
 
     @manga_group.command("章节")
     async def list_chapters(self, event: AstrMessageEvent, manga_name_or_id: str):
-        """查看漫画章节列表。用法: /漫画 章节 <漫画名或ID> [--刷新]"""
+        """查看漫画章节列表。用法: /漫画 章节 <漫画名或编号> [--刷新]"""
         try:
             tokens = event.message_str.strip().split()
             try:
@@ -1559,10 +1611,14 @@ class SuwayomiPlugin(Star):
             force = "--刷新" in args
             manga_name_or_id = " ".join(a for a in args if a != "--刷新").strip()
             if not manga_name_or_id:
-                yield event.plain_result("用法: /漫画 章节 <漫画名或ID> [--刷新]")
+                yield event.plain_result("用法: /漫画 章节 <漫画名或编号> [--刷新]")
                 return
 
-            manga, err = await resolve_manga(self.client, self.sub_mgr, event.unified_msg_origin, manga_name_or_id, "章节")
+            manga, err = await resolve_manga(
+                self.client, self.sub_mgr, event.unified_msg_origin,
+                manga_name_or_id, "章节",
+                index_lookup=self._search_index_lookup,
+            )
             if err or manga is None:
                 yield event.plain_result(err or "未找到该漫画。")
                 return
@@ -1716,17 +1772,22 @@ class SuwayomiPlugin(Star):
 
     @manga_group.command("阅读")
     async def read_chapter(self, event: AstrMessageEvent, manga_name_or_id: str, chapter_num: str = ""):
-        """阅读漫画章节。用法: /漫画 阅读 <漫画名或ID> <章节>"""
+        """阅读漫画章节。用法: /漫画 阅读 <漫画名或编号> <章节>"""
         if not chapter_num:
             yield event.plain_result(
-                "用法: /漫画 阅读 <漫画名或ID> <章节>\n"
+                "用法: /漫画 阅读 <漫画名或编号> <章节>\n"
+                "漫画可写: 作品名、搜索结果编号（如 1）或 ID:151\n"
                 "章节可写: 编号（1 / 38.5）、第5话、第01卷、章节名或 ID:123\n"
                 "示例: /漫画 阅读 一拳超人 第5话"
             )
             return
 
         try:
-            manga, err = await resolve_manga(self.client, self.sub_mgr, event.unified_msg_origin, manga_name_or_id, "阅读")
+            manga, err = await resolve_manga(
+                self.client, self.sub_mgr, event.unified_msg_origin,
+                manga_name_or_id, "阅读",
+                index_lookup=self._search_index_lookup,
+            )
             if err or manga is None:
                 yield event.plain_result(err or "未找到该漫画。")
                 return
@@ -1780,13 +1841,14 @@ class SuwayomiPlugin(Star):
 
     @manga_group.command("下载")
     async def download_chapter(self, event: AstrMessageEvent, manga_name_or_id: str, chapter_num: str = ""):
-        """下载漫画章节并打包发送。用法: /漫画 下载 <漫画名或ID> <章节> [zip/pdf/cbz]"""
+        """下载漫画章节并打包发送。用法: /漫画 下载 <漫画名或编号> <章节> [zip/pdf/cbz]"""
         default_fmt = get_config_value(self.config, "download_format", "pdf")
         manga_name_or_id, chapter_num, fmt = parse_download_args(event.message_str, default_fmt)
 
         if not manga_name_or_id or not chapter_num:
             yield event.plain_result(
-                "用法: /漫画 下载 <漫画名或ID> <章节> [格式]\n"
+                "用法: /漫画 下载 <漫画名或编号> <章节> [格式]\n"
+                "漫画可写: 作品名、搜索结果编号（如 1）或 ID:151\n"
                 "章节可写: 编号（1 / 38.5）、第5话、第01卷、章节名或 ID:123\n"
                 "示例: /漫画 下载 一拳超人 第5话\n"
                 "指定格式: /漫画 下载 一拳超人 1 pdf"
@@ -1795,7 +1857,11 @@ class SuwayomiPlugin(Star):
 
         tmp_dir: Path | None = None
         try:
-            manga, err = await resolve_manga(self.client, self.sub_mgr, event.unified_msg_origin, manga_name_or_id, "下载")
+            manga, err = await resolve_manga(
+                self.client, self.sub_mgr, event.unified_msg_origin,
+                manga_name_or_id, "下载",
+                index_lookup=self._search_index_lookup,
+            )
             if err or manga is None:
                 yield event.plain_result(err or "未找到该漫画。")
                 return

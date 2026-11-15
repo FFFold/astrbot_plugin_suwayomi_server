@@ -59,6 +59,11 @@ astrbot_suwayomi_server/
 │   ├── test_config.py         # 分组配置读写与旧版配置迁移单元测试
 │   ├── test_config_reset.py   # 配置回退/重置单元测试
 │   ├── test_service.py        # service 业务函数单元测试
+│   ├── test_resolve_manga.py  # 漫画引用解析（ID:/搜索编号/名称）与三类报错
+│   ├── test_search_index_lookup.py # 会话搜索编号缓存读取（TTL/会话隔离）
+│   ├── test_unsubscribe.py    # /漫画 取消订阅 的 ID: 引用与订阅校验
+│   ├── test_subscribe_command.py # /漫画 订阅 的编号/ID: 引用形式
+│   ├── test_command_wiring.py # 阅读/下载 调用点透传 index_lookup 的回归守卫
 │   ├── helpers.py             # 测试助手（事件/章节构造等）
 │   ├── test_cards.py          # 卡片模块单元测试（数据准备/封面嵌入/渲染/缓存）
 │   ├── test_card_commands.py  # 命令卡片路径回归测试
@@ -155,7 +160,7 @@ bgm.tv 模糊搜索解析官方译名/别名（top-5 条目 + 日文字形变体
 #### `suwayomi/service.py` — 业务逻辑层
 
 - 独立 async 函数，依赖注入参数（`client`、`sub_mgr`、`get_kv_data` 等）
-- `resolve_manga(client, sub_mgr, umo, name_or_id, cmd)` — 按 ID 或名称模糊解析漫画
+- `resolve_manga(client, sub_mgr, umo, name_or_id, cmd, *, index_lookup=None)` — 漫画引用解析：`parse_manga_ref` 把输入分成 `ID:数字` / 裸数字（搜索结果编号）/ 名称三类（详见「检索机制」）
 - `resolve_chapter(chapters, chapter_num, manga_name_or_id, cmd)` — 命令层章节选择，委托 `match_chapters`（返回候选 + 匹配结果）；支持编号 `5`、`38.5`、`第5话`、`第01卷`、章节名（精确/唯一包含）与 `ID:123`。名称归一化用 `chapter_name_key`（NFKC → 繁简 → casefold → 去装饰标点 → 剥整数部分前导零，保留 `.`/`-`）。编号命中多个时列候选让用户选；跨单位（如 `第3卷` 只有 `第03话`）或源站编号与名称不一致时也列出候选，不直接命中。AI 工具的 `selector` 不走这套解析，只接受 `latest`/`list`/章节号/`ID:数字`
 - `parse_chapter_number_text(text)` — 编号解析（`5`、`第5话`、`第38.5話`、`第01卷`）
 - 源选择：`select_search_sources`（默认源：排除本地源、扩展名去重、变体补位；命令与 AI 路径共用）、`match_source_hint`（命令侧源提示：前缀/语言代码匹配）、`split_search_query`（从完整消息解析关键词与尾部源提示，多词标题用 `+` 连接）
@@ -317,6 +322,7 @@ AI 工具调用 ──┼──► 选源 ──► 并发搜索各源 ──►
                    │
                    ▼
 回复「漫画 订阅 <编号>」→ 用展示时缓存中的漫画直接订阅（只有展示出的编号有效）
+编号同时可用于「漫画 章节|阅读|下载 <编号> …」（同一份会话缓存，600s）
 ```
 
 | 关键参数 | 值 |
@@ -327,13 +333,25 @@ AI 工具调用 ──┼──► 选源 ──► 并发搜索各源 ──►
 | 二轮探针 | 最多 3 个，每探针 × 每源 15s |
 | 强命中线 | `ranking.STRONG_MATCH_THRESHOLD = 800` |
 | 展示上限 | `search_display_limit`（默认 20，范围 1–50） |
-| 编号缓存 | 600s TTL / 按会话上限 64（`_SEARCH_CACHE_MAX_ENTRIES`），仅排序开启时写入 |
+| 编号缓存 | 600s TTL / 按会话上限 64（`_SEARCH_CACHE_MAX_ENTRIES`） |
 
 **AI 工具路径（`suwayomi_search_manga`）：** 选源用 `ai_max_sources`（默认 5，1–10），`search_all_sources=true` 时改用除 Local 外的全部源；每源内先排序再取 `ai_results_per_source`（默认 5）条，按 `manga_id` 跨源去重后统一排序；返回结构化 JSON（稳定 `manga_id`、`source_errors`、操作指引），不发送消息，不做 Bangumi 扩展与截断刷新。
 
 **批量订阅路径（`search_best_match`）：** 每部漫画最多串行尝试 3 个源；源内有结果即用 `rank_items` 取第 1 名返回，不再尝试后续源；不做 Bangumi 扩展 / 截断刷新 / 跨源排序（速度优先）。
 
-**按名称解析（不属于检索链）：** `/漫画 阅读|下载|订阅 <名称或ID>` 走 `service.resolve_manga`：数字 ID → `get_manga`；命中订阅名 → 订阅内漫画；否则只在**已入库漫画**中按标题搜索。
+**漫画引用解析（属于命令层的解析入口）：** `/漫画 章节|阅读|下载 <引用>` 走 `service.resolve_manga`，
+先用 `service.parse_manga_ref` 把输入分成三类：
+
+| 输入 | 分类 | 解析 |
+|---|---|---|
+| `ID:151`（NFKC：`id：151` / `ＩＤ：１５１` / `ID: 151`） | `id` | `client.get_manga(151)`；失败直接报「未找到 ID:151」，不回落名称 |
+| 纯数字 `3` | `index` | 插件注入的 `index_lookup(umo, "3")` 读会话搜索缓存；未命中给三类教学式报错 |
+| 其他 | `name` | 订阅名子串 → 数据库标题 `includes`（原逻辑） |
+
+- 裸数字**永不**回退成漫画 ID；`/reset`、WebUI 保存配置会清空编号缓存。开启相关度排序时编号只覆盖前 `search_display_limit` 条；关闭排序时按源分组输出全部结果并全部缓存（与旧版输出一致）。
+- `取消订阅` 复用 `parse_manga_ref`，但只接受 `id` 与 `name`（`index` 直接拒绝），并在取消前校验订阅确实存在。
+- `订阅` 接受 `index` 与 `id`（`ID:151` 直接 `get_manga`），名称订阅仍走 `批量订阅`；三种命令的引用集合因此互不相同，改语法时三处要一起看。
+- `index_lookup` 为 `Callable[[umo, key], tuple[Manga | None, int]]`（第二项是缓存条数，用于「只有 1–N 号」提示），缓存本体仍是插件上的 `_search_cache`。
 
 **批量订阅流程：**
 ```

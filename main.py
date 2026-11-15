@@ -652,11 +652,15 @@ class SuwayomiPlugin(Star):
 
     # ── Search cache ───────────────────────────────────────────────
 
-    def _get_cached_manga(self, umo: str, key: str) -> Manga | None:
+    def _search_index_lookup(self, umo: str, key: str) -> tuple[Manga | None, int]:
+        """Return the cached search entry and how many entries the session has."""
         cache = ttl_cache_lookup(self._search_cache, umo, _CACHE_TTL)
-        if cache is None:
-            return None
-        return cache.get(key)
+        if not cache:
+            return None, 0
+        return cache.get(key), len(cache)
+
+    def _get_cached_manga(self, umo: str, key: str) -> Manga | None:
+        return self._search_index_lookup(umo, key)[0]
 
     def _set_search_cache(self, umo: str, cache: dict[str, Manga]):
         ttl_cache_store(
@@ -1562,7 +1566,11 @@ class SuwayomiPlugin(Star):
                 yield event.plain_result("用法: /漫画 章节 <漫画名或ID> [--刷新]")
                 return
 
-            manga, err = await resolve_manga(self.client, self.sub_mgr, event.unified_msg_origin, manga_name_or_id, "章节")
+            manga, err = await resolve_manga(
+                self.client, self.sub_mgr, event.unified_msg_origin,
+                manga_name_or_id, "章节",
+                index_lookup=self._search_index_lookup,
+            )
             if err or manga is None:
                 yield event.plain_result(err or "未找到该漫画。")
                 return
@@ -1726,7 +1734,11 @@ class SuwayomiPlugin(Star):
             return
 
         try:
-            manga, err = await resolve_manga(self.client, self.sub_mgr, event.unified_msg_origin, manga_name_or_id, "阅读")
+            manga, err = await resolve_manga(
+                self.client, self.sub_mgr, event.unified_msg_origin,
+                manga_name_or_id, "阅读",
+                index_lookup=self._search_index_lookup,
+            )
             if err or manga is None:
                 yield event.plain_result(err or "未找到该漫画。")
                 return
@@ -1795,7 +1807,11 @@ class SuwayomiPlugin(Star):
 
         tmp_dir: Path | None = None
         try:
-            manga, err = await resolve_manga(self.client, self.sub_mgr, event.unified_msg_origin, manga_name_or_id, "下载")
+            manga, err = await resolve_manga(
+                self.client, self.sub_mgr, event.unified_msg_origin,
+                manga_name_or_id, "下载",
+                index_lookup=self._search_index_lookup,
+            )
             if err or manga is None:
                 yield event.plain_result(err or "未找到该漫画。")
                 return

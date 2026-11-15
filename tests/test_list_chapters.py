@@ -354,3 +354,19 @@ async def test_list_chapters_cards_render_failure_falls_back(monkeypatch):
     event.chain_result.assert_not_called()
     download_cover_mock.assert_not_awaited()
     schedule_cleanup_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_list_chapters_passes_index_lookup(monkeypatch):
+    plugin = _make_plugin()
+    plugin._search_cache = {}
+    event = _make_event()
+    mocked = AsyncMock(return_value=(_make_manga(), None))
+    monkeypatch.setattr("plugin_pkg.main.resolve_manga", mocked)
+    monkeypatch.setattr(
+        "plugin_pkg.main.get_or_fetch_chapters", AsyncMock(return_value=[])
+    )
+
+    _ = [msg async for msg in plugin.list_chapters(event, "测试漫画")]
+
+    assert mocked.call_args.kwargs["index_lookup"].__self__ is plugin

@@ -18,7 +18,7 @@
 
 ```bash
 # Unit tests (no network needed)
-uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_downloader.py tests/test_list_chapters.py tests/test_cards.py tests/test_card_commands.py tests/test_subscription.py tests/test_web_api.py tests/test_batch_subscribe.py tests/test_push.py tests/test_service.py tests/test_updater.py tests/test_ai_service.py tests/test_ai_tools.py tests/test_help.py tests/test_live_skip.py tests/test_t2i.py tests/test_config.py tests/test_config_reset.py tests/test_ranking.py tests/test_bangumi.py tests/test_search_ranking.py -v
+uv run pytest tests/test_pack.py tests/test_models.py tests/test_client.py tests/test_downloader.py tests/test_list_chapters.py tests/test_cards.py tests/test_card_commands.py tests/test_subscription.py tests/test_web_api.py tests/test_batch_subscribe.py tests/test_push.py tests/test_service.py tests/test_resolve_manga.py tests/test_search_index_lookup.py tests/test_unsubscribe.py tests/test_updater.py tests/test_ai_service.py tests/test_ai_tools.py tests/test_help.py tests/test_live_skip.py tests/test_t2i.py tests/test_config.py tests/test_config_reset.py tests/test_ranking.py tests/test_bangumi.py tests/test_search_ranking.py -v
 
 # Integration tests (requires live Suwayomi-Server)
 uv run pytest tests/test_live_api.py tests/test_live_web_api.py -v -s
@@ -43,7 +43,7 @@ main.py (SuwayomiPlugin — thin dispatch layer)
   ├── suwayomi/client.py (SuwayomiClient - async GraphQL HTTP)
   ├── suwayomi/config.py (grouped config schema + legacy flat migration helpers)
   ├── suwayomi/models.py (Source, Manga, Chapter, SearchResult dataclasses)
-  ├── suwayomi/service.py (resolve_manga, resolve_chapter, get_or_fetch_chapters, fmt helpers)
+  ├── suwayomi/service.py (resolve_manga / parse_manga_ref, resolve_chapter, get_or_fetch_chapters, fmt helpers)
   ├── suwayomi/ranking.py (pure search-result scoring: normalize + 5-tier evidence + stable rank; shared by command/AI/batch paths)
   ├── suwayomi/bangumi.py (bgm.tv alias resolution for search expansion: top-5 subjects + JP-variant retry + probe builder + alias-boost arbiter + mirror fallback chain)
   ├── suwayomi/cards.py (T2I card template, data prep, embed_covers, render_card, CardCache)
@@ -122,11 +122,13 @@ main.py (SuwayomiPlugin — thin dispatch layer)
 
     The default system temp dir stays `0o700`; it is also not visible across containers. Images are unaffected (aiocqhttp converts them to base64 in the AstrBot process). The shared dir must be an absolute path mounted at the same path in both containers.
 
+20. **Bare numbers are search-result indexes, not manga IDs**: `service.parse_manga_ref` classifies input as `ID:N` (NFKC, any case/colon width) → manga id, bare integer → the session's latest search-result index (600s TTL, only displayed rows), anything else → name. There is **no** fallback from a missing index to a manga id; `resolve_manga` answers with one of three teaching errors (ID exists → `ID:N`, out of displayed range, no cached search). Every plugin-generated list (`我的订阅`, multi-result prompt, unsubscribe reply) must print `ID:{id}` so the copy-paste path stays parseable. `取消订阅` deliberately rejects the index kind (its universe is subscriptions) and verifies membership before deleting.
+
 ## Key Helpers
 
 业务逻辑自 0.4.7 起从插件类迁出为依赖注入式独立函数（`main.py` 仅薄调度）。常用入口（均为模块级函数，非 `self.` 方法）：
 
-- `service.resolve_manga(client, sub_mgr, umo, name_or_id, cmd)` — 按 ID/订阅名/标题模糊解析漫画。返回 `(Manga, None)` 或 `(None, error_msg)`；多结果时返回带 ID 的引导列表
+- `service.resolve_manga(client, sub_mgr, umo, name_or_id, cmd, *, index_lookup=None)` — 漫画引用解析（`parse_manga_ref` 三分：`ID:151` / 裸数字搜索编号 / 名称）；`index_lookup(umo, key) -> (Manga|None, count)` 由插件注入，读 `_search_cache`；裸数字不回退 ID
 - `service.resolve_chapter(chapters, chapter_num, manga_name_or_id, cmd)` — 解析章节选择（委托 `match_chapters`）：编号/`第X话`/`第X卷`/章节名/`ID:xxx`；重号、跨单位（`第3卷` 撞 `第03话`）、源站编号与名称冲突时列出候选让用户选
 - `service.get_or_fetch_chapters(client, get_kv_data, put_kv_data, config, manga_id, force)` — 章节缓存读取/源拉取；`force=True` 绕过缓存（更新检查恒 force）
 - `service.get_chapter_timestamp(...)` / `service.set_chapter_timestamp(...)` — KV 中的章节拉取时间戳
@@ -161,7 +163,7 @@ main.py (SuwayomiPlugin — thin dispatch layer)
 - `_conf_schema.json`: AstrBot WebUI config form schema
 - `requirements.txt`: Runtime deps (currently `aiohttp>=3.9.0`, `img2pdf>=0.5.0`, `opencc-python-reimplemented>=0.1.7`, `pillow>=10.0.0`, and `pydantic>=2.12.5,<3`)
 - `pyproject.toml`: Dev deps (pytest, pytest-asyncio), gitignored（不入库——环境搭建用 `uv venv` + `uv pip install -r requirements.txt pytest pytest-asyncio`，勿用 `uv sync`）
-- Tests in `tests/` - unit tests are synchronous or use `@pytest.mark.asyncio`; `test_ai_service.py` covers structured Agent search, chapter selection, and subscription management, while `test_ai_tools.py` guards `call()` dispatch across initial load and config re-sync for all six tools; `test_help.py` guards help/工具描述里的章节选择写法；`test_downloader.py` covers image/cover download helpers; `test_list_chapters.py` covers `/漫画 章节` cover logic and error paths; `test_config.py` covers grouped config read/write, legacy flat migration and schema/definition consistency
+- Tests in `tests/` - unit tests are synchronous or use `@pytest.mark.asyncio`; `test_ai_service.py` covers structured Agent search, chapter selection, and subscription management, while `test_ai_tools.py` guards `call()` dispatch across initial load and config re-sync for all six tools; `test_help.py` guards help/工具描述里的章节选择写法；`test_downloader.py` covers image/cover download helpers; `test_list_chapters.py` covers `/漫画 章节` cover logic and error paths; `test_config.py` covers grouped config read/write, legacy flat migration and schema/definition consistency; `test_resolve_manga.py` covers the `ID:` / bare-index / name reference grammar and its three teaching errors, `test_search_index_lookup.py` guards the session-scoped cache lookup, `test_unsubscribe.py` guards `取消订阅`'s `ID:`-only reference and membership check
 - `test_live_api.py`: Integration tests for Suwayomi client, auto-skipped when server unreachable. Covers sources/search/chapters/pages, AI search & chapter selection（相关度降序）, 截断标题刷新（`fetchManga` 持久化 + `refresh_truncated_titles`）, Bangumi 别名解析与探针源站命中, 文件打包页数上限, 封面下载, plus the real command main path (`test_download_and_pack_chapter`: fetch pages → download images → pack zip/pdf/cbz; `test_search_command_ranking_and_cache_live`: 搜索命令排序与编号缓存; `test_check_updates_detects_new_chapters_live`: real scan → notify → watermark → last-check timestamp). Manga sources rate-limit consecutive fetches, so search tests retry and skip when throttled (`_search_zh_for_agent` / `_search_zh_candidates`)
 - `test_live_web_api.py`: Integration tests for WebUI API handlers, auto-skipped when server unreachable
 - Version is in `metadata.yaml`, not `pyproject.toml`

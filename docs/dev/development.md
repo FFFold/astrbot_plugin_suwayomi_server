@@ -317,6 +317,7 @@ AI 工具调用 ──┼──► 选源 ──► 并发搜索各源 ──►
                    │
                    ▼
 回复「漫画 订阅 <编号>」→ 用展示时缓存中的漫画直接订阅（只有展示出的编号有效）
+编号同时可用于「漫画 章节|阅读|下载 <编号> …」（同一份会话缓存，600s）
 ```
 
 | 关键参数 | 值 |
@@ -327,13 +328,24 @@ AI 工具调用 ──┼──► 选源 ──► 并发搜索各源 ──►
 | 二轮探针 | 最多 3 个，每探针 × 每源 15s |
 | 强命中线 | `ranking.STRONG_MATCH_THRESHOLD = 800` |
 | 展示上限 | `search_display_limit`（默认 20，范围 1–50） |
-| 编号缓存 | 600s TTL / 按会话上限 64（`_SEARCH_CACHE_MAX_ENTRIES`），仅排序开启时写入 |
+| 编号缓存 | 600s TTL / 按会话上限 64（`_SEARCH_CACHE_MAX_ENTRIES`） |
 
 **AI 工具路径（`suwayomi_search_manga`）：** 选源用 `ai_max_sources`（默认 5，1–10），`search_all_sources=true` 时改用除 Local 外的全部源；每源内先排序再取 `ai_results_per_source`（默认 5）条，按 `manga_id` 跨源去重后统一排序；返回结构化 JSON（稳定 `manga_id`、`source_errors`、操作指引），不发送消息，不做 Bangumi 扩展与截断刷新。
 
 **批量订阅路径（`search_best_match`）：** 每部漫画最多串行尝试 3 个源；源内有结果即用 `rank_items` 取第 1 名返回，不再尝试后续源；不做 Bangumi 扩展 / 截断刷新 / 跨源排序（速度优先）。
 
-**按名称解析（不属于检索链）：** `/漫画 阅读|下载|订阅 <名称或ID>` 走 `service.resolve_manga`：数字 ID → `get_manga`；命中订阅名 → 订阅内漫画；否则只在**已入库漫画**中按标题搜索。
+**漫画引用解析（属于命令层的解析入口）：** `/漫画 章节|阅读|下载 <引用>` 走 `service.resolve_manga`，
+先用 `service.parse_manga_ref` 把输入分成三类：
+
+| 输入 | 分类 | 解析 |
+|---|---|---|
+| `ID:151`（NFKC：`id：151` / `ＩＤ：１５１` / `ID: 151`） | `id` | `client.get_manga(151)`；失败直接报「未找到 ID:151」，不回落名称 |
+| 纯数字 `3` | `index` | 插件注入的 `index_lookup(umo, "3")` 读会话搜索缓存；未命中给三类教学式报错 |
+| 其他 | `name` | 订阅名子串 → 数据库标题 `includes`（原逻辑） |
+
+- 裸数字**永不**回退成漫画 ID；`/reset`、WebUI 保存配置会清空编号缓存；编号只覆盖实际展示过的前 `search_display_limit` 条。
+- `取消订阅` 复用 `parse_manga_ref`，但只接受 `id` 与 `name`（`index` 直接拒绝），并在取消前校验订阅确实存在。
+- `index_lookup` 为 `Callable[[umo, key], tuple[Manga | None, int]]`（第二项是缓存条数，用于「只有 1–N 号」提示），缓存本体仍是插件上的 `_search_cache`。
 
 **批量订阅流程：**
 ```

@@ -62,6 +62,8 @@ astrbot_suwayomi_server/
 │   ├── test_resolve_manga.py  # 漫画引用解析（ID:/搜索编号/名称）与三类报错
 │   ├── test_search_index_lookup.py # 会话搜索编号缓存读取（TTL/会话隔离）
 │   ├── test_unsubscribe.py    # /漫画 取消订阅 的 ID: 引用与订阅校验
+│   ├── test_subscribe_command.py # /漫画 订阅 的编号/ID: 引用形式
+│   ├── test_command_wiring.py # 阅读/下载 调用点透传 index_lookup 的回归守卫
 │   ├── helpers.py             # 测试助手（事件/章节构造等）
 │   ├── test_cards.py          # 卡片模块单元测试（数据准备/封面嵌入/渲染/缓存）
 │   ├── test_card_commands.py  # 命令卡片路径回归测试
@@ -348,6 +350,7 @@ AI 工具调用 ──┼──► 选源 ──► 并发搜索各源 ──►
 
 - 裸数字**永不**回退成漫画 ID；`/reset`、WebUI 保存配置会清空编号缓存。开启相关度排序时编号只覆盖前 `search_display_limit` 条；关闭排序时按源分组输出全部结果并全部缓存（与旧版输出一致）。
 - `取消订阅` 复用 `parse_manga_ref`，但只接受 `id` 与 `name`（`index` 直接拒绝），并在取消前校验订阅确实存在。
+- `订阅` 接受 `index` 与 `id`（`ID:151` 直接 `get_manga`），名称订阅仍走 `批量订阅`；三种命令的引用集合因此互不相同，改语法时三处要一起看。
 - `index_lookup` 为 `Callable[[umo, key], tuple[Manga | None, int]]`（第二项是缓存条数，用于「只有 1–N 号」提示），缓存本体仍是插件上的 `_search_cache`。
 
 **批量订阅流程：**

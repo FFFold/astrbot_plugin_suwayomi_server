@@ -846,7 +846,7 @@ class SuwayomiPlugin(Star):
 
 🔍 搜索与订阅
   /漫画 搜索 <关键词> [源名]  — 搜索漫画（多词用 + 连接）
-  /漫画 订阅 <编号>            — 订阅搜索结果
+  /漫画 订阅 <编号或 ID:编号>   — 订阅搜索结果
   /漫画 批量订阅 <名称1>, <名称2>, ... [源名] — 批量订阅多部漫画
   /漫画 取消订阅 <ID:编号或名称> — 取消订阅
   /漫画 我的订阅               — 查看订阅列表
@@ -1241,9 +1241,23 @@ class SuwayomiPlugin(Star):
 
     @manga_group.command("订阅")
     async def subscribe_manga(self, event: AstrMessageEvent, index: str):
-        """订阅漫画。用法: /漫画 订阅 <搜索结果编号>"""
+        """订阅漫画。用法: /漫画 订阅 <搜索结果编号或 ID:编号>"""
         try:
-            manga = self._get_cached_manga(event.unified_msg_origin, index)
+            kind, value = parse_manga_ref(index)
+            if kind == "id":
+                try:
+                    manga = await self.client.get_manga(int(value))
+                except SuwayomiError:
+                    yield event.plain_result(f"未找到 ID:{value} 的漫画。")
+                    return
+            elif kind == "index":
+                manga = self._get_cached_manga(event.unified_msg_origin, str(value))
+            else:
+                yield event.plain_result(
+                    "订阅请用搜索结果编号（如「漫画 订阅 1」）或 ID:151；"
+                    "按名称订阅请用「漫画 批量订阅」。"
+                )
+                return
             if manga is None:
                 yield event.plain_result("未找到该编号的漫画，请先使用「漫画 搜索」。")
                 return

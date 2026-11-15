@@ -58,6 +58,7 @@ from .suwayomi.service import (
     get_or_fetch_chapters,
     match_source_hint,
     normalize_zh,
+    parse_manga_ref,
     refresh_truncated_titles,
     resolve_chapter,
     resolve_manga,
@@ -1401,16 +1402,24 @@ class SuwayomiPlugin(Star):
 
     @manga_group.command("取消订阅")
     async def unsubscribe_manga(self, event: AstrMessageEvent, manga_id_or_name: str):
-        """取消订阅。用法: /漫画 取消订阅 <漫画ID或名称>"""
+        """取消订阅。用法: /漫画 取消订阅 <ID:编号或名称>"""
         try:
             umo = event.unified_msg_origin
+            kind, value = parse_manga_ref(manga_id_or_name)
+            subs = await self.sub_mgr.get_subscriptions(umo)
+
+            if kind == "index":
+                yield event.plain_result(
+                    f"取消订阅不支持搜索结果编号，请用 ID:{value} 或订阅名称。"
+                )
+                return
+
             manga_id = None
             manga_title = manga_id_or_name
-            try:
-                manga_id = int(manga_id_or_name)
-            except ValueError:
-                norm_input = normalize_zh(manga_id_or_name)
-                subs = await self.sub_mgr.get_subscriptions(umo)
+            if kind == "id":
+                manga_id = int(value)
+            else:
+                norm_input = normalize_zh(str(value))
                 for s in subs:
                     if norm_input in normalize_zh(s["title"]):
                         manga_id = s["manga_id"]
@@ -1418,11 +1427,24 @@ class SuwayomiPlugin(Star):
                         break
 
             if manga_id is None:
-                yield event.plain_result("未找到匹配的订阅，请使用漫画 ID 或名称。")
+                yield event.plain_result("未找到匹配的订阅，请使用 ID:编号 或名称。")
                 return
+
+            subscribed_ids = set()
+            for s in subs:
+                try:
+                    subscribed_ids.add(int(s["manga_id"]))
+                except (TypeError, ValueError):
+                    continue
+            if int(manga_id) not in subscribed_ids:
+                yield event.plain_result(
+                    f"未找到该订阅（ID:{manga_id}），可用「漫画 我的订阅」查看。"
+                )
+                return
+
             await self.sub_mgr.unsubscribe(manga_id, umo)
             logger.info(f"[{PLUGIN_NAME}] 用户取消订阅「{manga_title}」(ID:{manga_id})")
-            yield event.plain_result(f"✅ 已取消订阅（漫画 ID: {manga_id}）。")
+            yield event.plain_result(f"✅ 已取消订阅（ID:{manga_id}）。")
         except Exception as e:
             logger.error(f"[{PLUGIN_NAME}] unsubscribe error: {e}")
             yield event.plain_result("取消订阅失败，请稍后重试。")

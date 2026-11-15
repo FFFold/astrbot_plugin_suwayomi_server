@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from plugin_pkg.main import SuwayomiPlugin
-from plugin_pkg.suwayomi.client import SuwayomiError
+from plugin_pkg.suwayomi.client import MangaNotFoundError, SuwayomiError
 from plugin_pkg.suwayomi.models import Manga
 
 UMO = "aiocqhttp:group:g1"
@@ -69,13 +69,28 @@ async def test_subscribe_still_accepts_search_index(monkeypatch):
 @pytest.mark.asyncio
 async def test_subscribe_missing_id_is_reported(monkeypatch):
     plugin = _plugin()
-    plugin.client.get_manga = AsyncMock(side_effect=SuwayomiError("not found"))
+    plugin.client.get_manga = AsyncMock(side_effect=MangaNotFoundError("not found"))
     event = _event("/漫画 订阅 ID:999")
 
     results = [m async for m in plugin.subscribe_manga(event, "ID:999")]
 
     plugin.sub_mgr.subscribe.assert_not_awaited()
     assert "未找到 ID:999" in results[0]
+
+
+@pytest.mark.asyncio
+async def test_subscribe_id_outage_is_not_reported_as_missing(monkeypatch):
+    plugin = _plugin()
+    plugin.client.get_manga = AsyncMock(
+        side_effect=SuwayomiError("Unable to connect to Suwayomi-Server")
+    )
+    event = _event("/漫画 订阅 ID:151")
+
+    results = [m async for m in plugin.subscribe_manga(event, "ID:151")]
+
+    plugin.sub_mgr.subscribe.assert_not_awaited()
+    assert "未找到 ID:151" not in results[0]
+    assert "订阅失败" in results[0]
 
 
 @pytest.mark.asyncio

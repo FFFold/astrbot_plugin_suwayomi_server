@@ -33,7 +33,7 @@ from .suwayomi.cards import (
     embed_covers,
     render_card_cached,
 )
-from .suwayomi.client import SuwayomiClient, SuwayomiError
+from .suwayomi.client import MangaNotFoundError, SuwayomiClient, SuwayomiError
 from .suwayomi.config import config_bool, get_config_value, migrate_legacy_config
 from .suwayomi.bangumi import (
     alias_boost,
@@ -1150,6 +1150,8 @@ class SuwayomiPlugin(Star):
                         )
 
             if not pool:
+                # 无结果的一次搜索必须让上一批编号失效，否则 阅读/下载 会落到旧结果
+                self._search_cache.pop(event.unified_msg_origin, None)
                 yield event.plain_result("未找到相关漫画，请确认关键词。" + suggestion)
                 return
 
@@ -1209,7 +1211,11 @@ class SuwayomiPlugin(Star):
                 )
 
             text = "\n".join(lines)
-            self._set_search_cache(event.unified_msg_origin, cache)
+
+            def _remember_index() -> None:
+                # 在展示的那一刻才落缓存：两次搜索重叠时，编号必须对应
+                # 最后显示给用户的那一批结果，而不是最后算完的那一批。
+                self._set_search_cache(event.unified_msg_origin, cache)
 
             if self._result_cards_enabled():
                 try:
@@ -1226,11 +1232,13 @@ class SuwayomiPlugin(Star):
                     )
                     path = await self._render_card_result(tmpldata)
                     if path:
+                        _remember_index()
                         yield event.chain_result([Comp.Image.fromFileSystem(path)])
                         return
                 except Exception as e:
                     logger.warning(f"[{PLUGIN_NAME}] 搜索卡片渲染失败，回退文本: {e}")
 
+            _remember_index()
             yield event.plain_result(text)
 
         except SuwayomiError as e:
@@ -1247,7 +1255,7 @@ class SuwayomiPlugin(Star):
             if kind == "id":
                 try:
                     manga = await self.client.get_manga(int(value))
-                except SuwayomiError:
+                except MangaNotFoundError:
                     yield event.plain_result(f"未找到 ID:{value} 的漫画。")
                     return
             elif kind == "index":
@@ -1454,19 +1462,13 @@ class SuwayomiPlugin(Star):
                 yield event.plain_result("未找到匹配的订阅，请使用 ID:编号 或名称。")
                 return
 
-            subscribed_ids = set()
-            for s in subs:
-                try:
-                    subscribed_ids.add(int(s["manga_id"]))
-                except (TypeError, ValueError):
-                    continue
-            if int(manga_id) not in subscribed_ids:
+            removed = await self.sub_mgr.unsubscribe(manga_id, umo)
+            if not removed:
                 yield event.plain_result(
                     f"未找到该订阅（ID:{manga_id}），可用「漫画 我的订阅」查看。"
                 )
                 return
 
-            await self.sub_mgr.unsubscribe(manga_id, umo)
             logger.info(f"[{PLUGIN_NAME}] 用户取消订阅「{manga_title}」(ID:{manga_id})")
             yield event.plain_result(f"✅ 已取消订阅（ID:{manga_id}）。")
         except Exception as e:

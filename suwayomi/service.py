@@ -13,7 +13,7 @@ from astrbot.api import logger
 
 from . import PLUGIN_NAME
 from .config import get_config_value
-from .client import SuwayomiError
+from .client import MangaNotFoundError, SuwayomiError
 from .models import Chapter, Manga, Source
 from .ranking import looks_truncated, rank_items
 
@@ -682,8 +682,14 @@ async def _resolve_by_search_index(
     try:
         await client.get_manga(number)
         id_exists = True
+    except MangaNotFoundError:
+        pass
     except Exception as exc:
-        logger.debug(f"[{_PLUGIN_NAME}] 编号 {number} 的 ID 探测失败: {exc}")
+        # The probe is best-effort, but a transport/GraphQL failure means we
+        # cannot tell "no such manga" from "server is down"; say so instead of
+        # telling the user to search again.
+        logger.warning(f"[{_PLUGIN_NAME}] 编号 {number} 的 ID 探测失败: {exc}")
+        return None, "漫画服务暂时不可用，请稍后重试。"
     logger.debug(
         f"[{_PLUGIN_NAME}] 搜索编号未命中: #{number} (缓存 {count} 条, "
         f"ID存在={id_exists})"
@@ -724,7 +730,7 @@ async def resolve_manga(
     if kind == "id":
         try:
             return await client.get_manga(int(value)), None
-        except SuwayomiError:
+        except MangaNotFoundError:
             return None, f"未找到 ID:{value} 的漫画。"
     if kind == "index":
         return await _resolve_by_search_index(

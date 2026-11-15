@@ -146,6 +146,27 @@ async def test_unsubscribe_nonexistent_user(mgr):
 
 
 @pytest.mark.asyncio
+async def test_unsubscribe_reports_whether_it_removed(mgr):
+    await mgr.subscribe(42, "One Piece", 100, "user1")
+    assert await mgr.unsubscribe(42, "user1") is True
+    assert await mgr.unsubscribe(42, "user1") is False
+    assert await mgr.unsubscribe(999, "user1") is False
+
+
+@pytest.mark.asyncio
+async def test_concurrent_unsubscribe_reports_single_success(mgr):
+    await mgr.subscribe(42, "One Piece", 100, "user1")
+
+    results = await asyncio.gather(
+        mgr.unsubscribe(42, "user1"),
+        mgr.unsubscribe(42, "user1"),
+    )
+
+    assert sorted(results) == [False, True]
+    assert await mgr.get_subscriptions("user1") == []
+
+
+@pytest.mark.asyncio
 async def test_update_latest_chapter_nonexistent(mgr):
     # Should not raise
     await mgr.update_latest_chapter(999, 200)

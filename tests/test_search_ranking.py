@@ -287,3 +287,68 @@ async def test_dirty_title_cannot_forge_result_lines():
     assert "[2] [9] 钓鱼条目" not in text      # 换行不产生新行
     assert chr(10) not in text.split(chr(10))[0]  # 首行无内嵌换行残留
     assert "正常漫画" in text                    # 标题内容保留（清洗不破坏）
+
+
+@pytest.mark.asyncio
+async def test_empty_search_clears_previous_index_cache():
+    """无结果的一次搜索必须让上一次的编号失效，否则会读到旧搜索的漫画。"""
+    import time
+
+    umo = "aiocqhttp:group:g1"
+    plugin = _plugin()
+    plugin._search_cache[umo] = (time.time(), {"3": _manga("旧结果", 999)})
+    _set_search(plugin, {})
+
+    results = [msg async for msg in plugin.search_manga(_event(), QUERY)]
+
+    assert "未找到相关漫画" in results[0]
+    assert plugin._get_cached_manga(umo, "3") is None
+
+
+@pytest.mark.asyncio
+async def test_overlapping_searches_keep_cache_of_last_displayed(monkeypatch):
+    """两次搜索重叠时，编号必须对应最后显示出来的那一批结果。"""
+    import asyncio
+
+    plugin = _plugin(result_cards_enabled=True)
+    plugin.client.get_sources = AsyncMock(return_value=_sources())
+
+    async def _search(src_id, query, page=1):
+        mid = 101 if query == "甲" else 202
+        return SearchResult(mangas=[_manga(f"{query}漫画", mid)], has_next_page=False)
+
+    plugin.client.search_manga = AsyncMock(side_effect=_search)
+    plugin._result_cards_enabled = lambda: True
+    monkeypatch.setattr(
+        "plugin_pkg.main.build_search_card",
+        lambda rows, subtitle, footer: {"rows": rows},
+    )
+    monkeypatch.setattr(
+        "plugin_pkg.main.embed_covers",
+        AsyncMock(side_effect=lambda c, items, **kw: items),
+    )
+
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def _slow_render(tmpldata):
+        if not started.is_set():
+            started.set()
+            await release.wait()
+        return "/tmp/search-card.jpg"
+
+    plugin._render_card_result = _slow_render
+    umo = "aiocqhttp:group:g1"
+
+    async def _run_a():
+        return [msg async for msg in plugin.search_manga(_event("/漫画 搜索 甲"), "甲")]
+
+    task_a = asyncio.create_task(_run_a())
+    await started.wait()
+    _ = [msg async for msg in plugin.search_manga(_event("/漫画 搜索 乙"), "乙")]
+    release.set()
+    _ = await task_a
+
+    # 甲最后才显示出来，编号 1 必须是甲的结果
+    cached = plugin._get_cached_manga(umo, "1")
+    assert cached is not None and cached.id == 101

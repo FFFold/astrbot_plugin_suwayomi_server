@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from suwayomi.client import SuwayomiClient, SuwayomiError
+from suwayomi.client import MangaNotFoundError, SuwayomiClient, SuwayomiError
 
 
 @pytest.fixture
@@ -29,6 +29,20 @@ def test_client_init_basic_auth(auth_client):
 def test_build_image_url(client):
     url = client.build_image_url("/api/v1/manga/42/chapter/5/page/0")
     assert url == "http://localhost:4567/api/v1/manga/42/chapter/5/page/0"
+
+
+@pytest.mark.asyncio
+async def test_get_manga_raises_not_found_for_null_payload(client):
+    client._raw_query = AsyncMock(return_value={"manga": None})
+    with pytest.raises(MangaNotFoundError):
+        await client.get_manga(999)
+
+
+@pytest.mark.asyncio
+async def test_get_manga_returns_manga_for_payload(client):
+    client._raw_query = AsyncMock(return_value={"manga": {"id": 7, "title": "T"}})
+    manga = await client.get_manga(7)
+    assert manga.id == 7 and manga.title == "T"
 
 
 def test_build_image_url_strips_trailing_slash():

@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from suwayomi.client import SuwayomiError
+from suwayomi.client import MangaNotFoundError, SuwayomiError
 from suwayomi.models import Manga, Source
 from suwayomi.service import resolve_manga
 
@@ -22,7 +22,7 @@ class _Client:
     async def get_manga(self, manga_id):
         if int(manga_id) in self._mangas:
             return self._mangas[int(manga_id)]
-        raise SuwayomiError("not found")
+        raise MangaNotFoundError("not found")
 
     async def search_manga_by_title(self, title, limit=10):
         return list(self._by_title)
@@ -43,11 +43,13 @@ def _subs(titles=()):
 async def test_index_hit_returns_cached_manga_without_lookup():
     cached = _manga(302, "安达与岛村官方同人集")
     client = _Client()
+    client.get_manga = AsyncMock(wraps=client.get_manga)
     manga, err = await resolve_manga(
         client, _subs(), UMO, "3", "阅读",
         index_lookup=lambda umo, key: (cached, 5),
     )
     assert err is None and manga is cached
+    client.get_manga.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -125,14 +127,26 @@ async def test_id_ref_missing_reports_id_not_found():
 
 
 @pytest.mark.asyncio
-async def test_id_probe_failure_falls_back_to_ttl_message():
+async def test_probe_outage_reports_service_unavailable():
     client = _Client()
-    client.get_manga = AsyncMock(side_effect=SuwayomiError("boom"))
+    client.get_manga = AsyncMock(
+        side_effect=SuwayomiError("Unable to connect to Suwayomi-Server")
+    )
     manga, err = await resolve_manga(
         client, _subs(), UMO, "4", "阅读",
         index_lookup=lambda umo, key: (None, 0),
     )
-    assert manga is None and "10 分钟" in err
+    assert manga is None and "服务暂时不可用" in err
+
+
+@pytest.mark.asyncio
+async def test_id_ref_outage_surfaces_as_service_error():
+    client = _Client()
+    client.get_manga = AsyncMock(
+        side_effect=SuwayomiError("Unable to connect to Suwayomi-Server")
+    )
+    with pytest.raises(SuwayomiError):
+        await resolve_manga(client, _subs(), UMO, "ID:151", "阅读")
 
 
 @pytest.mark.asyncio

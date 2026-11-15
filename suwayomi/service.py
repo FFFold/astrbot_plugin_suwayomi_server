@@ -689,19 +689,25 @@ async def _resolve_by_search_index(
         f"ID存在={id_exists})"
     )
 
+    suffix = "" if cmd == "章节" else " <章节>"
+    if not count:
+        if id_exists:
+            return None, (
+                "当前没有可用的搜索结果编号（搜索结果 10 分钟内有效）。\n"
+                f"若你指的是漫画 ID，请用: /漫画 {cmd} ID:{number}{suffix}"
+            )
+        return None, (
+            "当前没有可用的搜索结果编号（搜索结果 10 分钟内有效）。\n"
+            "请先「漫画 搜索 <关键词>」，或用「ID:数字」/ 名称指定漫画。"
+        )
     if id_exists:
         return None, (
             f"{number} 是漫画 ID，但不在本次搜索结果里。\n"
-            f"改用: /漫画 {cmd} ID:{number} <章节>"
-        )
-    if count:
-        return None, (
-            f"本次搜索结果只有 1–{count} 号，没有 {number} 号。\n"
-            "请重新「漫画 搜索」，或用名称指定漫画。"
+            f"改用: /漫画 {cmd} ID:{number}{suffix}"
         )
     return None, (
-        "当前没有可用的搜索结果编号（搜索结果 10 分钟内有效）。\n"
-        "请先「漫画 搜索 <关键词>」，或用「ID:数字」/ 名称指定漫画。"
+        f"本次搜索结果只有 1–{count} 号，没有 {number} 号。\n"
+        "请重新「漫画 搜索」，或用名称指定漫画。"
     )
 
 

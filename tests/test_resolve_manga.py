@@ -55,10 +55,33 @@ async def test_index_miss_but_id_exists_points_to_id_syntax():
     client = _Client(mangas={3: _manga(3, "某漫画")})
     manga, err = await resolve_manga(
         client, _subs(), UMO, "3", "阅读",
-        index_lookup=lambda umo, key: (None, 0),
+        index_lookup=lambda umo, key: (None, 5),
     )
     assert manga is None
     assert "是漫画 ID" in err and "ID:3" in err and "阅读" in err
+
+
+@pytest.mark.asyncio
+async def test_expired_cache_with_existing_id_reports_expiry_not_id_only():
+    client = _Client(mangas={3: _manga(3, "某漫画")})
+    manga, err = await resolve_manga(
+        client, _subs(), UMO, "3", "阅读",
+        index_lookup=lambda umo, key: (None, 0),
+    )
+    assert manga is None
+    assert "10 分钟" in err and "ID:3" in err
+    assert "3 是漫画 ID" not in err
+
+
+@pytest.mark.asyncio
+async def test_chapter_list_usage_tail_has_no_chapter_placeholder():
+    client = _Client(mangas={9: _manga(9, "某漫画")})
+    manga, err = await resolve_manga(
+        client, _subs(), UMO, "9", "章节",
+        index_lookup=lambda umo, key: (None, 5),
+    )
+    assert manga is None
+    assert "ID:9" in err and "<章节>" not in err
 
 
 @pytest.mark.asyncio
